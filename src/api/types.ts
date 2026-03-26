@@ -1,3 +1,5 @@
+// ─── Shared primitives ────────────────────────────────────────────────────────
+
 export type StudyRating = "Awful" | "Bad" | "Neutral" | "Good" | "Great";
 export type StudyFocus =
   | "Control"
@@ -11,6 +13,8 @@ export interface Resource {
   url: string;
 }
 
+// ─── Session records (as returned by POST and inside meta.sessions) ───────────
+
 export interface SongSession {
   id: number;
   song_id: number;
@@ -21,9 +25,46 @@ export interface SongSession {
   seconds: number;
   notes: string | null;
   from_memory: boolean;
+  rhythm: boolean;
+  lead: boolean;
+  singing: boolean;
   created_timestamp: number;
   updated_timestamp: number;
 }
+
+export interface ExerciseSession {
+  id: number;
+  exercise_id: number;
+  notes: string | null;
+  rating: StudyRating | null;
+  bpm: number | null;
+  seconds: number;
+  created_timestamp: number;
+  updated_timestamp: number;
+}
+
+export interface StudyMaterialSession {
+  id: number;
+  study_material_id: number;
+  user_id: number;
+  notes: string | null;
+  rating: StudyRating | null;
+  seconds: number;
+  created_timestamp: number;
+  updated_timestamp: number;
+}
+
+export interface OpenSession {
+  id: number;
+  user_id: number;
+  rating: StudyRating | null;
+  seconds: number;
+  notes: string | null;
+  created_timestamp: number;
+  updated_timestamp: number;
+}
+
+// ─── Song ─────────────────────────────────────────────────────────────────────
 
 export interface SongMeta {
   id?: number;
@@ -71,52 +112,36 @@ export interface SongList {
   songs: Song[];
 }
 
-export interface ExerciseSession {
-  id: number;
-  exercise_id: number;
-  notes: string | null;
-  rating: StudyRating;
-  bpm: number | null;
-  seconds: number;
-  created_timestamp: number;
-  updated_timestamp: number;
-}
+// ─── Exercise (dashboard shape) ───────────────────────────────────────────────
 
-export interface Exercise {
-  id: number;
-  name: string;
-  order: number | null;
-  resources: Resource[] | null;
-  session_type: "exercise";
-  parent_exercise_id: number | null;
-  created_timestamp: number;
-  updated_timestamp: number;
-}
-
-export interface UserExercise {
+export interface UserExerciseMeta {
   id: number;
   exercise_id: number;
   user_id: number;
   randomize_sub_exercises: boolean;
   use_keys: boolean;
   use_scales: boolean;
-  exercise: Exercise;
-  sessions: ExerciseSession[];
-  sub_exercises?: UserExercise[];
 }
 
-export interface StudyMaterialSession {
+export interface DashboardExercise {
   id: number;
-  study_material_id: number;
-  user_id: number;
-  notes: string | null;
-  rating: StudyRating;
-  seconds: number;
+  name: string;
+  order: number | null;
+  resources: Record<string, string> | null;
+  session_type: "exercise";
+  parent_exercise_id: number | null;
   created_timestamp: number;
   updated_timestamp: number;
+  child_exercises: DashboardExercise[];
+  meta: {
+    user_exercise: UserExerciseMeta | null;
+    sessions: ExerciseSession[];
+  };
 }
 
-export interface StudyMaterial {
+// ─── Study material (dashboard shape) ─────────────────────────────────────────
+
+export interface DashboardStudyMaterial {
   id: number;
   name: string;
   url: string | null;
@@ -125,15 +150,14 @@ export interface StudyMaterial {
   session_type: "study_material";
   created_timestamp: number;
   updated_timestamp: number;
+  childStudyMaterials: DashboardStudyMaterial[];
+  meta: {
+    user_study_material: { user_id: number; study_material_id: number } | null;
+    sessions: StudyMaterialSession[];
+  };
 }
 
-export interface UserStudyMaterial {
-  id: number;
-  study_material_id: number;
-  user_id: number;
-  study_material: StudyMaterial;
-  sessions: StudyMaterialSession[];
-}
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export interface Scale {
   id: number;
@@ -142,7 +166,6 @@ export interface Scale {
   tonality: string;
   description: string;
   resources: Resource[];
-  created_timestamp?: number;
 }
 
 export interface KeySignature {
@@ -151,7 +174,6 @@ export interface KeySignature {
   sharps: number;
   flats: number;
   notes: string[];
-  created_timestamp?: number;
 }
 
 export interface Chord {
@@ -183,12 +205,30 @@ export interface DashboardData {
   to_review: SongList;
   to_learn: SongList;
   project: SongList;
-  exercises: UserExercise[];
-  study_materials: UserStudyMaterial[];
+  exercises: DashboardExercise[];
+  study_materials: DashboardStudyMaterial[];
   chord: Chord | null;
   progression: Progression | null;
   interval: Interval | null;
 }
+
+// ─── User profile (GET /user/me) ──────────────────────────────────────────────
+
+export interface UserProfile {
+  id: number;
+  firebase_uid: string;
+  email: string;
+  display_name: string;
+  daily_minutes_goal: number;
+  timezone: string;
+  time_practiced_today: number;
+  total_time_practiced: number;
+  max_days_no_review: number;
+  min_days_between_reviews: number;
+  num_songs_to_learn: number;
+}
+
+// ─── User settings (GET/PUT /user/settings) ───────────────────────────────────
 
 export interface UserSettings {
   id: number;
@@ -217,4 +257,92 @@ export interface UpdateUserSettingsPayload {
   min_days_between_reviews?: number;
   daily_minutes_goal?: number;
   days_scale_study?: number;
+}
+
+// ─── Session POST payloads ────────────────────────────────────────────────────
+
+export interface SongSessionPayload {
+  song_id: number;
+  seconds: number;
+  focus: number | null; // 1=Control 2=Clarity 3=Consistency 4=Musicality 5=Playthrough
+  bpm: number | null;
+  rating: number | null; // 1=Awful 2=Bad 3=Neutral 4=Good 5=Great
+  notes: string | null;
+  from_memory: boolean;
+  rhythm: boolean;
+  lead: boolean;
+  singing: boolean;
+}
+
+export interface ExerciseSessionPayload {
+  exercise_id: number;
+  seconds: number;
+  bpm: number | null;
+  rating: number | null;
+  notes: string | null;
+}
+
+export interface StudyMaterialSessionPayload {
+  study_material_id: number;
+  seconds: number;
+  rating: number | null;
+  notes: string | null;
+}
+
+export interface OpenSessionPayload {
+  seconds: number;
+  rating: number | null;
+  notes: string | null;
+}
+
+// ─── Session POST responses ───────────────────────────────────────────────────
+
+// All session POST responses include daily_practice_time
+export interface SessionPostResponse {
+  id: number;
+  daily_practice_time: number; // total seconds practiced today (all types)
+  update_log: string;
+}
+
+export interface SongSessionResponse extends SessionPostResponse {
+  song_id: number;
+  user_id: number;
+  focus: StudyFocus | null;
+  bpm: number | null;
+  rating: StudyRating | null;
+  seconds: number;
+  notes: string | null;
+  from_memory: boolean;
+  rhythm: boolean;
+  lead: boolean;
+  singing: boolean;
+  created_timestamp: number;
+  updated_timestamp: number;
+}
+
+export interface ExerciseSessionResponse extends SessionPostResponse {
+  exercise_id: number;
+  bpm: number | null;
+  rating: StudyRating | null;
+  seconds: number;
+  notes: string | null;
+  created_timestamp: number;
+  updated_timestamp: number;
+}
+
+export interface StudyMaterialSessionResponse extends SessionPostResponse {
+  study_material_id: number;
+  rating: StudyRating | null;
+  seconds: number;
+  notes: string | null;
+  created_timestamp: number;
+  updated_timestamp: number;
+}
+
+export interface OpenSessionResponse extends SessionPostResponse {
+  rating: StudyRating | null;
+  seconds: number;
+  notes: string | null;
+  created_timestamp: number;
+  updated_timestamp: number;
 }
