@@ -127,7 +127,7 @@ export interface DashboardExercise {
   id: number;
   name: string;
   order: number | null;
-  resources: Record<string, string> | null;
+  resources: Resource[] | null;
   session_type: "exercise";
   parent_exercise_id: number | null;
   created_timestamp: number;

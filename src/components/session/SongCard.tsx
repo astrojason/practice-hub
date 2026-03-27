@@ -1,11 +1,14 @@
+import { useEffect, useState } from "react";
 import {
   CheckIcon,
+  NoSymbolIcon,
   PauseIcon,
   PlayIcon,
+  PlusIcon,
   StopIcon,
-  XMarkIcon,
 } from "@heroicons/react/16/solid";
 import { SongSessionForm } from "./forms/SongSessionForm";
+import { SessionModal } from "./SessionModal";
 import type { Song } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
@@ -48,6 +51,37 @@ export function SongCard({
   onSessionSubmit,
 }: Props) {
   const inSession = isTimerActive || isTimerPaused;
+  const [modalOpen, setModalOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+
+  // If Stop & Save is triggered externally (e.g. a future shortcut), open the modal
+  useEffect(() => {
+    if (isFormOpen) setModalOpen(true);
+  }, [isFormOpen]);
+
+  function handleStart() {
+    onStart();
+    setModalOpen(true);
+  }
+
+  function handleClose() {
+    if (isFormOpen) onFormClose();
+    setModalOpen(false);
+  }
+
+  function handleCancel() {
+    onCancel();
+    setModalOpen(false);
+    setNotes("");
+  }
+
+  function handleFormSubmit(dpt: number) {
+    onSessionSubmit(dpt);
+    setModalOpen(false);
+    setNotes("");
+  }
+
+  const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url }));
 
   return (
     <div
@@ -62,52 +96,79 @@ export function SongCard({
           <span className="item-sub">{song.artist_name}</span>
         </div>
         <div className="item-actions">
-          {inSession && (
-            <span className="item-elapsed">{formatElapsed(timerElapsed)}</span>
-          )}
-          {!inSession && (
+          {inSession ? (
+            <button
+              className="item-elapsed"
+              onClick={() => setModalOpen(true)}
+              title="Open session"
+            >
+              {formatElapsed(timerElapsed)}
+            </button>
+          ) : (
             <>
-              <button className="btn-timer" onClick={onStart} title="Start timer">
+              <button className="btn-timer" onClick={handleStart} title="Start timer">
                 <PlayIcon className="icon" />
               </button>
               <button
-                className="btn-secondary"
-                onClick={isFormOpen ? onFormClose : onFormOpen}
+                className="btn-timer"
+                onClick={() => { onFormOpen(); setModalOpen(true); }}
+                title="Log session"
               >
-                {isFormOpen ? "Cancel" : "Log"}
-              </button>
-            </>
-          )}
-          {inSession && (
-            <>
-              {isTimerActive ? (
-                <button className="btn-timer" onClick={onPause} title="Pause">
-                  <PauseIcon className="icon" />
-                </button>
-              ) : (
-                <button className="btn-timer" onClick={onStart} title="Resume">
-                  <PlayIcon className="icon" />
-                </button>
-              )}
-              <button className="btn-primary" onClick={onStopAndSave}>
-                <StopIcon className="icon" /> Stop &amp; Save
-              </button>
-              <button className="btn-danger" onClick={onCancel} title="Cancel session">
-                <XMarkIcon className="icon" />
+                <PlusIcon className="icon" />
               </button>
             </>
           )}
         </div>
       </div>
 
-      {isFormOpen && (
-        <SongSessionForm
-          token={token}
-          songId={song.id}
-          initialSeconds={timerElapsed}
-          onSubmit={onSessionSubmit}
-          onCancel={onFormClose}
-        />
+      {modalOpen && (
+        <SessionModal
+          title={song.name}
+          subtitle={song.artist_name}
+          resources={resources}
+          onClose={handleClose}
+        >
+          {isFormOpen ? (
+            <SongSessionForm
+              token={token}
+              songId={song.id}
+              initialSeconds={timerElapsed}
+              initialNotes={notes}
+              onSubmit={handleFormSubmit}
+              onCancel={handleClose}
+            />
+          ) : (
+            <div className="modal-session-body">
+              <div className="modal-elapsed-display">{formatElapsed(timerElapsed)}</div>
+              <label className="form-full modal-notes-label">
+                Notes
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Notes for this session…"
+                />
+              </label>
+              <div className="modal-session-controls">
+                {isTimerActive ? (
+                  <button className="btn-secondary" onClick={onPause}>
+                    <PauseIcon className="icon" /> Pause
+                  </button>
+                ) : (
+                  <button className="btn-secondary" onClick={onStart}>
+                    <PlayIcon className="icon" /> Resume
+                  </button>
+                )}
+                <button className="btn-primary" onClick={onStopAndSave}>
+                  <StopIcon className="icon" /> Stop &amp; Save
+                </button>
+                <button className="btn-ghost" onClick={handleCancel}>
+                  <NoSymbolIcon className="icon" /> Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </SessionModal>
       )}
     </div>
   );

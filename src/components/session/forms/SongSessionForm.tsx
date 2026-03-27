@@ -22,6 +22,7 @@ interface Props {
   token: string;
   songId: number;
   initialSeconds: number;
+  initialNotes?: string;
   onSubmit: (dailyPracticeTime: number) => void;
   onCancel: () => void;
 }
@@ -30,6 +31,7 @@ export function SongSessionForm({
   token,
   songId,
   initialSeconds,
+  initialNotes = "",
   onSubmit,
   onCancel,
 }: Props) {
@@ -41,7 +43,7 @@ export function SongSessionForm({
   const [rating, setRating] = useState<string>("");
   const [fromMemory, setFromMemory] = useState(false);
   const [seconds, setSeconds] = useState(String(initialSeconds));
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -228,7 +228,7 @@ export function SessionView({ token, onSignOut }: Props) {
   function getElapsed(itemKey: string): number {
     const base = pausedElapsed.get(itemKey) ?? 0;
     const startedAt = activeTimers.get(itemKey);
-    return startedAt ? base + Math.floor((now - startedAt) / 1000) : base;
+    return startedAt ? base + Math.max(0, Math.floor((now - startedAt) / 1000)) : base;
   }
 
   function startTimer(itemKey: string) {
@@ -346,8 +346,8 @@ export function SessionView({ token, onSignOut }: Props) {
 
   if (!dashboard || !userProfile) {
     return (
-      <div className="session-view loading">
-        <p>Loading…</p>
+      <div className="loading-screen">
+        <div className="loading-spinner" />
       </div>
     );
   }

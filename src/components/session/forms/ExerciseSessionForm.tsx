@@ -14,6 +14,7 @@ interface Props {
   token: string;
   exerciseId: number;
   initialSeconds: number;
+  initialNotes?: string;
   onSubmit: (dailyPracticeTime: number) => void;
   onCancel: () => void;
 }
@@ -22,13 +23,14 @@ export function ExerciseSessionForm({
   token,
   exerciseId,
   initialSeconds,
+  initialNotes = "",
   onSubmit,
   onCancel,
 }: Props) {
   const [bpm, setBpm] = useState<string>("");
   const [rating, setRating] = useState<string>("");
   const [seconds, setSeconds] = useState(String(initialSeconds));
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

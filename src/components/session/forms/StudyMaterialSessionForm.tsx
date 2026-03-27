@@ -14,6 +14,7 @@ interface Props {
   token: string;
   studyMaterialId: number;
   initialSeconds: number;
+  initialNotes?: string;
   onSubmit: (dailyPracticeTime: number) => void;
   onCancel: () => void;
 }
@@ -22,12 +23,13 @@ export function StudyMaterialSessionForm({
   token,
   studyMaterialId,
   initialSeconds,
+  initialNotes = "",
   onSubmit,
   onCancel,
 }: Props) {
   const [rating, setRating] = useState<string>("");
   const [seconds, setSeconds] = useState(String(initialSeconds));
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
