@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
 
 interface Props {
   title: string;
@@ -21,7 +22,9 @@ export function ItemGroup({ title, completedCount, totalCount, children }: Props
         <span className="item-group-count">
           {completedCount}/{totalCount}
         </span>
-        <span className="item-group-chevron">{collapsed ? "▶" : "▼"}</span>
+        <span className="item-group-chevron">
+          {collapsed ? <ChevronRightIcon className="icon-sm" /> : <ChevronDownIcon className="icon-sm" />}
+        </span>
       </button>
       {!collapsed && <div className="item-group-body">{children}</div>}
     </section>

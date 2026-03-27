@@ -46,7 +46,8 @@ export function SessionView({ token, onSignOut }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ message: string; which: string } | null>(null);
+  const [loadTrigger, setLoadTrigger] = useState(0);
   const [isRebuilding, setIsRebuilding] = useState(false);
 
   // ── Timer state ─────────────────────────────────────────────────────────────
@@ -72,8 +73,21 @@ export function SessionView({ token, onSignOut }: Props) {
 
   // ── Load on mount ────────────────────────────────────────────────────────────
   useEffect(() => {
-    Promise.all([getDashboard(token), getUser(token)])
-      .then(([dash, user]) => {
+    setLoadError(null);
+    let dashResult: DashboardData | null = null;
+    let userResult: UserProfile | null = null;
+
+    const loadDash = getDashboard(token).then((d) => { dashResult = d; }).catch((err) => {
+      throw { which: "dashboard (/user/dashboard)", message: err instanceof Error ? err.message : String(err) };
+    });
+    const loadUser = getUser(token).then((u) => { userResult = u; }).catch((err) => {
+      throw { which: "user profile (/user/me)", message: err instanceof Error ? err.message : String(err) };
+    });
+
+    Promise.all([loadDash, loadUser])
+      .then(() => {
+        const dash = dashResult!;
+        const user = userResult!;
         setDashboard(dash);
         setUserProfile(user);
         setServerTotal(user.time_practiced_today ?? 0);
@@ -103,10 +117,10 @@ export function SessionView({ token, onSignOut }: Props) {
         }
         setCompletedIds(completed);
       })
-      .catch((err) =>
-        setLoadError(err instanceof Error ? err.message : String(err))
+      .catch((err: { which: string; message: string }) =>
+        setLoadError({ which: err.which ?? "unknown", message: err.message ?? String(err) })
       );
-  }, [token]);
+  }, [token, loadTrigger]);
 
   // ── Clock tick ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -312,9 +326,20 @@ export function SessionView({ token, onSignOut }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────────
   if (loadError) {
     return (
-      <div className="session-view">
-        <p className="error">Failed to load: {loadError}</p>
-        <button onClick={onSignOut}>Sign out</button>
+      <div className="session-view load-error-view">
+        <div className="load-error-card">
+          <h2 className="load-error-title">Failed to load</h2>
+          <p className="load-error-which">Request: <code>{loadError.which}</code></p>
+          <p className="load-error-message">{loadError.message}</p>
+          <div className="load-error-actions">
+            <button className="btn-primary" onClick={() => setLoadTrigger((n) => n + 1)}>
+              Retry
+            </button>
+            <button className="btn-ghost" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

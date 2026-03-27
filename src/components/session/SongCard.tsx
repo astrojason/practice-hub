@@ -1,3 +1,10 @@
+import {
+  CheckIcon,
+  PauseIcon,
+  PlayIcon,
+  StopIcon,
+  XMarkIcon,
+} from "@heroicons/react/16/solid";
 import { SongSessionForm } from "./forms/SongSessionForm";
 import type { Song } from "../../api/types";
 
@@ -47,7 +54,9 @@ export function SongCard({
       className={`item-card ${isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
     >
       <div className="item-card-row">
-        <span className="item-status">{isCompletedToday ? "✓" : "○"}</span>
+        <span className="item-status">
+          {isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
+        </span>
         <div className="item-info">
           <span className="item-name">{song.name}</span>
           <span className="item-sub">{song.artist_name}</span>
@@ -58,7 +67,9 @@ export function SongCard({
           )}
           {!inSession && (
             <>
-              <button className="btn-timer" onClick={onStart}>▶</button>
+              <button className="btn-timer" onClick={onStart} title="Start timer">
+                <PlayIcon className="icon" />
+              </button>
               <button
                 className="btn-secondary"
                 onClick={isFormOpen ? onFormClose : onFormOpen}
@@ -70,15 +81,19 @@ export function SongCard({
           {inSession && (
             <>
               {isTimerActive ? (
-                <button className="btn-timer" onClick={onPause}>⏸</button>
+                <button className="btn-timer" onClick={onPause} title="Pause">
+                  <PauseIcon className="icon" />
+                </button>
               ) : (
-                <button className="btn-timer" onClick={onStart}>▶</button>
+                <button className="btn-timer" onClick={onStart} title="Resume">
+                  <PlayIcon className="icon" />
+                </button>
               )}
               <button className="btn-primary" onClick={onStopAndSave}>
-                Stop & Save
+                <StopIcon className="icon" /> Stop &amp; Save
               </button>
-              <button className="btn-danger" onClick={onCancel}>
-                Cancel
+              <button className="btn-danger" onClick={onCancel} title="Cancel session">
+                <XMarkIcon className="icon" />
               </button>
             </>
           )}

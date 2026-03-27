@@ -15,7 +15,13 @@ export async function createGoogleAuthUri(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerId: "google.com", continueUri }),
+      // identifier is required by the API even for OAuth providers;
+      // it's used as login_hint but doesn't restrict which account signs in.
+      body: JSON.stringify({
+        providerId: "google.com",
+        continueUri,
+        identifier: "placeholder@placeholder.com",
+      }),
     }
   );
   if (!response.ok) {

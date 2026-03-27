@@ -1,3 +1,10 @@
+import {
+  ArrowPathIcon,
+  ArrowRightStartOnRectangleIcon,
+  CheckCircleIcon,
+  PlusIcon,
+} from "@heroicons/react/16/solid";
+
 interface Props {
   displayedSeconds: number;
   dailyGoalSeconds: number;
@@ -36,30 +43,27 @@ export function SessionHeader({
     <header className="session-header">
       <div className="session-header-top">
         <h1 className="session-title">Practice Hub</h1>
+        <div className="session-timer-row">
+          <span className={`session-timer ${goalReached ? "goal-reached" : ""}`}>
+            {formatTime(displayedSeconds)}
+          </span>
+          <span className="session-goal-label">
+            / {formatTime(dailyGoalSeconds)}
+          </span>
+        </div>
         <div className="session-header-actions">
           <button onClick={onOpenSession} className="btn-secondary">
-            Open Session
+            <PlusIcon className="icon-sm" /> Log time
           </button>
-          <button
-            onClick={onRebuild}
-            disabled={isRebuilding}
-            className="btn-secondary"
-          >
+          <button onClick={onRebuild} disabled={isRebuilding} className="btn-ghost">
+            <ArrowPathIcon className="icon-sm" />
             {isRebuilding ? "Rebuilding…" : "Rebuild"}
           </button>
           <button onClick={onSignOut} className="btn-ghost">
+            <ArrowRightStartOnRectangleIcon className="icon-sm" />
             Sign out
           </button>
         </div>
-      </div>
-
-      <div className="session-timer-row">
-        <span className={`session-timer ${goalReached ? "goal-reached" : ""}`}>
-          {formatTime(displayedSeconds)}
-        </span>
-        <span className="session-goal-label">
-          / {formatTime(dailyGoalSeconds)} goal
-        </span>
       </div>
 
       <div className="progress-bar-track">
@@ -71,7 +75,8 @@ export function SessionHeader({
 
       {allComplete && (
         <div className="all-complete-banner">
-          All suggested items completed for today!
+          <CheckCircleIcon className="icon-sm" />
+          All done for today
         </div>
       )}
     </header>

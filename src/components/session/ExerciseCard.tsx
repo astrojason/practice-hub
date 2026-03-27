@@ -1,3 +1,10 @@
+import {
+  CheckIcon,
+  PauseIcon,
+  PlayIcon,
+  StopIcon,
+  XMarkIcon,
+} from "@heroicons/react/16/solid";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import type { DashboardExercise } from "../../api/types";
 
@@ -55,15 +62,15 @@ function ExerciseSingleCard({
       className={`item-card ${isChild ? "child-card" : ""} ${isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
     >
       <div className="item-card-row">
-        <span className="item-status">{isCompletedToday ? "✓" : "○"}</span>
+        <span className="item-status">
+          {isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
+        </span>
         <div className="item-info">
           <span className="item-name">{exercise.name}</span>
           {tags.length > 0 && (
             <span className="item-tags">
               {tags.map((t) => (
-                <span key={t} className="tag">
-                  {t}
-                </span>
+                <span key={t} className="tag">{t}</span>
               ))}
             </span>
           )}
@@ -74,7 +81,9 @@ function ExerciseSingleCard({
           )}
           {!inSession && (
             <>
-              <button className="btn-timer" onClick={onStart}>▶</button>
+              <button className="btn-timer" onClick={onStart} title="Start timer">
+                <PlayIcon className="icon" />
+              </button>
               <button
                 className="btn-secondary"
                 onClick={isFormOpen ? onFormClose : onFormOpen}
@@ -86,15 +95,19 @@ function ExerciseSingleCard({
           {inSession && (
             <>
               {isTimerActive ? (
-                <button className="btn-timer" onClick={onPause}>⏸</button>
+                <button className="btn-timer" onClick={onPause} title="Pause">
+                  <PauseIcon className="icon" />
+                </button>
               ) : (
-                <button className="btn-timer" onClick={onStart}>▶</button>
+                <button className="btn-timer" onClick={onStart} title="Resume">
+                  <PlayIcon className="icon" />
+                </button>
               )}
               <button className="btn-primary" onClick={onStopAndSave}>
-                Stop & Save
+                <StopIcon className="icon" /> Stop &amp; Save
               </button>
-              <button className="btn-danger" onClick={onCancel}>
-                Cancel
+              <button className="btn-danger" onClick={onCancel} title="Cancel session">
+                <XMarkIcon className="icon" />
               </button>
             </>
           )}
@@ -114,8 +127,6 @@ function ExerciseSingleCard({
   );
 }
 
-// ExerciseCard renders the parent card and optionally its children below it.
-// The parent passes state lookup functions so each card gets its own state.
 interface ExerciseCardProps {
   token: string;
   exercise: DashboardExercise;
