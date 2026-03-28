@@ -12,12 +12,17 @@ import type {
   StudyMaterialSessionResponse,
   OpenSessionPayload,
   OpenSessionResponse,
+  Song,
+  CatalogSongsResponse,
+  CatalogExercisesResponse,
+  CatalogStudyMaterialsResponse,
 } from "./types";
 
 function authHeaders(token: string): HeadersInit {
   return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
+    "X-Timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
 }
 
@@ -121,4 +126,53 @@ export async function postOpenSession(
     body: JSON.stringify(payload),
   });
   return handleResponse<OpenSessionResponse>(response);
+}
+
+// ─── Quick Add catalog ────────────────────────────────────────────────────────
+
+export async function getOverdueSongs(token: string): Promise<Song[]> {
+  const response = await fetch(`${API_BASE_URL}/user-song-list/overdue`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<Song[]>(response);
+}
+
+export async function getCatalogSongs(
+  token: string,
+  page: number,
+  limit: number,
+  q?: string
+): Promise<CatalogSongsResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (q) params.set("q", q);
+  const response = await fetch(`${API_BASE_URL}/song?${params}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<CatalogSongsResponse>(response);
+}
+
+export async function getCatalogExercises(
+  token: string,
+  page: number,
+  limit: number
+): Promise<CatalogExercisesResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  const response = await fetch(`${API_BASE_URL}/exercise?${params}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<CatalogExercisesResponse>(response);
+}
+
+export async function getCatalogStudyMaterials(
+  token: string,
+  page: number,
+  limit: number,
+  q?: string
+): Promise<CatalogStudyMaterialsResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (q) params.set("q", q);
+  const response = await fetch(`${API_BASE_URL}/study-material?${params}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<CatalogStudyMaterialsResponse>(response);
 }

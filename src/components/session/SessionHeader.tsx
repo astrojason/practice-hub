@@ -2,6 +2,7 @@ import {
   ArrowPathIcon,
   ArrowRightStartOnRectangleIcon,
   CheckCircleIcon,
+  MagnifyingGlassPlusIcon,
   PlusIcon,
 } from "@heroicons/react/16/solid";
 
@@ -11,8 +12,11 @@ interface Props {
   goalReached: boolean;
   allComplete: boolean;
   isRebuilding: boolean;
+  openSessionActive: boolean;
+  openSessionElapsed: number;
   onRebuild: () => void;
   onOpenSession: () => void;
+  onQuickAdd: () => void;
   onSignOut: () => void;
 }
 
@@ -30,8 +34,11 @@ export function SessionHeader({
   goalReached,
   allComplete,
   isRebuilding,
+  openSessionActive,
+  openSessionElapsed,
   onRebuild,
   onOpenSession,
+  onQuickAdd,
   onSignOut,
 }: Props) {
   const progressPct = Math.min(
@@ -52,8 +59,12 @@ export function SessionHeader({
           </span>
         </div>
         <div className="session-header-actions">
-          <button onClick={onOpenSession} className="btn-secondary">
-            <PlusIcon className="icon-sm" /> Log time
+          <button onClick={onOpenSession} className={`btn-secondary${openSessionActive ? " btn-open-session-active" : ""}`}>
+            <PlusIcon className="icon-sm" />
+            {openSessionActive ? formatTime(openSessionElapsed) : "Open Session"}
+          </button>
+          <button onClick={onQuickAdd} className="btn-secondary">
+            <MagnifyingGlassPlusIcon className="icon-sm" /> Quick add
           </button>
           <button onClick={onRebuild} disabled={isRebuilding} className="btn-ghost">
             <ArrowPathIcon className="icon-sm" />

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Background squircle -->
+  <rect width="1024" height="1024" rx="210" fill="#1a1040"/>
+
+  <!-- Equalizer bars — 5 bars, symmetric arch, all vertically centered at y=512 -->
+
+  <!-- Far left: short, dim -->
+  <rect x="148" y="432" width="88" height="160" rx="44" fill="#7c6df0" opacity="0.45"/>
+
+  <!-- Left: medium -->
+  <rect x="298" y="332" width="104" height="360" rx="52" fill="#8b7cf8" opacity="0.70"/>
+
+  <!-- Center: tallest, full accent -->
+  <rect x="460" y="212" width="104" height="600" rx="52" fill="#7c6df0"/>
+  <!-- Highlight on center bar -->
+  <rect x="460" y="212" width="104" height="200" rx="52" fill="url(#topGlow)"/>
+
+  <!-- Right: medium -->
+  <rect x="622" y="332" width="104" height="360" rx="52" fill="#8b7cf8" opacity="0.70"/>
+
+  <!-- Far right: short, dim -->
+  <rect x="788" y="432" width="88" height="160" rx="44" fill="#7c6df0" opacity="0.45"/>
+
+  <defs>
+    <linearGradient id="topGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#7c6df0" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>

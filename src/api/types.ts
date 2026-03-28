@@ -346,3 +346,44 @@ export interface OpenSessionResponse extends SessionPostResponse {
   created_timestamp: number;
   updated_timestamp: number;
 }
+
+// ─── Catalog fetch types (Quick Add) ─────────────────────────────────────────
+
+export interface CatalogSongsResponse {
+  songs: Song[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface CatalogExercise {
+  id: number;
+  name: string;
+  order: number | null;
+  resources: Resource[] | null;
+  parent_exercise_id: number | null;
+  child_exercises: CatalogExercise[];
+}
+
+export interface CatalogExercisesResponse {
+  exercises: CatalogExercise[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface CatalogStudyMaterial {
+  id: number;
+  name: string;
+  url: string | null;
+  instrument: number | null;
+  parent_study_material_id: number | null;
+  childStudyMaterials: CatalogStudyMaterial[];
+}
+
+export interface CatalogStudyMaterialsResponse {
+  study_material: CatalogStudyMaterial[];
+  total: number;
+  page: number;
+  limit: number;
+}

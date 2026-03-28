@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/16/solid";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import { SessionModal } from "./SessionModal";
+import { LastSessionInfo } from "./LastSessionInfo";
 import type { DashboardExercise } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
@@ -89,6 +90,7 @@ function ExerciseSingleCard({
   }
 
   const resources = (exercise.resources ?? []).map((r) => ({ name: r.name, url: r.url }));
+  const lastSession = exercise.meta.sessions?.[0] ?? null;
 
   return (
     <div
@@ -146,12 +148,23 @@ function ExerciseSingleCard({
               exerciseId={exercise.id}
               initialSeconds={timerElapsed}
               initialNotes={notes}
+              lastSession={lastSession}
               onSubmit={handleFormSubmit}
               onCancel={handleClose}
             />
           ) : (
             <div className="modal-session-body">
               <div className="modal-elapsed-display">{formatElapsed(timerElapsed)}</div>
+              {tags.length > 0 && (
+                <div className="modal-meta">
+                  {tags.map((t) => (
+                    <span key={t} className="tag">{t}</span>
+                  ))}
+                </div>
+              )}
+              {lastSession && (
+                <LastSessionInfo session={lastSession} />
+              )}
               <label className="form-full modal-notes-label">
                 Notes
                 <textarea

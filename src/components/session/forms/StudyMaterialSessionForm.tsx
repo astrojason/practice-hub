@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { postStudyMaterialSession } from "../../../api/client";
+import { LastSessionInfo } from "../LastSessionInfo";
+import type { LastSessionData } from "../LastSessionInfo";
 import type { StudyMaterialSessionPayload } from "../../../api/types";
 
 const RATING_OPTIONS = [
@@ -15,6 +17,7 @@ interface Props {
   studyMaterialId: number;
   initialSeconds: number;
   initialNotes?: string;
+  lastSession?: LastSessionData | null;
   onSubmit: (dailyPracticeTime: number) => void;
   onCancel: () => void;
 }
@@ -24,10 +27,11 @@ export function StudyMaterialSessionForm({
   studyMaterialId,
   initialSeconds,
   initialNotes = "",
+  lastSession,
   onSubmit,
   onCancel,
 }: Props) {
-  const [rating, setRating] = useState<string>("");
+  const [rating, setRating] = useState<string>("3");
   const [seconds, setSeconds] = useState(String(initialSeconds));
   const [notes, setNotes] = useState(initialNotes);
   const [submitting, setSubmitting] = useState(false);
@@ -54,6 +58,7 @@ export function StudyMaterialSessionForm({
 
   return (
     <form className="session-form" onSubmit={handleSubmit}>
+      {lastSession && <LastSessionInfo session={lastSession} />}
       <div className="form-row">
         <label>
           Rating

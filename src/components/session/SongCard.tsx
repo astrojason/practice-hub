@@ -9,7 +9,14 @@ import {
 } from "@heroicons/react/16/solid";
 import { SongSessionForm } from "./forms/SongSessionForm";
 import { SessionModal } from "./SessionModal";
+import { LastSessionInfo } from "./LastSessionInfo";
 import type { Song } from "../../api/types";
+
+function decodeHtml(html: string): string {
+  const ta = document.createElement("textarea");
+  ta.innerHTML = html;
+  return ta.value;
+}
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -82,6 +89,7 @@ export function SongCard({
   }
 
   const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url }));
+  const lastSession = song.meta.sessions?.[0] ?? null;
 
   return (
     <div
@@ -94,6 +102,9 @@ export function SongCard({
         <div className="item-info">
           <span className="item-name">{song.name}</span>
           <span className="item-sub">{song.artist_name}</span>
+          <span className="item-tags">
+            <span className="tag">{decodeHtml(song.tuning_name)}</span>
+          </span>
         </div>
         <div className="item-actions">
           {inSession ? (
@@ -132,14 +143,30 @@ export function SongCard({
             <SongSessionForm
               token={token}
               songId={song.id}
+              songBpm={song.bpm}
+              songSeconds={song.seconds}
               initialSeconds={timerElapsed}
               initialNotes={notes}
+              lastSession={lastSession}
               onSubmit={handleFormSubmit}
               onCancel={handleClose}
             />
           ) : (
             <div className="modal-session-body">
               <div className="modal-elapsed-display">{formatElapsed(timerElapsed)}</div>
+              {(song.bpm != null || song.tags.length > 0) && (
+                <div className="modal-meta">
+                  {song.bpm != null && (
+                    <span className="modal-meta-bpm">{song.bpm} bpm</span>
+                  )}
+                  {song.tags.map((t) => (
+                    <span key={t} className="tag">{t}</span>
+                  ))}
+                </div>
+              )}
+              {lastSession && (
+                <LastSessionInfo session={lastSession} />
+              )}
               <label className="form-full modal-notes-label">
                 Notes
                 <textarea

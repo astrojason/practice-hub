@@ -1,29 +1,93 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getDashboard, getUser, rebuildDashboard } from "../api/client";
 import type {
+  CatalogExercise,
+  CatalogStudyMaterial,
   DashboardData,
   DashboardExercise,
+  DashboardStudyMaterial,
+  Song,
   UserProfile,
 } from "../api/types";
+
+// ─── Catalog → dashboard shape converters ─────────────────────────────────────
+
+function catalogExerciseToDashboard(ex: CatalogExercise): DashboardExercise {
+  return {
+    id: ex.id,
+    name: ex.name,
+    order: ex.order,
+    resources: ex.resources,
+    session_type: "exercise",
+    parent_exercise_id: ex.parent_exercise_id,
+    created_timestamp: 0,
+    updated_timestamp: 0,
+    child_exercises: ex.child_exercises.map(catalogExerciseToDashboard),
+    meta: { user_exercise: null, sessions: [] },
+  };
+}
+
+function catalogStudyMaterialToDashboard(sm: CatalogStudyMaterial): DashboardStudyMaterial {
+  return {
+    id: sm.id,
+    name: sm.name,
+    url: sm.url,
+    instrument: sm.instrument,
+    parent_study_material_id: sm.parent_study_material_id,
+    session_type: "study_material",
+    created_timestamp: 0,
+    updated_timestamp: 0,
+    childStudyMaterials: sm.childStudyMaterials.map(catalogStudyMaterialToDashboard),
+    meta: { user_study_material: null, sessions: [] },
+  };
+}
 import { SessionHeader } from "./session/SessionHeader";
 import { ItemGroup } from "./session/ItemGroup";
 import { ExerciseCard } from "./session/ExerciseCard";
 import { SongCard } from "./session/SongCard";
 import { StudyMaterialCard } from "./session/StudyMaterialCard";
 import { OpenSessionForm } from "./session/forms/OpenSessionForm";
+import { QuickAddPanel } from "./session/QuickAddPanel";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function isTimestampToday(tsMs: number, timezone: string): boolean {
-  const fmt = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: timezone });
+function isTimestampToday(tsMs: number): boolean {
+  const fmt = (d: Date) => d.toLocaleDateString("en-CA"); // system timezone, matches LastSessionInfo
   return fmt(new Date(tsMs)) === fmt(new Date());
 }
 
-function hasSessionToday(
-  sessions: { created_timestamp: number }[],
-  timezone: string
-): boolean {
-  return sessions.some((s) => isTimestampToday(s.created_timestamp, timezone));
+function hasSessionToday(sessions: { created_timestamp: number }[]): boolean {
+  return sessions.some((s) => isTimestampToday(s.created_timestamp));
+}
+
+const COMPLETED_KEY = "ph_completed";
+
+function loadStoredCompletedIds(): Set<string> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COMPLETED_KEY) ?? "null");
+    const today = new Date().toLocaleDateString("en-CA");
+    if (stored?.date === today && Array.isArray(stored.ids)) {
+      return new Set<string>(stored.ids);
+    }
+  } catch {}
+  return new Set<string>();
+}
+
+function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<string> {
+  const next = new Set(prev);
+  for (const ex of dash.exercises) {
+    if (hasSessionToday(ex.meta.sessions)) next.add(`exercise-${ex.id}`);
+    for (const child of ex.child_exercises) {
+      if (hasSessionToday(child.meta.sessions)) next.add(`exercise-${child.id}`);
+    }
+  }
+  for (const sm of dash.study_materials) {
+    if (hasSessionToday(sm.meta.sessions)) next.add(`studymaterial-${sm.id}`);
+  }
+  for (const song of [...(dash.project?.songs ?? []), ...(dash.to_review?.songs ?? [])]) {
+    if (hasSessionToday(song.meta?.sessions ?? [])) next.add(`song-${song.id}`);
+  }
+  return next;
 }
 
 function collectAllExerciseIds(exercises: DashboardExercise[]): number[] {
@@ -64,7 +128,15 @@ export function SessionView({ token, onSignOut }: Props) {
   const [pausedElapsed, setPausedElapsed] = useState<Map<string, number>>(new Map());
   // openForm: which item's form is expanded (only one at a time)
   const [openForm, setOpenForm] = useState<string | null>(null);
-  const [showOpenSession, setShowOpenSession] = useState(false);
+  const [openSessionModalOpen, setOpenSessionModalOpen] = useState(false);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+
+  const OPEN_SESSION_KEY = "open-session";
+
+  // ── User-added items (Quick Add) ─────────────────────────────────────────────
+  const [additionalSongs, setAdditionalSongs] = useState<Song[]>([]);
+  const [additionalExercises, setAdditionalExercises] = useState<DashboardExercise[]>([]);
+  const [additionalStudyMaterials, setAdditionalStudyMaterials] = useState<DashboardStudyMaterial[]>([]);
 
   // ── Visual-state-shift guards ────────────────────────────────────────────────
   const goalFiredRef = useRef(false);
@@ -92,35 +164,20 @@ export function SessionView({ token, onSignOut }: Props) {
         setUserProfile(user);
         setServerTotal(user.time_practiced_today ?? 0);
 
-        const tz = user.timezone || "UTC";
-        const completed = new Set<string>();
-
-        for (const ex of dash.exercises) {
-          if (hasSessionToday(ex.meta.sessions, tz))
-            completed.add(`exercise-${ex.id}`);
-          for (const child of ex.child_exercises) {
-            if (hasSessionToday(child.meta.sessions, tz))
-              completed.add(`exercise-${child.id}`);
-          }
-        }
-        for (const sm of dash.study_materials) {
-          if (hasSessionToday(sm.meta.sessions, tz))
-            completed.add(`studymaterial-${sm.id}`);
-        }
-        for (const song of dash.project?.songs ?? []) {
-          if (hasSessionToday(song.meta?.sessions ?? [], tz))
-            completed.add(`song-${song.id}`);
-        }
-        for (const song of dash.to_review?.songs ?? []) {
-          if (hasSessionToday(song.meta?.sessions ?? [], tz))
-            completed.add(`song-${song.id}`);
-        }
-        setCompletedIds(completed);
+        setCompletedIds((prev) => mergeCompletedFromDash(dash, new Set([...prev, ...loadStoredCompletedIds()])));
       })
       .catch((err: { which: string; message: string }) =>
         setLoadError({ which: err.which ?? "unknown", message: err.message ?? String(err) })
       );
   }, [token, loadTrigger]);
+
+  // ── Persist completedIds for today across restarts ────────────────────────────
+  useEffect(() => {
+    localStorage.setItem(COMPLETED_KEY, JSON.stringify({
+      date: new Date().toLocaleDateString("en-CA"),
+      ids: [...completedIds],
+    }));
+  }, [completedIds]);
 
   // ── Clock tick ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -158,6 +215,40 @@ export function SessionView({ token, onSignOut }: Props) {
         ...(dashboard.to_review?.songs ?? []).map((s) => `song-${s.id}`),
       ])
     : new Set();
+
+  // ── Quick Add: IDs already in the session (passed to panel for filtering) ────
+  const existingSongIds = useMemo(
+    () =>
+      new Set([
+        ...(dashboard?.project?.songs ?? []).map((s) => s.id),
+        ...(dashboard?.to_review?.songs ?? []).map((s) => s.id),
+        ...additionalSongs.map((s) => s.id),
+      ]),
+    [dashboard, additionalSongs]
+  );
+
+  const existingExerciseIds = useMemo(() => {
+    const ids = new Set(dashboard ? collectAllExerciseIds(dashboard.exercises) : []);
+    for (const e of additionalExercises) {
+      ids.add(e.id);
+      for (const c of e.child_exercises) ids.add(c.id);
+    }
+    return ids;
+  }, [dashboard, additionalExercises]);
+
+  const existingStudyMaterialIds = useMemo(
+    () =>
+      new Set([
+        ...(dashboard?.study_materials ?? []).map((sm) => sm.id),
+        ...additionalStudyMaterials.map((sm) => sm.id),
+      ]),
+    [dashboard, additionalStudyMaterials]
+  );
+
+  const projectTags = useMemo(
+    () => (dashboard?.project?.songs ?? []).flatMap((s) => s.tags),
+    [dashboard]
+  );
 
   const allComplete =
     allSuggestedIds.size > 0 &&
@@ -298,11 +389,48 @@ export function SessionView({ token, onSignOut }: Props) {
     };
   }
 
+  // ── Quick Add handlers ────────────────────────────────────────────────────────
+  function handleAddSong(song: Song) {
+    setAdditionalSongs((prev) => [...prev, song]);
+  }
+
+  function handleAddExercise(exercise: CatalogExercise) {
+    setAdditionalExercises((prev) => [...prev, catalogExerciseToDashboard(exercise)]);
+  }
+
+  function handleAddStudyMaterial(material: CatalogStudyMaterial) {
+    setAdditionalStudyMaterials((prev) => [...prev, catalogStudyMaterialToDashboard(material)]);
+  }
+
+  // ── Additional group completion counts ────────────────────────────────────────
+  function additionalCompletedCount(): number {
+    const exIds = additionalExercises.flatMap((e) => [
+      e.id,
+      ...e.child_exercises.map((c) => c.id),
+    ]);
+    return (
+      additionalSongs.filter((s) => completedIds.has(`song-${s.id}`)).length +
+      exIds.filter((id) => completedIds.has(`exercise-${id}`)).length +
+      additionalStudyMaterials.filter((sm) =>
+        completedIds.has(`studymaterial-${sm.id}`)
+      ).length
+    );
+  }
+
+  function additionalTotalCount(): number {
+    const exIds = additionalExercises.flatMap((e) => [
+      e.id,
+      ...e.child_exercises.map((c) => c.id),
+    ]);
+    return additionalSongs.length + exIds.length + additionalStudyMaterials.length;
+  }
+
   async function handleRebuild() {
     setIsRebuilding(true);
     try {
       const dash = await rebuildDashboard(token);
       setDashboard(dash);
+      setCompletedIds((prev) => mergeCompletedFromDash(dash, prev));
     } catch {
       // silent — dashboard stays unchanged
     } finally {
@@ -371,18 +499,49 @@ export function SessionView({ token, onSignOut }: Props) {
         allComplete={allComplete}
         isRebuilding={isRebuilding}
         onRebuild={handleRebuild}
-        onOpenSession={() => setShowOpenSession((v) => !v)}
+        onOpenSession={() => {
+          if (!activeTimers.has(OPEN_SESSION_KEY) && !pausedElapsed.has(OPEN_SESSION_KEY)) {
+            startTimer(OPEN_SESSION_KEY);
+          }
+          setOpenSessionModalOpen((v) => !v);
+        }}
+        openSessionActive={activeTimers.has(OPEN_SESSION_KEY) || pausedElapsed.has(OPEN_SESSION_KEY)}
+        openSessionElapsed={getElapsed(OPEN_SESSION_KEY)}
+        onQuickAdd={() => setShowQuickAdd((v) => !v)}
         onSignOut={onSignOut}
       />
 
-      {showOpenSession && (
+      {openSessionModalOpen && (
         <OpenSessionForm
           token={token}
+          elapsed={getElapsed(OPEN_SESSION_KEY)}
+          isActive={activeTimers.has(OPEN_SESSION_KEY)}
+          onPause={() => pauseTimer(OPEN_SESSION_KEY)}
+          onResume={() => startTimer(OPEN_SESSION_KEY)}
+          onClose={() => setOpenSessionModalOpen(false)}
+          onCancel={() => {
+            cancelSession(OPEN_SESSION_KEY);
+            setOpenSessionModalOpen(false);
+          }}
           onSubmit={(dpt) => {
             setServerTotal(dpt);
-            setShowOpenSession(false);
+            cancelSession(OPEN_SESSION_KEY);
+            setOpenSessionModalOpen(false);
           }}
-          onCancel={() => setShowOpenSession(false)}
+        />
+      )}
+
+      {showQuickAdd && (
+        <QuickAddPanel
+          token={token}
+          existingSongIds={existingSongIds}
+          existingExerciseIds={existingExerciseIds}
+          existingStudyMaterialIds={existingStudyMaterialIds}
+          projectTags={projectTags}
+          onAddSong={handleAddSong}
+          onAddExercise={handleAddExercise}
+          onAddStudyMaterial={handleAddStudyMaterial}
+          onClose={() => setShowQuickAdd(false)}
         />
       )}
 
@@ -515,6 +674,80 @@ export function SessionView({ token, onSignOut }: Props) {
             />
           ))}
         </ItemGroup>
+        {/* Additional (user-added via Quick Add) */}
+        {additionalTotalCount() > 0 && (
+          <ItemGroup
+            title="Additional"
+            completedCount={additionalCompletedCount()}
+            totalCount={additionalTotalCount()}
+          >
+            {additionalSongs.map((song) => (
+              <SongCard
+                key={song.id}
+                token={token}
+                song={song}
+                isCompletedToday={completedIds.has(`song-${song.id}`)}
+                isTimerActive={activeTimers.has(`song-${song.id}`)}
+                isTimerPaused={
+                  !activeTimers.has(`song-${song.id}`) &&
+                  pausedElapsed.has(`song-${song.id}`)
+                }
+                timerElapsed={getElapsed(`song-${song.id}`)}
+                isFormOpen={openForm === `song-${song.id}`}
+                onStart={() => startTimer(`song-${song.id}`)}
+                onPause={() => pauseTimer(`song-${song.id}`)}
+                onStopAndSave={() => stopAndSave(`song-${song.id}`)}
+                onCancel={() => cancelSession(`song-${song.id}`)}
+                onFormOpen={() => setOpenForm(`song-${song.id}`)}
+                onFormClose={() => setOpenForm(null)}
+                onSessionSubmit={(dpt) =>
+                  handleSessionSubmit(dpt, `song-${song.id}`)
+                }
+              />
+            ))}
+            {additionalExercises.map((ex) => (
+              <ExerciseCard
+                key={ex.id}
+                token={token}
+                exercise={ex}
+                getState={(id) => exerciseGetState(id)}
+                onStart={(id) => startTimer(`exercise-${id}`)}
+                onPause={(id) => pauseTimer(`exercise-${id}`)}
+                onStopAndSave={(id) => stopAndSave(`exercise-${id}`)}
+                onCancel={(id) => cancelSession(`exercise-${id}`)}
+                onFormOpen={(id) => setOpenForm(`exercise-${id}`)}
+                onFormClose={() => setOpenForm(null)}
+                onSessionSubmit={(id, dpt) =>
+                  handleSessionSubmit(dpt, `exercise-${id}`)
+                }
+              />
+            ))}
+            {additionalStudyMaterials.map((sm) => (
+              <StudyMaterialCard
+                key={sm.id}
+                token={token}
+                material={sm}
+                isCompletedToday={completedIds.has(`studymaterial-${sm.id}`)}
+                isTimerActive={activeTimers.has(`studymaterial-${sm.id}`)}
+                isTimerPaused={
+                  !activeTimers.has(`studymaterial-${sm.id}`) &&
+                  pausedElapsed.has(`studymaterial-${sm.id}`)
+                }
+                timerElapsed={getElapsed(`studymaterial-${sm.id}`)}
+                isFormOpen={openForm === `studymaterial-${sm.id}`}
+                onStart={() => startTimer(`studymaterial-${sm.id}`)}
+                onPause={() => pauseTimer(`studymaterial-${sm.id}`)}
+                onStopAndSave={() => stopAndSave(`studymaterial-${sm.id}`)}
+                onCancel={() => cancelSession(`studymaterial-${sm.id}`)}
+                onFormOpen={() => setOpenForm(`studymaterial-${sm.id}`)}
+                onFormClose={() => setOpenForm(null)}
+                onSessionSubmit={(dpt) =>
+                  handleSessionSubmit(dpt, `studymaterial-${sm.id}`)
+                }
+              />
+            ))}
+          </ItemGroup>
+        )}
       </main>
     </div>
   );

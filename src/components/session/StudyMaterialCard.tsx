@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/16/solid";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { SessionModal } from "./SessionModal";
+import { LastSessionInfo } from "./LastSessionInfo";
 import type { DashboardStudyMaterial } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
@@ -81,6 +82,7 @@ export function StudyMaterialCard({
   }
 
   const resources = material.url ? [{ name: "Open material", url: material.url }] : [];
+  const lastSession = material.meta.sessions?.[0] ?? null;
 
   return (
     <div
@@ -131,12 +133,16 @@ export function StudyMaterialCard({
               studyMaterialId={material.id}
               initialSeconds={timerElapsed}
               initialNotes={notes}
+              lastSession={lastSession}
               onSubmit={handleFormSubmit}
               onCancel={handleClose}
             />
           ) : (
             <div className="modal-session-body">
               <div className="modal-elapsed-display">{formatElapsed(timerElapsed)}</div>
+              {lastSession && (
+                <LastSessionInfo session={lastSession} />
+              )}
               <label className="form-full modal-notes-label">
                 Notes
                 <textarea
