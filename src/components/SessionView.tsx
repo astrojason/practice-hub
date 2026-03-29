@@ -50,6 +50,8 @@ import { OpenSessionForm } from "./session/forms/OpenSessionForm";
 import { QuickAddPanel } from "./session/QuickAddPanel";
 import { MediaPlayer } from "./player/MediaPlayer";
 import { Metronome } from "./player/Metronome";
+import { SequentialSessionModal } from "./session/SequentialSessionModal";
+import type { SequentialChild } from "./session/SequentialSessionModal";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +87,9 @@ function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<str
   }
   for (const sm of dash.study_materials) {
     if (hasSessionToday(sm.meta.sessions)) next.add(`studymaterial-${sm.id}`);
+    for (const child of sm.childStudyMaterials) {
+      if (hasSessionToday(child.meta.sessions)) next.add(`studymaterial-${child.id}`);
+    }
   }
   for (const song of [...(dash.project?.songs ?? []), ...(dash.to_review?.songs ?? [])]) {
     if (hasSessionToday(song.meta?.sessions ?? [])) next.add(`song-${song.id}`);
@@ -132,6 +137,15 @@ export function SessionView({ token, onSignOut }: Props) {
   const [openForm, setOpenForm] = useState<string | null>(null);
   const [openSessionModalOpen, setOpenSessionModalOpen] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+
+  // ── Sequential session (parent-triggers-children flow) ───────────────────────
+  const [sequentialSession, setSequentialSession] = useState<{
+    type: "exercise" | "study_material";
+    parentId: number;
+    parentName: string;
+    children: SequentialChild[];
+    currentIndex: number;
+  } | null>(null);
 
   // ── Player / Metronome ────────────────────────────────────────────────────────
   const [playerState, setPlayerState] = useState<{
@@ -222,9 +236,10 @@ export function SessionView({ token, onSignOut }: Props) {
         ...collectAllExerciseIds(dashboard.exercises).map(
           (id) => `exercise-${id}`
         ),
-        ...(dashboard.study_materials ?? []).map(
-          (sm) => `studymaterial-${sm.id}`
-        ),
+        ...(dashboard.study_materials ?? []).flatMap((sm) => [
+          `studymaterial-${sm.id}`,
+          ...sm.childStudyMaterials.map((c) => `studymaterial-${c.id}`),
+        ]),
         ...(dashboard.project?.songs ?? []).map((s) => `song-${s.id}`),
         ...(dashboard.to_review?.songs ?? []).map((s) => `song-${s.id}`),
       ])
@@ -403,6 +418,90 @@ export function SessionView({ token, onSignOut }: Props) {
     };
   }
 
+  function studyMaterialGetState(id: number) {
+    const key = `studymaterial-${id}`;
+    return {
+      isCompletedToday: completedIds.has(key),
+      isTimerActive: activeTimers.has(key),
+      isTimerPaused: !activeTimers.has(key) && pausedElapsed.has(key),
+      timerElapsed: getElapsed(key),
+      isFormOpen: openForm === key,
+    };
+  }
+
+  // ── Sequential session handlers ───────────────────────────────────────────────
+  function handleStartSequential(type: "exercise" | "study_material", parentId: number) {
+    let parentName = "";
+    let children: SequentialChild[] = [];
+
+    if (type === "exercise") {
+      const all = [...(dashboard?.exercises ?? []), ...additionalExercises];
+      const ex = all.find((e) => e.id === parentId);
+      if (!ex || ex.child_exercises.length === 0) return;
+      parentName = ex.name;
+      children = ex.child_exercises.map((child) => ({
+        id: child.id,
+        name: child.name,
+        resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type })),
+        lastSession: child.meta.sessions?.[0] ?? null,
+      }));
+    } else {
+      const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
+      const sm = all.find((s) => s.id === parentId);
+      if (!sm || sm.childStudyMaterials.length === 0) return;
+      parentName = sm.name;
+      children = sm.childStudyMaterials.map((child) => ({
+        id: child.id,
+        name: child.name,
+        resources: child.url ? [{ name: "Open material", url: child.url }] : [],
+        lastSession: child.meta.sessions?.[0] ?? null,
+      }));
+    }
+
+    setSequentialSession({ type, parentId, parentName, children, currentIndex: 0 });
+    const firstKey = type === "exercise"
+      ? `exercise-${children[0].id}`
+      : `studymaterial-${children[0].id}`;
+    startTimer(firstKey);
+  }
+
+  function handleSequentialChildSubmit(dailyPracticeTime: number) {
+    if (!sequentialSession) return;
+    const { type, parentId, children, currentIndex } = sequentialSession;
+    const childId = children[currentIndex].id;
+    const childKey = type === "exercise"
+      ? `exercise-${childId}`
+      : `studymaterial-${childId}`;
+
+    handleSessionSubmit(dailyPracticeTime, childKey);
+
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= children.length) {
+      // All children complete — mark parent as complete
+      const parentKey = type === "exercise"
+        ? `exercise-${parentId}`
+        : `studymaterial-${parentId}`;
+      setCompletedIds((prev) => new Set(prev).add(parentKey));
+      setSequentialSession(null);
+    } else {
+      setSequentialSession((prev) => prev ? { ...prev, currentIndex: nextIndex } : null);
+      const nextKey = type === "exercise"
+        ? `exercise-${children[nextIndex].id}`
+        : `studymaterial-${children[nextIndex].id}`;
+      startTimer(nextKey);
+    }
+  }
+
+  function handleCancelSequential() {
+    if (!sequentialSession) return;
+    const { type, children, currentIndex } = sequentialSession;
+    const childKey = type === "exercise"
+      ? `exercise-${children[currentIndex].id}`
+      : `studymaterial-${children[currentIndex].id}`;
+    cancelSession(childKey);
+    setSequentialSession(null);
+  }
+
   // ── Quick Add handlers ────────────────────────────────────────────────────────
   function handleAddSong(song: Song) {
     setAdditionalSongs((prev) => [...prev, song]);
@@ -425,9 +524,8 @@ export function SessionView({ token, onSignOut }: Props) {
     return (
       additionalSongs.filter((s) => completedIds.has(`song-${s.id}`)).length +
       exIds.filter((id) => completedIds.has(`exercise-${id}`)).length +
-      additionalStudyMaterials.filter((sm) =>
-        completedIds.has(`studymaterial-${sm.id}`)
-      ).length
+      additionalStudyMaterials.flatMap((sm) => [sm, ...sm.childStudyMaterials])
+        .filter((sm) => completedIds.has(`studymaterial-${sm.id}`)).length
     );
   }
 
@@ -436,7 +534,8 @@ export function SessionView({ token, onSignOut }: Props) {
       e.id,
       ...e.child_exercises.map((c) => c.id),
     ]);
-    return additionalSongs.length + exIds.length + additionalStudyMaterials.length;
+    const smCount = additionalStudyMaterials.reduce((n, sm) => n + 1 + sm.childStudyMaterials.length, 0);
+    return additionalSongs.length + exIds.length + smCount;
   }
 
   async function handleRebuild() {
@@ -575,6 +674,34 @@ export function SessionView({ token, onSignOut }: Props) {
         <Metronome onClose={() => setMetronomeOpen(false)} />
       )}
 
+      {/* Sequential session overlay */}
+      {sequentialSession && (() => {
+        const { type, parentName, children, currentIndex } = sequentialSession;
+        const childId = children[currentIndex].id;
+        const childKey = type === "exercise"
+          ? `exercise-${childId}`
+          : `studymaterial-${childId}`;
+        return (
+          <SequentialSessionModal
+            token={token}
+            type={type}
+            parentName={parentName}
+            children={children}
+            currentIndex={currentIndex}
+            isTimerActive={activeTimers.has(childKey)}
+            timerElapsed={getElapsed(childKey)}
+            isFormOpen={openForm === childKey}
+            onStart={() => startTimer(childKey)}
+            onPause={() => pauseTimer(childKey)}
+            onStopAndSave={() => stopAndSave(childKey)}
+            onSessionSubmit={handleSequentialChildSubmit}
+            onFormClose={() => setOpenForm(null)}
+            onCancelReturn={handleCancelSequential}
+            onOpenFile={(path, mt) => openPlayer(path, mt, children[currentIndex].name)}
+          />
+        );
+      })()}
+
       <main className="session-main">
         {/* Exercises */}
         <ItemGroup
@@ -597,6 +724,7 @@ export function SessionView({ token, onSignOut }: Props) {
               onSessionSubmit={(id, dpt) =>
                 handleSessionSubmit(dpt, `exercise-${id}`)
               }
+              onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
               onOpenFile={(path, mt) => openPlayer(path, mt, ex.name)}
             />
           ))}
@@ -606,34 +734,29 @@ export function SessionView({ token, onSignOut }: Props) {
         <ItemGroup
           title="Study Materials"
           completedCount={
-            dashboard.study_materials.filter((sm) =>
-              completedIds.has(`studymaterial-${sm.id}`)
-            ).length
+            dashboard.study_materials.flatMap((sm) => [sm, ...sm.childStudyMaterials])
+              .filter((sm) => completedIds.has(`studymaterial-${sm.id}`)).length
           }
-          totalCount={dashboard.study_materials.length}
+          totalCount={
+            dashboard.study_materials.reduce((n, sm) => n + 1 + sm.childStudyMaterials.length, 0)
+          }
         >
           {dashboard.study_materials.map((sm) => (
             <StudyMaterialCard
               key={sm.id}
               token={token}
               material={sm}
-              isCompletedToday={completedIds.has(`studymaterial-${sm.id}`)}
-              isTimerActive={activeTimers.has(`studymaterial-${sm.id}`)}
-              isTimerPaused={
-                !activeTimers.has(`studymaterial-${sm.id}`) &&
-                pausedElapsed.has(`studymaterial-${sm.id}`)
-              }
-              timerElapsed={getElapsed(`studymaterial-${sm.id}`)}
-              isFormOpen={openForm === `studymaterial-${sm.id}`}
-              onStart={() => startTimer(`studymaterial-${sm.id}`)}
-              onPause={() => pauseTimer(`studymaterial-${sm.id}`)}
-              onStopAndSave={() => stopAndSave(`studymaterial-${sm.id}`)}
-              onCancel={() => cancelSession(`studymaterial-${sm.id}`)}
-              onFormOpen={() => setOpenForm(`studymaterial-${sm.id}`)}
+              getState={(id) => studyMaterialGetState(id)}
+              onStart={(id) => startTimer(`studymaterial-${id}`)}
+              onPause={(id) => pauseTimer(`studymaterial-${id}`)}
+              onStopAndSave={(id) => stopAndSave(`studymaterial-${id}`)}
+              onCancel={(id) => cancelSession(`studymaterial-${id}`)}
+              onFormOpen={(id) => setOpenForm(`studymaterial-${id}`)}
               onFormClose={() => setOpenForm(null)}
-              onSessionSubmit={(dpt) =>
-                handleSessionSubmit(dpt, `studymaterial-${sm.id}`)
+              onSessionSubmit={(id, dpt) =>
+                handleSessionSubmit(dpt, `studymaterial-${id}`)
               }
+              onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
               onOpenFile={(path, mt) => openPlayer(path, mt, sm.name)}
             />
           ))}
@@ -755,6 +878,7 @@ export function SessionView({ token, onSignOut }: Props) {
                 onSessionSubmit={(id, dpt) =>
                   handleSessionSubmit(dpt, `exercise-${id}`)
                 }
+                onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
                 onOpenFile={(path, mt) => openPlayer(path, mt, ex.name)}
               />
             ))}
@@ -763,23 +887,17 @@ export function SessionView({ token, onSignOut }: Props) {
                 key={sm.id}
                 token={token}
                 material={sm}
-                isCompletedToday={completedIds.has(`studymaterial-${sm.id}`)}
-                isTimerActive={activeTimers.has(`studymaterial-${sm.id}`)}
-                isTimerPaused={
-                  !activeTimers.has(`studymaterial-${sm.id}`) &&
-                  pausedElapsed.has(`studymaterial-${sm.id}`)
-                }
-                timerElapsed={getElapsed(`studymaterial-${sm.id}`)}
-                isFormOpen={openForm === `studymaterial-${sm.id}`}
-                onStart={() => startTimer(`studymaterial-${sm.id}`)}
-                onPause={() => pauseTimer(`studymaterial-${sm.id}`)}
-                onStopAndSave={() => stopAndSave(`studymaterial-${sm.id}`)}
-                onCancel={() => cancelSession(`studymaterial-${sm.id}`)}
-                onFormOpen={() => setOpenForm(`studymaterial-${sm.id}`)}
+                getState={(id) => studyMaterialGetState(id)}
+                onStart={(id) => startTimer(`studymaterial-${id}`)}
+                onPause={(id) => pauseTimer(`studymaterial-${id}`)}
+                onStopAndSave={(id) => stopAndSave(`studymaterial-${id}`)}
+                onCancel={(id) => cancelSession(`studymaterial-${id}`)}
+                onFormOpen={(id) => setOpenForm(`studymaterial-${id}`)}
                 onFormClose={() => setOpenForm(null)}
-                onSessionSubmit={(dpt) =>
-                  handleSessionSubmit(dpt, `studymaterial-${sm.id}`)
+                onSessionSubmit={(id, dpt) =>
+                  handleSessionSubmit(dpt, `studymaterial-${id}`)
                 }
+                onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
                 onOpenFile={(path, mt) => openPlayer(path, mt, sm.name)}
               />
             ))}

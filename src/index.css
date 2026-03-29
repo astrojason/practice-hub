@@ -634,6 +634,21 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
   padding-top: 2px;
 }
 
+/* ─── Sequential session modal ──────────────────────────────────────────────── */
+.sequential-form-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sequential-cancel-return-row {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
 /* ─── Last session info ──────────────────────────────────────────────────────── */
 .last-session {
   display: flex;

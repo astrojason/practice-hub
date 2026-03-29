@@ -35,6 +35,8 @@ interface CardProps {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
   isChild?: boolean;
+  /** When set, play button starts a sequential child session instead of this item's own timer */
+  onStartSequential?: () => void;
 }
 
 function ExerciseSingleCard({
@@ -54,6 +56,7 @@ function ExerciseSingleCard({
   onSessionSubmit,
   onOpenFile,
   isChild,
+  onStartSequential,
 }: CardProps) {
   const ue = exercise.meta.user_exercise;
   const tags: string[] = [];
@@ -70,8 +73,12 @@ function ExerciseSingleCard({
   }, [isFormOpen]);
 
   function handleStart() {
-    onStart();
-    setModalOpen(true);
+    if (onStartSequential) {
+      onStartSequential();
+    } else {
+      onStart();
+      setModalOpen(true);
+    }
   }
 
   function handleClose() {
@@ -104,11 +111,14 @@ function ExerciseSingleCard({
         </span>
         <div className="item-info">
           <span className="item-name">{exercise.name}</span>
-          {tags.length > 0 && (
+          {(tags.length > 0 || (onStartSequential && !isChild)) && (
             <span className="item-tags">
               {tags.map((t) => (
                 <span key={t} className="tag">{t}</span>
               ))}
+              {onStartSequential && !isChild && (
+                <span className="tag">{exercise.child_exercises.length} items</span>
+              )}
             </span>
           )}
         </div>
@@ -123,16 +133,18 @@ function ExerciseSingleCard({
             </button>
           ) : (
             <>
-              <button className="btn-timer" onClick={handleStart} title="Start timer">
+              <button className="btn-timer" onClick={handleStart} title={onStartSequential ? "Start sequential session" : "Start timer"}>
                 <PlayIcon className="icon" />
               </button>
-              <button
-                className="btn-timer"
-                onClick={() => { onFormOpen(); setModalOpen(true); }}
-                title="Log session"
-              >
-                <PlusIcon className="icon" />
-              </button>
+              {!onStartSequential && (
+                <button
+                  className="btn-timer"
+                  onClick={() => { onFormOpen(); setModalOpen(true); }}
+                  title="Log session"
+                >
+                  <PlusIcon className="icon" />
+                </button>
+              )}
             </>
           )}
         </div>
@@ -219,6 +231,7 @@ interface ExerciseCardProps {
   onFormOpen: (id: number) => void;
   onFormClose: (id: number) => void;
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
+  onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
 }
 
@@ -233,8 +246,10 @@ export function ExerciseCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onStartSequential,
   onOpenFile,
 }: ExerciseCardProps) {
+  const hasChildren = exercise.child_exercises.length > 0;
   const state = getState(exercise.id);
   return (
     <div className="exercise-group">
@@ -253,6 +268,7 @@ export function ExerciseCard({
         onFormOpen={() => onFormOpen(exercise.id)}
         onFormClose={() => onFormClose(exercise.id)}
         onSessionSubmit={(dpt) => onSessionSubmit(exercise.id, dpt)}
+        onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(exercise.id) : undefined}
         onOpenFile={onOpenFile}
       />
       {exercise.child_exercises.map((child) => {
