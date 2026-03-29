@@ -33,6 +33,7 @@ interface CardProps {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
   isChild?: boolean;
 }
 
@@ -51,6 +52,7 @@ function ExerciseSingleCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onOpenFile,
   isChild,
 }: CardProps) {
   const ue = exercise.meta.user_exercise;
@@ -89,7 +91,7 @@ function ExerciseSingleCard({
     setNotes("");
   }
 
-  const resources = (exercise.resources ?? []).map((r) => ({ name: r.name, url: r.url }));
+  const resources = (exercise.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
   const lastSession = exercise.meta.sessions?.[0] ?? null;
 
   return (
@@ -141,6 +143,7 @@ function ExerciseSingleCard({
           title={exercise.name}
           resources={resources}
           onClose={handleClose}
+          onOpenFile={onOpenFile}
         >
           {isFormOpen ? (
             <ExerciseSessionForm
@@ -216,6 +219,7 @@ interface ExerciseCardProps {
   onFormOpen: (id: number) => void;
   onFormClose: (id: number) => void;
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
 }
 
 export function ExerciseCard({
@@ -229,6 +233,7 @@ export function ExerciseCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onOpenFile,
 }: ExerciseCardProps) {
   const state = getState(exercise.id);
   return (
@@ -248,6 +253,7 @@ export function ExerciseCard({
         onFormOpen={() => onFormOpen(exercise.id)}
         onFormClose={() => onFormClose(exercise.id)}
         onSessionSubmit={(dpt) => onSessionSubmit(exercise.id, dpt)}
+        onOpenFile={onOpenFile}
       />
       {exercise.child_exercises.map((child) => {
         const childState = getState(child.id);
@@ -268,6 +274,7 @@ export function ExerciseCard({
             onFormOpen={() => onFormOpen(child.id)}
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
+            onOpenFile={onOpenFile}
             isChild
           />
         );

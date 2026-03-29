@@ -48,6 +48,8 @@ import { SongCard } from "./session/SongCard";
 import { StudyMaterialCard } from "./session/StudyMaterialCard";
 import { OpenSessionForm } from "./session/forms/OpenSessionForm";
 import { QuickAddPanel } from "./session/QuickAddPanel";
+import { MediaPlayer } from "./player/MediaPlayer";
+import { Metronome } from "./player/Metronome";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -130,6 +132,18 @@ export function SessionView({ token, onSignOut }: Props) {
   const [openForm, setOpenForm] = useState<string | null>(null);
   const [openSessionModalOpen, setOpenSessionModalOpen] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+
+  // ── Player / Metronome ────────────────────────────────────────────────────────
+  const [playerState, setPlayerState] = useState<{
+    path: string;
+    mediaType: "audio" | "video";
+    itemName: string;
+  } | null>(null);
+  const [metronomeOpen, setMetronomeOpen] = useState(false);
+
+  const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string) => {
+    setPlayerState({ path, mediaType, itemName });
+  };
 
   const OPEN_SESSION_KEY = "open-session";
 
@@ -508,6 +522,7 @@ export function SessionView({ token, onSignOut }: Props) {
         openSessionActive={activeTimers.has(OPEN_SESSION_KEY) || pausedElapsed.has(OPEN_SESSION_KEY)}
         openSessionElapsed={getElapsed(OPEN_SESSION_KEY)}
         onQuickAdd={() => setShowQuickAdd((v) => !v)}
+        onMetronome={() => setMetronomeOpen((v) => !v)}
         onSignOut={onSignOut}
       />
 
@@ -545,6 +560,21 @@ export function SessionView({ token, onSignOut }: Props) {
         />
       )}
 
+      {/* In-app media player — inline above item groups */}
+      {playerState && (
+        <MediaPlayer
+          filePath={playerState.path}
+          mediaType={playerState.mediaType}
+          itemName={playerState.itemName}
+          onClose={() => setPlayerState(null)}
+        />
+      )}
+
+      {/* Standalone metronome panel */}
+      {metronomeOpen && (
+        <Metronome onClose={() => setMetronomeOpen(false)} />
+      )}
+
       <main className="session-main">
         {/* Exercises */}
         <ItemGroup
@@ -567,6 +597,7 @@ export function SessionView({ token, onSignOut }: Props) {
               onSessionSubmit={(id, dpt) =>
                 handleSessionSubmit(dpt, `exercise-${id}`)
               }
+              onOpenFile={(path, mt) => openPlayer(path, mt, ex.name)}
             />
           ))}
         </ItemGroup>
@@ -603,6 +634,7 @@ export function SessionView({ token, onSignOut }: Props) {
               onSessionSubmit={(dpt) =>
                 handleSessionSubmit(dpt, `studymaterial-${sm.id}`)
               }
+              onOpenFile={(path, mt) => openPlayer(path, mt, sm.name)}
             />
           ))}
         </ItemGroup>
@@ -637,6 +669,7 @@ export function SessionView({ token, onSignOut }: Props) {
               onSessionSubmit={(dpt) =>
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
+              onOpenFile={(path, mt) => openPlayer(path, mt, song.name)}
             />
           ))}
         </ItemGroup>
@@ -671,6 +704,7 @@ export function SessionView({ token, onSignOut }: Props) {
               onSessionSubmit={(dpt) =>
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
+              onOpenFile={(path, mt) => openPlayer(path, mt, song.name)}
             />
           ))}
         </ItemGroup>
@@ -703,6 +737,7 @@ export function SessionView({ token, onSignOut }: Props) {
                 onSessionSubmit={(dpt) =>
                   handleSessionSubmit(dpt, `song-${song.id}`)
                 }
+                onOpenFile={(path, mt) => openPlayer(path, mt, song.name)}
               />
             ))}
             {additionalExercises.map((ex) => (
@@ -720,6 +755,7 @@ export function SessionView({ token, onSignOut }: Props) {
                 onSessionSubmit={(id, dpt) =>
                   handleSessionSubmit(dpt, `exercise-${id}`)
                 }
+                onOpenFile={(path, mt) => openPlayer(path, mt, ex.name)}
               />
             ))}
             {additionalStudyMaterials.map((sm) => (
@@ -744,6 +780,7 @@ export function SessionView({ token, onSignOut }: Props) {
                 onSessionSubmit={(dpt) =>
                   handleSessionSubmit(dpt, `studymaterial-${sm.id}`)
                 }
+                onOpenFile={(path, mt) => openPlayer(path, mt, sm.name)}
               />
             ))}
           </ItemGroup>

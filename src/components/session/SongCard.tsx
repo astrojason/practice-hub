@@ -39,6 +39,7 @@ interface Props {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
 }
 
 export function SongCard({
@@ -56,6 +57,7 @@ export function SongCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onOpenFile,
 }: Props) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
@@ -88,7 +90,7 @@ export function SongCard({
     setNotes("");
   }
 
-  const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url }));
+  const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
   const lastSession = song.meta.sessions?.[0] ?? null;
 
   return (
@@ -138,6 +140,7 @@ export function SongCard({
           subtitle={song.artist_name}
           resources={resources}
           onClose={handleClose}
+          onOpenFile={onOpenFile}
         >
           {isFormOpen ? (
             <SongSessionForm

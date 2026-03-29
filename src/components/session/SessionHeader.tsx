@@ -17,6 +17,7 @@ interface Props {
   onRebuild: () => void;
   onOpenSession: () => void;
   onQuickAdd: () => void;
+  onMetronome: () => void;
   onSignOut: () => void;
 }
 
@@ -39,6 +40,7 @@ export function SessionHeader({
   onRebuild,
   onOpenSession,
   onQuickAdd,
+  onMetronome,
   onSignOut,
 }: Props) {
   const progressPct = Math.min(
@@ -65,6 +67,9 @@ export function SessionHeader({
           </button>
           <button onClick={onQuickAdd} className="btn-secondary">
             <MagnifyingGlassPlusIcon className="icon-sm" /> Quick add
+          </button>
+          <button onClick={onMetronome} className="btn-ghost" title="Open metronome">
+            ♩ Metronome
           </button>
           <button onClick={onRebuild} disabled={isRebuilding} className="btn-ghost">
             <ArrowPathIcon className="icon-sm" />

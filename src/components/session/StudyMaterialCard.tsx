@@ -33,6 +33,7 @@ interface Props {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
 }
 
 export function StudyMaterialCard({
@@ -50,6 +51,7 @@ export function StudyMaterialCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onOpenFile,
 }: Props) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
@@ -126,6 +128,7 @@ export function StudyMaterialCard({
           title={material.name}
           resources={resources}
           onClose={handleClose}
+          onOpenFile={onOpenFile}
         >
           {isFormOpen ? (
             <StudyMaterialSessionForm
