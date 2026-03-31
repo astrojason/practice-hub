@@ -151,7 +151,7 @@ export interface DashboardStudyMaterial {
   session_type: "study_material";
   created_timestamp: number;
   updated_timestamp: number;
-  childStudyMaterials: DashboardStudyMaterial[];
+  child_study_materials?: DashboardStudyMaterial[];
   meta: {
     user_study_material: { user_id: number; study_material_id: number } | null;
     sessions: StudyMaterialSession[];
@@ -379,7 +379,7 @@ export interface CatalogStudyMaterial {
   url: string | null;
   instrument: number | null;
   parent_study_material_id: number | null;
-  childStudyMaterials: CatalogStudyMaterial[];
+  child_study_materials?: CatalogStudyMaterial[];
 }
 
 export interface CatalogStudyMaterialsResponse {

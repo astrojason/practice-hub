@@ -37,7 +37,7 @@ function catalogStudyMaterialToDashboard(sm: CatalogStudyMaterial): DashboardStu
     session_type: "study_material",
     created_timestamp: 0,
     updated_timestamp: 0,
-    childStudyMaterials: sm.childStudyMaterials.map(catalogStudyMaterialToDashboard),
+    child_study_materials: (sm.child_study_materials ?? []).map(catalogStudyMaterialToDashboard),
     meta: { user_study_material: null, sessions: [] },
   };
 }
@@ -87,7 +87,7 @@ function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<str
   }
   for (const sm of dash.study_materials) {
     if (hasSessionToday(sm.meta.sessions)) next.add(`studymaterial-${sm.id}`);
-    for (const child of sm.childStudyMaterials) {
+    for (const child of sm.child_study_materials ?? []) {
       if (hasSessionToday(child.meta.sessions)) next.add(`studymaterial-${child.id}`);
     }
   }
@@ -104,6 +104,33 @@ function collectAllExerciseIds(exercises: DashboardExercise[]): number[] {
     for (const child of ex.child_exercises) ids.push(child.id);
   }
   return ids;
+}
+
+function nestStudyMaterials(flat: DashboardStudyMaterial[]): DashboardStudyMaterial[] {
+  const byId = new Map<number, DashboardStudyMaterial>();
+  for (const sm of flat) {
+    byId.set(sm.id, { ...sm, child_study_materials: [] });
+  }
+  const roots: DashboardStudyMaterial[] = [];
+  for (const [, sm] of byId) {
+    if (sm.parent_study_material_id != null) {
+      const parent = byId.get(sm.parent_study_material_id);
+      if (parent) {
+        parent.child_study_materials!.push(sm);
+      } else {
+        roots.push(sm); // orphan — treat as top-level
+      }
+    } else {
+      roots.push(sm);
+    }
+  }
+  return roots;
+}
+
+function inferSmResourceType(url: string): "local_file" | "youtube" | "url" {
+  if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
+  if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
+  return "url";
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -186,8 +213,9 @@ export function SessionView({ token, onSignOut }: Props) {
 
     Promise.all([loadDash, loadUser])
       .then(() => {
-        const dash = dashResult!;
+        const raw = dashResult!;
         const user = userResult!;
+        const dash = { ...raw, study_materials: nestStudyMaterials(raw.study_materials) };
         setDashboard(dash);
         setUserProfile(user);
         setServerTotal(user.time_practiced_today ?? 0);
@@ -238,7 +266,7 @@ export function SessionView({ token, onSignOut }: Props) {
         ),
         ...(dashboard.study_materials ?? []).flatMap((sm) => [
           `studymaterial-${sm.id}`,
-          ...sm.childStudyMaterials.map((c) => `studymaterial-${c.id}`),
+          ...(sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`),
         ]),
         ...(dashboard.project?.songs ?? []).map((s) => `song-${s.id}`),
         ...(dashboard.to_review?.songs ?? []).map((s) => `song-${s.id}`),
@@ -265,14 +293,28 @@ export function SessionView({ token, onSignOut }: Props) {
     return ids;
   }, [dashboard, additionalExercises]);
 
-  const existingStudyMaterialIds = useMemo(
-    () =>
-      new Set([
-        ...(dashboard?.study_materials ?? []).map((sm) => sm.id),
-        ...additionalStudyMaterials.map((sm) => sm.id),
-      ]),
-    [dashboard, additionalStudyMaterials]
-  );
+  const existingStudyMaterialIds = useMemo(() => {
+    const ids = new Set<number>();
+    function collect(sm: DashboardStudyMaterial) {
+      ids.add(sm.id);
+      for (const c of sm.child_study_materials ?? []) collect(c);
+    }
+    for (const sm of dashboard?.study_materials ?? []) collect(sm);
+    for (const sm of additionalStudyMaterials) collect(sm);
+    return ids;
+  }, [dashboard, additionalStudyMaterials]);
+
+  const studyMaterialChildToParent = useMemo(() => {
+    const map = new Map<number, number>();
+    function walk(sm: DashboardStudyMaterial) {
+      for (const child of sm.child_study_materials ?? []) {
+        map.set(child.id, sm.id);
+        walk(child);
+      }
+    }
+    for (const sm of [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials]) walk(sm);
+    return map;
+  }, [dashboard, additionalStudyMaterials]);
 
   const projectTags = useMemo(
     () => (dashboard?.project?.songs ?? []).flatMap((s) => s.tags),
@@ -392,7 +434,26 @@ export function SessionView({ token, onSignOut }: Props) {
 
   function handleSessionSubmit(dailyPracticeTime: number, itemKey: string) {
     setServerTotal(dailyPracticeTime);
-    setCompletedIds((prev) => new Set(prev).add(itemKey));
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      next.add(itemKey);
+      // Auto-complete parent study material when all its children are now done
+      if (itemKey.startsWith("studymaterial-")) {
+        const childId = parseInt(itemKey.slice("studymaterial-".length), 10);
+        const parentId = studyMaterialChildToParent.get(childId);
+        if (parentId != null) {
+          const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
+          const parentSm = all.find((sm) => sm.id === parentId);
+          if (parentSm) {
+            const allDone = (parentSm.child_study_materials ?? []).every(
+              (c) => next.has(`studymaterial-${c.id}`)
+            );
+            if (allDone) next.add(`studymaterial-${parentId}`);
+          }
+        }
+      }
+      return next;
+    });
     setActiveTimers((prev) => {
       const next = new Map(prev);
       next.delete(itemKey);
@@ -448,12 +509,18 @@ export function SessionView({ token, onSignOut }: Props) {
     } else {
       const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
       const sm = all.find((s) => s.id === parentId);
-      if (!sm || sm.childStudyMaterials.length === 0) return;
+      if (!sm || (sm.child_study_materials ?? []).length === 0) return;
       parentName = sm.name;
-      children = sm.childStudyMaterials.map((child) => ({
+      const incompleteChildren = (sm.child_study_materials ?? []).filter(
+        (c) => !completedIds.has(`studymaterial-${c.id}`)
+      );
+      if (incompleteChildren.length === 0) return;
+      children = incompleteChildren.map((child) => ({
         id: child.id,
         name: child.name,
-        resources: child.url ? [{ name: "Open material", url: child.url }] : [],
+        resources: child.url
+          ? [{ name: "Open material", url: child.url, type: inferSmResourceType(child.url) }]
+          : [],
         lastSession: child.meta.sessions?.[0] ?? null,
       }));
     }
@@ -524,7 +591,7 @@ export function SessionView({ token, onSignOut }: Props) {
     return (
       additionalSongs.filter((s) => completedIds.has(`song-${s.id}`)).length +
       exIds.filter((id) => completedIds.has(`exercise-${id}`)).length +
-      additionalStudyMaterials.flatMap((sm) => [sm, ...sm.childStudyMaterials])
+      additionalStudyMaterials.flatMap((sm) => [sm, ...(sm.child_study_materials ?? [])])
         .filter((sm) => completedIds.has(`studymaterial-${sm.id}`)).length
     );
   }
@@ -534,14 +601,15 @@ export function SessionView({ token, onSignOut }: Props) {
       e.id,
       ...e.child_exercises.map((c) => c.id),
     ]);
-    const smCount = additionalStudyMaterials.reduce((n, sm) => n + 1 + sm.childStudyMaterials.length, 0);
+    const smCount = additionalStudyMaterials.reduce((n, sm) => n + 1 + (sm.child_study_materials ?? []).length, 0);
     return additionalSongs.length + exIds.length + smCount;
   }
 
   async function handleRebuild() {
     setIsRebuilding(true);
     try {
-      const dash = await rebuildDashboard(token);
+      const raw = await rebuildDashboard(token);
+      const dash = { ...raw, study_materials: nestStudyMaterials(raw.study_materials) };
       setDashboard(dash);
       setCompletedIds((prev) => mergeCompletedFromDash(dash, prev));
     } catch {
@@ -734,11 +802,11 @@ export function SessionView({ token, onSignOut }: Props) {
         <ItemGroup
           title="Study Materials"
           completedCount={
-            dashboard.study_materials.flatMap((sm) => [sm, ...sm.childStudyMaterials])
+            dashboard.study_materials.flatMap((sm) => [sm, ...(sm.child_study_materials ?? [])])
               .filter((sm) => completedIds.has(`studymaterial-${sm.id}`)).length
           }
           totalCount={
-            dashboard.study_materials.reduce((n, sm) => n + 1 + sm.childStudyMaterials.length, 0)
+            dashboard.study_materials.reduce((n, sm) => n + 1 + (sm.child_study_materials ?? []).length, 0)
           }
         >
           {dashboard.study_materials.map((sm) => (

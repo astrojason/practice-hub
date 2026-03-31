@@ -10,7 +10,13 @@ import {
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
-import type { DashboardStudyMaterial } from "../../api/types";
+import type { DashboardStudyMaterial, Resource } from "../../api/types";
+
+function inferResourceType(url: string): Resource["type"] {
+  if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
+  if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
+  return "url";
+}
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -92,7 +98,9 @@ function StudyMaterialSingleCard({
     setNotes("");
   }
 
-  const resources = material.url ? [{ name: "Open material", url: material.url }] : [];
+  const resources: Resource[] = material.url
+    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url) }]
+    : [];
   const lastSession = material.meta.sessions?.[0] ?? null;
 
   return (
@@ -107,7 +115,7 @@ function StudyMaterialSingleCard({
           <span className="item-name">{material.name}</span>
           {onStartSequential && !isChild && (
             <span className="item-tags">
-              <span className="tag">{material.childStudyMaterials.length} items</span>
+              <span className="tag">{(material.child_study_materials ?? []).length} items</span>
             </span>
           )}
         </div>
@@ -231,7 +239,7 @@ export function StudyMaterialCard({
   onStartSequential,
   onOpenFile,
 }: StudyMaterialCardProps) {
-  const hasChildren = material.childStudyMaterials.length > 0;
+  const hasChildren = (material.child_study_materials ?? []).length > 0;
   const state = getState(material.id);
 
   return (
@@ -254,7 +262,7 @@ export function StudyMaterialCard({
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(material.id) : undefined}
         onOpenFile={onOpenFile}
       />
-      {material.childStudyMaterials.map((child) => {
+      {(material.child_study_materials ?? []).map((child) => {
         const childState = getState(child.id);
         return (
           <StudyMaterialSingleCard
