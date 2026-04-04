@@ -33,7 +33,7 @@ interface CardProps {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
   onStartSequential?: () => void;
@@ -232,7 +232,7 @@ interface ExerciseCardProps {
   onFormClose: (id: number) => void;
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
   onStartSequential?: (parentId: number) => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
 }
 
 export function ExerciseCard({
@@ -290,7 +290,7 @@ export function ExerciseCard({
             onFormOpen={() => onFormOpen(child.id)}
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
-            onOpenFile={onOpenFile}
+            onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, `exercise-${child.id}`) : undefined}
             isChild
           />
         );

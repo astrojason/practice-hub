@@ -39,7 +39,7 @@ interface Props {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
 }
 
 export function SongCard({

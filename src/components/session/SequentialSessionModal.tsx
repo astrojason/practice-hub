@@ -41,7 +41,7 @@ interface Props {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onFormClose: () => void;
   onCancelReturn: () => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
 }
 
 export function SequentialSessionModal({

@@ -14,7 +14,7 @@ interface Props {
   subtitle?: string;
   resources?: Resource[];
   onClose: () => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   children: React.ReactNode;
 }
 

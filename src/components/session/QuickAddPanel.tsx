@@ -113,10 +113,10 @@ export function QuickAddPanel({
   );
 
   const fetchExercises = useCallback(
-    async (page: number, reset: boolean) => {
+    async (page: number, q: string, reset: boolean) => {
       setExercisesLoading(true);
       try {
-        const res = await getCatalogExercises(token, page, LIMIT);
+        const res = await getCatalogExercises(token, page, LIMIT, q || undefined);
         setExercises((prev) => (reset ? res.exercises : [...prev, ...res.exercises]));
         setExercisesTotal(res.total);
         setExercisesPage(page);
@@ -153,15 +153,12 @@ export function QuickAddPanel({
     fetchOverdue();
   }, [fetchOverdue]);
 
-  useEffect(() => {
-    fetchExercises(1, true);
-  }, [fetchExercises]);
-
-  // Reload songs + materials when debounced search changes (also runs on mount)
+  // Reload songs, exercises + materials when debounced search changes (also runs on mount)
   useEffect(() => {
     fetchSongs(1, debouncedSearch, true);
+    fetchExercises(1, debouncedSearch, true);
     fetchMaterials(1, debouncedSearch, true);
-  }, [debouncedSearch, fetchSongs, fetchMaterials]);
+  }, [debouncedSearch, fetchSongs, fetchExercises, fetchMaterials]);
 
   // ── Keyboard close ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -199,17 +196,19 @@ export function QuickAddPanel({
       !addedSongIds.has(s.id)
   );
 
-  const visibleExercises = exercises.filter((e) => {
-    if (existingExerciseIds.has(e.id) || addedExerciseIds.has(e.id)) return false;
-    if (debouncedSearch) {
-      return e.name.toLowerCase().includes(debouncedSearch.toLowerCase());
-    }
-    return true;
-  });
-
-  const visibleMaterials = materials.filter(
-    (m) => !existingStudyMaterialIds.has(m.id) && !addedMaterialIds.has(m.id)
+  const visibleExercises = exercises.filter(
+    (e) => !existingExerciseIds.has(e.id) && !addedExerciseIds.has(e.id)
   );
+
+  const visibleMaterials = materials
+    .flatMap((m) => [m, ...(m.child_study_materials ?? [])])
+    .filter((m) => {
+      if (existingStudyMaterialIds.has(m.id) || addedMaterialIds.has(m.id)) return false;
+      if (debouncedSearch) {
+        return m.name.toLowerCase().includes(debouncedSearch.toLowerCase());
+      }
+      return true;
+    });
 
   // ── Add handlers ─────────────────────────────────────────────────────────────
   function handleAddSong(song: Song) {
@@ -354,7 +353,7 @@ export function QuickAddPanel({
                 {exercises.length < exercisesTotal && !exercisesLoading && (
                   <button
                     className="qa-load-more"
-                    onClick={() => fetchExercises(exercisesPage + 1, false)}
+                    onClick={() => fetchExercises(exercisesPage + 1, debouncedSearch, false)}
                   >
                     Load {Math.min(LIMIT, exercisesTotal - exercises.length)} more
                   </button>

@@ -1719,6 +1719,23 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
   flex-shrink: 0;
 }
 
+.media-player__session-timer {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.media-player__session-timer--active {
+  color: var(--green);
+  background: var(--green-dim);
+  border-color: rgba(52, 211, 153, 0.2);
+}
+
 .media-player__preset-status {
   font-size: 11px;
   color: var(--muted);

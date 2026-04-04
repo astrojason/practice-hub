@@ -154,9 +154,11 @@ export async function getCatalogSongs(
 export async function getCatalogExercises(
   token: string,
   page: number,
-  limit: number
+  limit: number,
+  q?: string
 ): Promise<CatalogExercisesResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (q) params.set("q", q);
   const response = await fetch(`${API_BASE_URL}/exercise?${params}`, {
     headers: authHeaders(token),
   });

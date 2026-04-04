@@ -84,11 +84,20 @@ function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<str
     for (const child of ex.child_exercises) {
       if (hasSessionToday(child.meta.sessions)) next.add(`exercise-${child.id}`);
     }
+    // Auto-complete the parent when all its children are done
+    if (ex.child_exercises.length > 0 && ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))) {
+      next.add(`exercise-${ex.id}`);
+    }
   }
   for (const sm of dash.study_materials) {
     if (hasSessionToday(sm.meta.sessions)) next.add(`studymaterial-${sm.id}`);
     for (const child of sm.child_study_materials ?? []) {
       if (hasSessionToday(child.meta.sessions)) next.add(`studymaterial-${child.id}`);
+    }
+    // Auto-complete the parent when all its children are done
+    const children = sm.child_study_materials ?? [];
+    if (children.length > 0 && children.every((c) => next.has(`studymaterial-${c.id}`))) {
+      next.add(`studymaterial-${sm.id}`);
     }
   }
   for (const song of [...(dash.project?.songs ?? []), ...(dash.to_review?.songs ?? [])]) {
@@ -179,11 +188,12 @@ export function SessionView({ token, onSignOut }: Props) {
     path: string;
     mediaType: "audio" | "video";
     itemName: string;
+    itemKey?: string;
   } | null>(null);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
 
-  const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string) => {
-    setPlayerState({ path, mediaType, itemName });
+  const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string, itemKey?: string) => {
+    setPlayerState({ path, mediaType, itemName, itemKey });
   };
 
   const OPEN_SESSION_KEY = "open-session";
@@ -302,18 +312,6 @@ export function SessionView({ token, onSignOut }: Props) {
     for (const sm of dashboard?.study_materials ?? []) collect(sm);
     for (const sm of additionalStudyMaterials) collect(sm);
     return ids;
-  }, [dashboard, additionalStudyMaterials]);
-
-  const studyMaterialChildToParent = useMemo(() => {
-    const map = new Map<number, number>();
-    function walk(sm: DashboardStudyMaterial) {
-      for (const child of sm.child_study_materials ?? []) {
-        map.set(child.id, sm.id);
-        walk(child);
-      }
-    }
-    for (const sm of [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials]) walk(sm);
-    return map;
   }, [dashboard, additionalStudyMaterials]);
 
   const projectTags = useMemo(
@@ -437,19 +435,18 @@ export function SessionView({ token, onSignOut }: Props) {
     setCompletedIds((prev) => {
       const next = new Set(prev);
       next.add(itemKey);
-      // Auto-complete parent study material when all its children are now done
-      if (itemKey.startsWith("studymaterial-")) {
-        const childId = parseInt(itemKey.slice("studymaterial-".length), 10);
-        const parentId = studyMaterialChildToParent.get(childId);
-        if (parentId != null) {
-          const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
-          const parentSm = all.find((sm) => sm.id === parentId);
-          if (parentSm) {
-            const allDone = (parentSm.child_study_materials ?? []).every(
-              (c) => next.has(`studymaterial-${c.id}`)
-            );
-            if (allDone) next.add(`studymaterial-${parentId}`);
-          }
+      // Auto-complete any parent exercise or study material whose children are all now done
+      const allExercises = [...(dashboard?.exercises ?? []), ...additionalExercises];
+      for (const ex of allExercises) {
+        if (ex.child_exercises.length > 0 && ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))) {
+          next.add(`exercise-${ex.id}`);
+        }
+      }
+      const allSms = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
+      for (const sm of allSms) {
+        const children = sm.child_study_materials ?? [];
+        if (children.length > 0 && children.every((c) => next.has(`studymaterial-${c.id}`))) {
+          next.add(`studymaterial-${sm.id}`);
         }
       }
       return next;
@@ -734,6 +731,8 @@ export function SessionView({ token, onSignOut }: Props) {
           mediaType={playerState.mediaType}
           itemName={playerState.itemName}
           onClose={() => setPlayerState(null)}
+          timerElapsed={playerState.itemKey ? getElapsed(playerState.itemKey) : undefined}
+          isTimerActive={playerState.itemKey ? activeTimers.has(playerState.itemKey) : false}
         />
       )}
 
@@ -765,7 +764,7 @@ export function SessionView({ token, onSignOut }: Props) {
             onSessionSubmit={handleSequentialChildSubmit}
             onFormClose={() => setOpenForm(null)}
             onCancelReturn={handleCancelSequential}
-            onOpenFile={(path, mt) => openPlayer(path, mt, children[currentIndex].name)}
+            onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, children[currentIndex].name, itemKey ?? childKey)}
           />
         );
       })()}
@@ -793,7 +792,7 @@ export function SessionView({ token, onSignOut }: Props) {
                 handleSessionSubmit(dpt, `exercise-${id}`)
               }
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
-              onOpenFile={(path, mt) => openPlayer(path, mt, ex.name)}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
             />
           ))}
         </ItemGroup>
@@ -825,7 +824,7 @@ export function SessionView({ token, onSignOut }: Props) {
                 handleSessionSubmit(dpt, `studymaterial-${id}`)
               }
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
-              onOpenFile={(path, mt) => openPlayer(path, mt, sm.name)}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
             />
           ))}
         </ItemGroup>
@@ -860,7 +859,7 @@ export function SessionView({ token, onSignOut }: Props) {
               onSessionSubmit={(dpt) =>
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
-              onOpenFile={(path, mt) => openPlayer(path, mt, song.name)}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
             />
           ))}
         </ItemGroup>
@@ -895,7 +894,7 @@ export function SessionView({ token, onSignOut }: Props) {
               onSessionSubmit={(dpt) =>
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
-              onOpenFile={(path, mt) => openPlayer(path, mt, song.name)}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
             />
           ))}
         </ItemGroup>
@@ -928,7 +927,7 @@ export function SessionView({ token, onSignOut }: Props) {
                 onSessionSubmit={(dpt) =>
                   handleSessionSubmit(dpt, `song-${song.id}`)
                 }
-                onOpenFile={(path, mt) => openPlayer(path, mt, song.name)}
+                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
               />
             ))}
             {additionalExercises.map((ex) => (
@@ -947,7 +946,7 @@ export function SessionView({ token, onSignOut }: Props) {
                   handleSessionSubmit(dpt, `exercise-${id}`)
                 }
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
-                onOpenFile={(path, mt) => openPlayer(path, mt, ex.name)}
+                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
               />
             ))}
             {additionalStudyMaterials.map((sm) => (
@@ -966,7 +965,7 @@ export function SessionView({ token, onSignOut }: Props) {
                   handleSessionSubmit(dpt, `studymaterial-${id}`)
                 }
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
-                onOpenFile={(path, mt) => openPlayer(path, mt, sm.name)}
+                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
               />
             ))}
           </ItemGroup>

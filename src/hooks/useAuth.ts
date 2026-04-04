@@ -40,6 +40,26 @@ export function useAuth() {
     }
   }, []);
 
+  // Proactively refresh the token every 50 minutes (Firebase tokens expire after 1 hour)
+  useEffect(() => {
+    if (state.status !== "authenticated") return;
+    const interval = setInterval(async () => {
+      const stored = getStoredRefreshToken();
+      if (stored) {
+        try {
+          const { idToken, refreshToken } = await refreshIdToken(stored);
+          storeRefreshToken(refreshToken);
+          setState({ status: "authenticated", token: idToken });
+        } catch (err) {
+          console.error("[auth] Token refresh failed:", err);
+          clearStoredRefreshToken();
+          setState({ status: "unauthenticated" });
+        }
+      }
+    }, 50 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [state.status]);
+
   const signIn = useCallback(async () => {
     // 1. Ask Firebase REST API for a Google OAuth URL + session ID
     const { authUri, sessionId } = await createGoogleAuthUri(AUTH_CALLBACK_URL);

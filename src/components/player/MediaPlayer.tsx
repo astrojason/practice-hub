@@ -18,6 +18,9 @@ interface Props {
   mediaType: PlayerMediaType;
   itemName: string;
   onClose: () => void;
+  /** Session practice timer for the item associated with this file */
+  timerElapsed?: number;
+  isTimerActive?: boolean;
 }
 
 interface WaveMarker {
@@ -190,7 +193,7 @@ function scheduleClick(ctx: AudioContext, time: number, accent: boolean) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MediaPlayer({ filePath, itemName, onClose }: Props) {
+export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive }: Props) {
   const detectedType = getMediaTypeFromPath(filePath);
   const isVideo = detectedType === "video";
 
@@ -564,15 +567,24 @@ export function MediaPlayer({ filePath, itemName, onClose }: Props) {
     const onMeta = () => setVideoDuration(vid.duration);
     const onPlay = () => setVideoPlaying(true);
     const onPause = () => setVideoPlaying(false);
+    const onEnded = () => {
+      if (loopEnabled) {
+        const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
+        vid.currentTime = ls;
+        vid.play().catch(() => {});
+      }
+    };
     vid.addEventListener("timeupdate", onTime);
     vid.addEventListener("loadedmetadata", onMeta);
     vid.addEventListener("play", onPlay);
     vid.addEventListener("pause", onPause);
+    vid.addEventListener("ended", onEnded);
     return () => {
       vid.removeEventListener("timeupdate", onTime);
       vid.removeEventListener("loadedmetadata", onMeta);
       vid.removeEventListener("play", onPlay);
       vid.removeEventListener("pause", onPause);
+      vid.removeEventListener("ended", onEnded);
     };
   }, [isVideo, loopEnabled, loopStartInput, loopEndInput]);
 
@@ -1247,6 +1259,11 @@ export function MediaPlayer({ filePath, itemName, onClose }: Props) {
           <span className="media-player__type-badge">{isVideo ? "Video" : "Audio"}</span>
           {!isVideo && audioState.detectedBpm && (
             <span className="media-player__bpm-badge">~{audioState.detectedBpm} BPM</span>
+          )}
+          {timerElapsed !== undefined && (
+            <span className={`media-player__session-timer${isTimerActive ? " media-player__session-timer--active" : ""}`}>
+              {formatTime(timerElapsed)}
+            </span>
           )}
         </div>
         <div className="media-player__header-actions">
