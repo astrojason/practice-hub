@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ChatBubbleLeftRightIcon,
   CheckIcon,
   NoSymbolIcon,
   PauseIcon,
@@ -10,7 +11,8 @@ import {
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
-import type { DashboardStudyMaterial, Resource } from "../../api/types";
+import { RatingTrendChart } from "../reports/RatingTrendChart";
+import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
 
 function inferResourceType(url: string): Resource["type"] {
   if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
@@ -22,6 +24,13 @@ function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Returns true if the last 3+ sessions are all Awful or Bad */
+function isStruggling(sessions: StudyMaterialSession[]): boolean {
+  const rated = sessions.filter((s) => s.rating != null);
+  if (rated.length < 3) return false;
+  return rated.slice(0, 3).every((s) => s.rating === "Awful" || s.rating === "Bad");
 }
 
 interface SingleCardProps {
@@ -43,6 +52,8 @@ interface SingleCardProps {
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
   onStartSequential?: () => void;
+  onOpenChat?: () => void;
+  isMediaActive?: boolean;
 }
 
 function StudyMaterialSingleCard({
@@ -63,14 +74,30 @@ function StudyMaterialSingleCard({
   onOpenFile,
   isChild,
   onStartSequential,
+  onOpenChat,
+  isMediaActive,
 }: SingleCardProps) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const mediaWasOpenedRef = useRef(false);
 
   useEffect(() => {
     if (isFormOpen) setModalOpen(true);
   }, [isFormOpen]);
+
+  useEffect(() => {
+    if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {
+      setModalOpen(true);
+      mediaWasOpenedRef.current = false;
+    }
+  }, [isMediaActive]);
+
+  function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
+    mediaWasOpenedRef.current = true;
+    onOpenFile!(path, mediaType, itemKey);
+  }
 
   function handleStart() {
     if (onStartSequential) {
@@ -84,24 +111,29 @@ function StudyMaterialSingleCard({
   function handleClose() {
     if (isFormOpen) onFormClose();
     setModalOpen(false);
+    setShowHistory(false);
   }
 
   function handleCancel() {
     onCancel();
     setModalOpen(false);
     setNotes("");
+    setShowHistory(false);
   }
 
   function handleFormSubmit(dpt: number) {
     onSessionSubmit(dpt);
     setModalOpen(false);
     setNotes("");
+    setShowHistory(false);
   }
 
   const resources: Resource[] = material.url
     ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url) }]
     : [];
-  const lastSession = material.meta.sessions?.[0] ?? null;
+  const sessions = (material.meta.sessions ?? []) as StudyMaterialSession[];
+  const lastSession = sessions[0] ?? null;
+  const struggling = isStruggling(sessions);
 
   return (
     <div
@@ -120,6 +152,13 @@ function StudyMaterialSingleCard({
           )}
         </div>
         <div className="item-actions">
+          <button
+            className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
+            onClick={onOpenChat}
+            title="AI chat"
+          >
+            <ChatBubbleLeftRightIcon className="icon" />
+          </button>
           {inSession ? (
             <button
               className="item-elapsed"
@@ -152,7 +191,7 @@ function StudyMaterialSingleCard({
           title={material.name}
           resources={resources}
           onClose={handleClose}
-          onOpenFile={onOpenFile}
+          onOpenFile={onOpenFile ? handleOpenFile : undefined}
         >
           {isFormOpen ? (
             <StudyMaterialSessionForm
@@ -179,6 +218,24 @@ function StudyMaterialSingleCard({
                   placeholder="Notes for this session…"
                 />
               </label>
+              {sessions.length > 0 && (
+                <div className="modal-history">
+                  <button
+                    className="btn-ghost modal-history-toggle"
+                    onClick={() => setShowHistory((v) => !v)}
+                  >
+                    {showHistory ? "Hide history" : `Rating history (${sessions.length})`}
+                  </button>
+                  {showHistory && (
+                    <RatingTrendChart
+                      token={token}
+                      entityType="study_material"
+                      entityId={material.id}
+                      sessions={sessions}
+                    />
+                  )}
+                </div>
+              )}
               <div className="modal-session-controls">
                 {isTimerActive ? (
                   <button className="btn-secondary" onClick={onPause}>
@@ -223,6 +280,8 @@ export interface StudyMaterialCardProps {
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenChat?: (id: number) => void;
+  isMediaActive?: boolean;
 }
 
 export function StudyMaterialCard({
@@ -238,6 +297,8 @@ export function StudyMaterialCard({
   onSessionSubmit,
   onStartSequential,
   onOpenFile,
+  onOpenChat,
+  isMediaActive,
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
   const state = getState(material.id);
@@ -261,6 +322,8 @@ export function StudyMaterialCard({
         onSessionSubmit={(dpt) => onSessionSubmit(material.id, dpt)}
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(material.id) : undefined}
         onOpenFile={onOpenFile}
+        onOpenChat={onOpenChat ? () => onOpenChat(material.id) : undefined}
+        isMediaActive={isMediaActive}
       />
       {(material.child_study_materials ?? []).map((child) => {
         const childState = getState(child.id);
@@ -282,6 +345,8 @@ export function StudyMaterialCard({
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
             onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, `studymaterial-${child.id}`) : undefined}
+            onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
+            isMediaActive={isMediaActive}
             isChild
           />
         );

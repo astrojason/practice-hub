@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ChatBubbleLeftRightIcon,
   CheckIcon,
   NoSymbolIcon,
   PauseIcon,
@@ -10,7 +11,8 @@ import {
 import { SongSessionForm } from "./forms/SongSessionForm";
 import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
-import type { Song } from "../../api/types";
+import { RatingTrendChart } from "../reports/RatingTrendChart";
+import type { Song, SongSession } from "../../api/types";
 
 function decodeHtml(html: string): string {
   const ta = document.createElement("textarea");
@@ -22,6 +24,13 @@ function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Returns true if the last 3+ sessions are all Awful or Bad */
+export function isStruggling(sessions: SongSession[]): boolean {
+  const rated = sessions.filter((s) => s.rating != null);
+  if (rated.length < 3) return false;
+  return rated.slice(0, 3).every((s) => s.rating === "Awful" || s.rating === "Bad");
 }
 
 interface Props {
@@ -40,6 +49,8 @@ interface Props {
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenChat?: () => void;
+  isMediaActive?: boolean;
 }
 
 export function SongCard({
@@ -58,15 +69,31 @@ export function SongCard({
   onFormClose,
   onSessionSubmit,
   onOpenFile,
+  onOpenChat,
+  isMediaActive,
 }: Props) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const mediaWasOpenedRef = useRef(false);
 
   // If Stop & Save is triggered externally (e.g. a future shortcut), open the modal
   useEffect(() => {
     if (isFormOpen) setModalOpen(true);
   }, [isFormOpen]);
+
+  useEffect(() => {
+    if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {
+      setModalOpen(true);
+      mediaWasOpenedRef.current = false;
+    }
+  }, [isMediaActive]);
+
+  function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
+    mediaWasOpenedRef.current = true;
+    onOpenFile!(path, mediaType, itemKey);
+  }
 
   function handleStart() {
     onStart();
@@ -76,22 +103,27 @@ export function SongCard({
   function handleClose() {
     if (isFormOpen) onFormClose();
     setModalOpen(false);
+    setShowHistory(false);
   }
 
   function handleCancel() {
     onCancel();
     setModalOpen(false);
     setNotes("");
+    setShowHistory(false);
   }
 
   function handleFormSubmit(dpt: number) {
     onSessionSubmit(dpt);
     setModalOpen(false);
     setNotes("");
+    setShowHistory(false);
   }
 
   const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
-  const lastSession = song.meta.sessions?.[0] ?? null;
+  const sessions = (song.meta.sessions ?? []) as SongSession[];
+  const lastSession = sessions[0] ?? null;
+  const struggling = isStruggling(sessions);
 
   return (
     <div
@@ -109,6 +141,13 @@ export function SongCard({
           </span>
         </div>
         <div className="item-actions">
+          <button
+            className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
+            onClick={onOpenChat}
+            title="AI chat"
+          >
+            <ChatBubbleLeftRightIcon className="icon" />
+          </button>
           {inSession ? (
             <button
               className="item-elapsed"
@@ -140,7 +179,7 @@ export function SongCard({
           subtitle={song.artist_name}
           resources={resources}
           onClose={handleClose}
-          onOpenFile={onOpenFile}
+          onOpenFile={onOpenFile ? handleOpenFile : undefined}
         >
           {isFormOpen ? (
             <SongSessionForm
@@ -179,6 +218,24 @@ export function SongCard({
                   placeholder="Notes for this session…"
                 />
               </label>
+              {sessions.length > 0 && (
+                <div className="modal-history">
+                  <button
+                    className="btn-ghost modal-history-toggle"
+                    onClick={() => setShowHistory((v) => !v)}
+                  >
+                    {showHistory ? "Hide history" : `Rating history (${sessions.length})`}
+                  </button>
+                  {showHistory && (
+                    <RatingTrendChart
+                      token={token}
+                      entityType="song"
+                      entityId={song.id}
+                      sessions={sessions}
+                    />
+                  )}
+                </div>
+              )}
               <div className="modal-session-controls">
                 {isTimerActive ? (
                   <button className="btn-secondary" onClick={onPause}>

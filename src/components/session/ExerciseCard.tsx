@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ChatBubbleLeftRightIcon,
   CheckIcon,
   NoSymbolIcon,
   PauseIcon,
@@ -10,12 +11,20 @@ import {
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
-import type { DashboardExercise } from "../../api/types";
+import { RatingTrendChart } from "../reports/RatingTrendChart";
+import type { DashboardExercise, ExerciseSession } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Returns true if the last 3+ sessions are all Awful or Bad */
+function isStruggling(sessions: ExerciseSession[]): boolean {
+  const rated = sessions.filter((s) => s.rating != null);
+  if (rated.length < 3) return false;
+  return rated.slice(0, 3).every((s) => s.rating === "Awful" || s.rating === "Bad");
 }
 
 interface CardProps {
@@ -37,6 +46,8 @@ interface CardProps {
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
   onStartSequential?: () => void;
+  onOpenChat?: () => void;
+  isMediaActive?: boolean;
 }
 
 function ExerciseSingleCard({
@@ -57,6 +68,8 @@ function ExerciseSingleCard({
   onOpenFile,
   isChild,
   onStartSequential,
+  onOpenChat,
+  isMediaActive,
 }: CardProps) {
   const ue = exercise.meta.user_exercise;
   const tags: string[] = [];
@@ -67,10 +80,24 @@ function ExerciseSingleCard({
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const mediaWasOpenedRef = useRef(false);
 
   useEffect(() => {
     if (isFormOpen) setModalOpen(true);
   }, [isFormOpen]);
+
+  useEffect(() => {
+    if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {
+      setModalOpen(true);
+      mediaWasOpenedRef.current = false;
+    }
+  }, [isMediaActive]);
+
+  function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
+    mediaWasOpenedRef.current = true;
+    onOpenFile!(path, mediaType, itemKey);
+  }
 
   function handleStart() {
     if (onStartSequential) {
@@ -84,22 +111,27 @@ function ExerciseSingleCard({
   function handleClose() {
     if (isFormOpen) onFormClose();
     setModalOpen(false);
+    setShowHistory(false);
   }
 
   function handleCancel() {
     onCancel();
     setModalOpen(false);
     setNotes("");
+    setShowHistory(false);
   }
 
   function handleFormSubmit(dpt: number) {
     onSessionSubmit(dpt);
     setModalOpen(false);
     setNotes("");
+    setShowHistory(false);
   }
 
   const resources = (exercise.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
-  const lastSession = exercise.meta.sessions?.[0] ?? null;
+  const sessions = (exercise.meta.sessions ?? []) as ExerciseSession[];
+  const lastSession = sessions[0] ?? null;
+  const struggling = isStruggling(sessions);
 
   return (
     <div
@@ -123,6 +155,13 @@ function ExerciseSingleCard({
           )}
         </div>
         <div className="item-actions">
+          <button
+            className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
+            onClick={onOpenChat}
+            title="AI chat"
+          >
+            <ChatBubbleLeftRightIcon className="icon" />
+          </button>
           {inSession ? (
             <button
               className="item-elapsed"
@@ -155,7 +194,7 @@ function ExerciseSingleCard({
           title={exercise.name}
           resources={resources}
           onClose={handleClose}
-          onOpenFile={onOpenFile}
+          onOpenFile={onOpenFile ? handleOpenFile : undefined}
         >
           {isFormOpen ? (
             <ExerciseSessionForm
@@ -189,6 +228,24 @@ function ExerciseSingleCard({
                   placeholder="Notes for this session…"
                 />
               </label>
+              {sessions.length > 0 && (
+                <div className="modal-history">
+                  <button
+                    className="btn-ghost modal-history-toggle"
+                    onClick={() => setShowHistory((v) => !v)}
+                  >
+                    {showHistory ? "Hide history" : `Rating history (${sessions.length})`}
+                  </button>
+                  {showHistory && (
+                    <RatingTrendChart
+                      token={token}
+                      entityType="exercise"
+                      entityId={exercise.id}
+                      sessions={sessions}
+                    />
+                  )}
+                </div>
+              )}
               <div className="modal-session-controls">
                 {isTimerActive ? (
                   <button className="btn-secondary" onClick={onPause}>
@@ -233,6 +290,8 @@ interface ExerciseCardProps {
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenChat?: (id: number) => void;
+  isMediaActive?: boolean;
 }
 
 export function ExerciseCard({
@@ -248,6 +307,8 @@ export function ExerciseCard({
   onSessionSubmit,
   onStartSequential,
   onOpenFile,
+  onOpenChat,
+  isMediaActive,
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
   const state = getState(exercise.id);
@@ -270,6 +331,8 @@ export function ExerciseCard({
         onSessionSubmit={(dpt) => onSessionSubmit(exercise.id, dpt)}
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(exercise.id) : undefined}
         onOpenFile={onOpenFile}
+        onOpenChat={onOpenChat ? () => onOpenChat(exercise.id) : undefined}
+        isMediaActive={isMediaActive}
       />
       {exercise.child_exercises.map((child) => {
         const childState = getState(child.id);
@@ -291,6 +354,8 @@ export function ExerciseCard({
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
             onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, `exercise-${child.id}`) : undefined}
+            onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
+            isMediaActive={isMediaActive}
             isChild
           />
         );

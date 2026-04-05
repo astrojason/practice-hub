@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getDashboard, getUser, rebuildDashboard } from "../api/client";
+import { getDashboard, getExerciseCatalog, getUser, rebuildDashboard } from "../api/client";
 import type {
   CatalogExercise,
+  CatalogExerciseWithActive,
   CatalogStudyMaterial,
   DashboardData,
   DashboardExercise,
   DashboardStudyMaterial,
+  ExerciseSession,
   Song,
+  SongSession,
+  StudyMaterialSession,
   UserProfile,
 } from "../api/types";
+import { ChatPanel } from "./chat/ChatPanel";
+import type { ChatEntity } from "./chat/ChatPanel";
+import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 
 // ─── Catalog → dashboard shape converters ─────────────────────────────────────
 
@@ -183,6 +190,11 @@ export function SessionView({ token, onSignOut }: Props) {
     currentIndex: number;
   } | null>(null);
 
+  // ── Chat / Reports ────────────────────────────────────────────────────────────
+  const [chatEntity, setChatEntity] = useState<ChatEntity | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [historicalExercises, setHistoricalExercises] = useState<CatalogExerciseWithActive[]>([]);
+
   // ── Player / Metronome ────────────────────────────────────────────────────────
   const [playerState, setPlayerState] = useState<{
     path: string;
@@ -231,6 +243,11 @@ export function SessionView({ token, onSignOut }: Props) {
         setServerTotal(user.time_practiced_today ?? 0);
 
         setCompletedIds((prev) => mergeCompletedFromDash(dash, new Set([...prev, ...loadStoredCompletedIds()])));
+
+        // Load historical exercises for chat context (non-blocking)
+        getExerciseCatalog(token)
+          .then((exercises) => setHistoricalExercises(exercises))
+          .catch(() => { /* non-critical */ });
       })
       .catch((err: { which: string; message: string }) =>
         setLoadError({ which: err.which ?? "unknown", message: err.message ?? String(err) })
@@ -616,6 +633,48 @@ export function SessionView({ token, onSignOut }: Props) {
     }
   }
 
+  // ── Chat handlers ─────────────────────────────────────────────────────────────
+  function openChatForSong(songId: number) {
+    const allSongs = [
+      ...(dashboard?.project?.songs ?? []),
+      ...(dashboard?.to_review?.songs ?? []),
+      ...additionalSongs,
+    ];
+    const song = allSongs.find((s) => s.id === songId);
+    if (!song) return;
+    setChatEntity({ type: "song", item: song, sessions: (song.meta.sessions ?? []) as SongSession[] });
+  }
+
+  function openChatForExercise(exerciseId: number) {
+    const allExercises = [
+      ...(dashboard?.exercises ?? []),
+      ...additionalExercises,
+    ];
+    let found: DashboardExercise | undefined;
+    for (const ex of allExercises) {
+      if (ex.id === exerciseId) { found = ex; break; }
+      const child = ex.child_exercises.find((c) => c.id === exerciseId);
+      if (child) { found = child; break; }
+    }
+    if (!found) return;
+    setChatEntity({ type: "exercise", item: found, sessions: (found.meta.sessions ?? []) as ExerciseSession[] });
+  }
+
+  function openChatForStudyMaterial(materialId: number) {
+    const allMaterials = [
+      ...(dashboard?.study_materials ?? []),
+      ...additionalStudyMaterials,
+    ];
+    let found: DashboardStudyMaterial | undefined;
+    for (const sm of allMaterials) {
+      if (sm.id === materialId) { found = sm; break; }
+      const child = (sm.child_study_materials ?? []).find((c) => c.id === materialId);
+      if (child) { found = child; break; }
+    }
+    if (!found) return;
+    setChatEntity({ type: "study_material", item: found, sessions: (found.meta.sessions ?? []) as StudyMaterialSession[] });
+  }
+
   // ── Completion counts for group headers ───────────────────────────────────────
   function exerciseCompletedCount(): number {
     if (!dashboard) return 0;
@@ -688,6 +747,7 @@ export function SessionView({ token, onSignOut }: Props) {
         onQuickAdd={() => setShowQuickAdd((v) => !v)}
         onMetronome={() => setMetronomeOpen((v) => !v)}
         onSignOut={onSignOut}
+        onReports={() => setReportOpen(true)}
       />
 
       {openSessionModalOpen && (
@@ -769,6 +829,26 @@ export function SessionView({ token, onSignOut }: Props) {
         );
       })()}
 
+      {/* Practice Time Report */}
+      {reportOpen && (
+        <PracticeTimeReport token={token} onClose={() => setReportOpen(false)} />
+      )}
+
+      {/* AI Chat Panel */}
+      {chatEntity && dashboard && (
+        <ChatPanel
+          context={{
+            entity: chatEntity,
+            projectSongs: dashboard.project?.songs ?? [],
+            activeExercises: dashboard.exercises,
+            activeStudyMaterials: dashboard.study_materials,
+            historicalExercises,
+            toLearnSongs: dashboard.to_learn?.songs ?? [],
+          }}
+          onClose={() => setChatEntity(null)}
+        />
+      )}
+
       <main className="session-main">
         {/* Exercises */}
         <ItemGroup
@@ -793,6 +873,8 @@ export function SessionView({ token, onSignOut }: Props) {
               }
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
+              onOpenChat={(id) => openChatForExercise(id)}
+              isMediaActive={playerState !== null}
             />
           ))}
         </ItemGroup>
@@ -825,6 +907,8 @@ export function SessionView({ token, onSignOut }: Props) {
               }
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
+              onOpenChat={(id) => openChatForStudyMaterial(id)}
+              isMediaActive={playerState !== null}
             />
           ))}
         </ItemGroup>
@@ -860,6 +944,8 @@ export function SessionView({ token, onSignOut }: Props) {
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+              onOpenChat={() => openChatForSong(song.id)}
+              isMediaActive={playerState !== null}
             />
           ))}
         </ItemGroup>
@@ -895,6 +981,8 @@ export function SessionView({ token, onSignOut }: Props) {
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+              onOpenChat={() => openChatForSong(song.id)}
+              isMediaActive={playerState !== null}
             />
           ))}
         </ItemGroup>
@@ -928,6 +1016,7 @@ export function SessionView({ token, onSignOut }: Props) {
                   handleSessionSubmit(dpt, `song-${song.id}`)
                 }
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+                onOpenChat={() => openChatForSong(song.id)}
               />
             ))}
             {additionalExercises.map((ex) => (
@@ -947,6 +1036,8 @@ export function SessionView({ token, onSignOut }: Props) {
                 }
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
+                onOpenChat={(id) => openChatForExercise(id)}
+                isMediaActive={playerState !== null}
               />
             ))}
             {additionalStudyMaterials.map((sm) => (
@@ -966,6 +1057,8 @@ export function SessionView({ token, onSignOut }: Props) {
                 }
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
+                onOpenChat={(id) => openChatForStudyMaterial(id)}
+                isMediaActive={playerState !== null}
               />
             ))}
           </ItemGroup>

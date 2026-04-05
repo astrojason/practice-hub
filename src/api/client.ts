@@ -16,6 +16,11 @@ import type {
   CatalogSongsResponse,
   CatalogExercisesResponse,
   CatalogStudyMaterialsResponse,
+  SongSessionListResponse,
+  ExerciseSessionListResponse,
+  StudyMaterialSessionListResponse,
+  PracticeStats,
+  CatalogExerciseWithActive,
 } from "./types";
 
 function authHeaders(token: string): HeadersInit {
@@ -126,6 +131,65 @@ export async function postOpenSession(
     body: JSON.stringify(payload),
   });
   return handleResponse<OpenSessionResponse>(response);
+}
+
+// ─── Session history per entity ───────────────────────────────────────────────
+
+export async function getSongSessionHistory(
+  token: string,
+  songId: number,
+  page = 1,
+  limit = 50
+): Promise<SongSessionListResponse> {
+  const params = new URLSearchParams({ song_id: String(songId), page: String(page), limit: String(limit) });
+  const response = await fetch(`${API_BASE_URL}/user-song-session?${params}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<SongSessionListResponse>(response);
+}
+
+export async function getExerciseSessionHistory(
+  token: string,
+  exerciseId: number,
+  page = 1,
+  limit = 50
+): Promise<ExerciseSessionListResponse> {
+  const params = new URLSearchParams({ exercise_id: String(exerciseId), page: String(page), limit: String(limit) });
+  const response = await fetch(`${API_BASE_URL}/user-exercise-session?${params}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<ExerciseSessionListResponse>(response);
+}
+
+export async function getStudyMaterialSessionHistory(
+  token: string,
+  studyMaterialId: number,
+  page = 1,
+  limit = 50
+): Promise<StudyMaterialSessionListResponse> {
+  const params = new URLSearchParams({ study_material_id: String(studyMaterialId), page: String(page), limit: String(limit) });
+  const response = await fetch(`${API_BASE_URL}/user-study-material-session?${params}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<StudyMaterialSessionListResponse>(response);
+}
+
+// ─── Practice stats ───────────────────────────────────────────────────────────
+
+export async function getUserStats(token: string): Promise<PracticeStats> {
+  const response = await fetch(`${API_BASE_URL}/user/stats`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<PracticeStats>(response);
+}
+
+// ─── Exercise catalog (historical) ───────────────────────────────────────────
+
+export async function getExerciseCatalog(token: string): Promise<CatalogExerciseWithActive[]> {
+  const response = await fetch(`${API_BASE_URL}/exercise/user-catalog`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<CatalogExerciseWithActive[]>(response);
 }
 
 // ─── Quick Add catalog ────────────────────────────────────────────────────────

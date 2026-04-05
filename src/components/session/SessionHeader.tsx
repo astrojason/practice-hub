@@ -1,6 +1,7 @@
 import {
   ArrowPathIcon,
   ArrowRightStartOnRectangleIcon,
+  ChartBarIcon,
   CheckCircleIcon,
   MagnifyingGlassPlusIcon,
   PlusIcon,
@@ -19,6 +20,7 @@ interface Props {
   onQuickAdd: () => void;
   onMetronome: () => void;
   onSignOut: () => void;
+  onReports: () => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -42,6 +44,7 @@ export function SessionHeader({
   onQuickAdd,
   onMetronome,
   onSignOut,
+  onReports,
 }: Props) {
   const progressPct = Math.min(
     100,
@@ -67,6 +70,9 @@ export function SessionHeader({
           </button>
           <button onClick={onQuickAdd} className="btn-secondary">
             <MagnifyingGlassPlusIcon className="icon-sm" /> Quick add
+          </button>
+          <button onClick={onReports} className="btn-ghost" title="Practice time report">
+            <ChartBarIcon className="icon-sm" /> Reports
           </button>
           <button onClick={onMetronome} className="btn-ghost" title="Open metronome">
             ♩ Metronome

@@ -348,6 +348,97 @@ export interface OpenSessionResponse extends SessionPostResponse {
   updated_timestamp: number;
 }
 
+// ─── Session history list responses (GET with entity filter) ─────────────────
+
+export interface SongSessionListResponse {
+  user_song_sessions: SongSession[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ExerciseSessionListResponse {
+  user_exercise_sessions: ExerciseSession[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface StudyMaterialSessionListResponse {
+  user_study_material_sessions: StudyMaterialSession[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+// ─── Practice stats (GET /user/stats) ────────────────────────────────────────
+
+export interface DailyChartPoint {
+  date: string; // ISO date "YYYY-MM-DD"
+  totalSeconds: number;
+}
+
+export interface MonthlyChartPoint {
+  month: string; // "Jan", "Feb", etc.
+  totalSeconds: number;
+  year: number;
+  monthNumber: number;
+}
+
+export interface YearlyChartPoint {
+  year: number;
+  totalSeconds: number;
+}
+
+export interface PracticeStatsTotals {
+  daily: number;
+  monthly: number;
+  yearly: number;
+  lifetime: number;
+}
+
+export interface PracticeStatsTotalsByType {
+  songs: number;
+  exercises: number;
+  studyMaterials: number;
+  openSessions: number;
+}
+
+export interface PracticeStatsHighlight {
+  mostPracticedSong: { id: number; name: string; totalSeconds: number } | null;
+  longestPracticeDay: { date: string; totalSeconds: number } | null;
+  longestStreakDays: number;
+  longestNonZeroStreak: number;
+  firstPracticeSession: { date: string; entityType: string; name: string } | null;
+  longestEntityStreaks: { songs: number; exercises: number; studyMaterials: number };
+}
+
+export interface PracticeStats {
+  chart: {
+    daily: DailyChartPoint[];
+    monthly: MonthlyChartPoint[];
+    yearly: YearlyChartPoint[];
+  };
+  totals: PracticeStatsTotals;
+  totalsByType: PracticeStatsTotalsByType;
+  rangeTotals: Record<string, number>;
+  highlights: PracticeStatsHighlight;
+  rangeHighlights: Record<string, PracticeStatsHighlight>;
+  rangeLabels: Record<string, string>;
+  rangeItems: Record<string, { songs: { id: number; name: string; totalSeconds: number }[]; exercises: { id: number; name: string; totalSeconds: number }[]; studyMaterials: { id: number; name: string; totalSeconds: number }[] }>;
+  userJoinedTimestamp: number | null;
+}
+
+// ─── Exercise catalog (GET /exercise/user-catalog) ────────────────────────────
+
+export interface CatalogExerciseWithActive {
+  id: number;
+  name: string;
+  order: number | null;
+  parent_exercise_id: number | null;
+  active: boolean;
+}
+
 // ─── Catalog fetch types (Quick Add) ─────────────────────────────────────────
 
 export interface CatalogSongsResponse {
