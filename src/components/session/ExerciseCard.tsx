@@ -200,6 +200,7 @@ function ExerciseSingleCard({
             <ExerciseSessionForm
               token={token}
               exerciseId={exercise.id}
+              inUserExercise={exercise.meta.user_exercise !== null}
               initialSeconds={timerElapsed}
               initialNotes={notes}
               lastSession={lastSession}

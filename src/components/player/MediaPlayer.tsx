@@ -228,6 +228,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const [speedInput, setSpeedInput] = useState("1.00");
   const speedRef = useRef(1.0);
 
+  // ── Loop increase refs (for use inside event handlers without stale closures) ─
+  const videoLoopCountRef = useRef(0);
+  const loopIncreaseEnabledRef = useRef(false);
+  const loopIncreaseByRef = useRef(5);
+  const loopIncreaseAtRef = useRef(3);
+  const schedulePresetSaveRef = useRef<() => void>(() => {});
+
   // ── Pitch ───────────────────────────────────────────────────────────────────
   const [pitchSemitones, setPitchSemitonesLocal] = useState(0);
   const [pitchCents, setPitchCentsLocal] = useState(0);
@@ -284,6 +291,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   useEffect(() => { metronomeFollowSpeedRef.current = metronomeFollowSpeed; }, [metronomeFollowSpeed]);
   useEffect(() => { metronomeCountInRef.current = metronomeCountIn; }, [metronomeCountIn]);
   useEffect(() => { speedRef.current = parseFloat(speedInput) || 1.0; }, [speedInput]);
+  useEffect(() => { loopIncreaseEnabledRef.current = loopIncreaseEnabled; }, [loopIncreaseEnabled]);
+  useEffect(() => { loopIncreaseByRef.current = loopIncreaseBy; }, [loopIncreaseBy]);
+  useEffect(() => { loopIncreaseAtRef.current = loopIncreaseAt; }, [loopIncreaseAt]);
+  // Sync speedInput when the audio engine auto-increments speed
+  useEffect(() => {
+    if (isVideo) return;
+    const s = audioState.speed.toFixed(2);
+    setSpeedInput(s);
+    speedRef.current = audioState.speed;
+  }, [audioState.speed, isVideo]);
   useEffect(() => { shortcutBindingsRef.current = shortcutBindings; }, [shortcutBindings]);
   useEffect(() => { waveMarkersRef.current = waveMarkers; }, [waveMarkers]);
   useEffect(() => { selectedMarkerIdxRef.current = selectedMarkerIdx; }, [selectedMarkerIdx]);
@@ -337,6 +354,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (presetSaveTimerRef.current) clearTimeout(presetSaveTimerRef.current);
     presetSaveTimerRef.current = setTimeout(savePreset, 400);
   }, [savePreset]);
+
+  useEffect(() => { schedulePresetSaveRef.current = schedulePresetSave; }, [schedulePresetSave]);
 
   // ── Apply preset on load ──────────────────────────────────────────────────
 
@@ -527,6 +546,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (isVideo) {
       const vid = videoRef.current;
       if (!vid) return;
+      videoLoopCountRef.current = 0;
       vid.src = assetUrl(filePath);
       vid.load();
       if (preset?.loopStart) {
@@ -562,6 +582,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       if (loopEnabled && le !== null && vid.currentTime >= le) {
         vid.currentTime = ls;
         if (vid.paused) vid.play().catch(() => {});
+        videoLoopCountRef.current++;
+        if (loopIncreaseEnabledRef.current && loopIncreaseAtRef.current > 0 && videoLoopCountRef.current >= loopIncreaseAtRef.current) {
+          videoLoopCountRef.current = 0;
+          const next = Math.min(3.0, speedRef.current * (1 + loopIncreaseByRef.current / 100));
+          const s = next.toFixed(2);
+          setSpeedInput(s);
+          speedRef.current = next;
+          vid.playbackRate = next;
+          schedulePresetSaveRef.current();
+        }
       }
     };
     const onMeta = () => setVideoDuration(vid.duration);

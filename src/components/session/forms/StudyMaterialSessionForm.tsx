@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { postStudyMaterialSession } from "../../../api/client";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
@@ -36,6 +36,16 @@ export function StudyMaterialSessionForm({
   const [notes, setNotes] = useState(initialNotes);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key >= "1" && e.key <= "5") setRating(e.key);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

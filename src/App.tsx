@@ -2,6 +2,9 @@ import { useRef, useEffect, useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { SignInScreen } from "./components/SignInScreen";
 import { SessionView } from "./components/SessionView";
+import { GpLibraryView } from "./components/GpLibraryView";
+
+type AppView = "session" | "gp-library";
 
 const MUSIC_QUOTES = [
   { text: "Without music, life would be a mistake.", author: "Nietzsche" },
@@ -18,6 +21,7 @@ export function App() {
   const { isLoading, isAuthenticated, token, signIn, signOut } = useAuth();
   const quoteRef = useRef(MUSIC_QUOTES[Math.floor(Math.random() * MUSIC_QUOTES.length)]);
   const [slowLoad, setSlowLoad] = useState(false);
+  const [view, setView] = useState<AppView>("session");
 
   useEffect(() => {
     if (!isLoading) return;
@@ -45,5 +49,15 @@ export function App() {
     return <SignInScreen onSignIn={signIn} />;
   }
 
-  return <SessionView token={token} onSignOut={signOut} />;
+  if (view === "gp-library") {
+    return <GpLibraryView token={token} onBack={() => setView("session")} />;
+  }
+
+  return (
+    <SessionView
+      token={token}
+      onSignOut={signOut}
+      onGpLibrary={() => setView("gp-library")}
+    />
+  );
 }

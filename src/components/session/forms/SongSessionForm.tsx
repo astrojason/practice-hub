@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
 import { postSongSession } from "../../../api/client";
 import { LastSessionInfo } from "../LastSessionInfo";
@@ -68,6 +68,16 @@ export function SongSessionForm({
   const bpmPct = refBpm.current && bpm
     ? Math.round(Number(bpm) / refBpm.current * 100)
     : null;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key >= "1" && e.key <= "5") setRating(e.key);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

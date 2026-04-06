@@ -281,6 +281,7 @@ export interface ExerciseSessionPayload {
   bpm: number | null;
   rating: number | null;
   notes: string | null;
+  in_user_exercise: boolean;
 }
 
 export interface StudyMaterialSessionPayload {
@@ -427,6 +428,58 @@ export interface PracticeStats {
   rangeLabels: Record<string, string>;
   rangeItems: Record<string, { songs: { id: number; name: string; totalSeconds: number }[]; exercises: { id: number; name: string; totalSeconds: number }[]; studyMaterials: { id: number; name: string; totalSeconds: number }[] }>;
   userJoinedTimestamp: number | null;
+}
+
+// ─── Guitar Pro library scanner ───────────────────────────────────────────────
+
+/** Raw entry returned by the Rust scan_gp_directory command. */
+export interface GpFileEntry {
+  path: string;
+  filename: string;
+  modified_ms: number;
+  size_bytes: number;
+}
+
+/** Parsed from filename: {Artist}-{Song Title}-{MM-DD-YYYY}.gp */
+export interface GpFileParsed extends GpFileEntry {
+  parsed_artist: string;
+  parsed_title: string;
+  parsed_date: string; // MM-DD-YYYY
+  date_ms: number;     // epoch ms for date comparison
+}
+
+/** A GP file that matched an Instrumenta song. */
+export interface GpMatch {
+  file: GpFileParsed;
+  song_id: number;
+  song_name: string;
+  artist_name: string;
+  /** Computed by the analyzer sidecar; null until analysis completes. */
+  difficulty_score: number | null;
+  /** Whether this version supersedes a previously scanned version. */
+  is_newer_version: boolean;
+}
+
+/** A GP file that could not be matched to any Instrumenta song. */
+export interface GpUnmatched {
+  file: GpFileParsed;
+  /** null = never assigned; number = manually assigned song id */
+  assigned_song_id: number | null;
+}
+
+export interface GpScanResult {
+  matches: GpMatch[];
+  unmatched: GpUnmatched[];
+  skipped_count: number; // unchanged files skipped by incremental logic
+}
+
+/** Persisted per-file scan state (stored in tauri-plugin-store). */
+export interface GpSeenEntry {
+  modified_ms: number;
+  song_id: number | null;
+  difficulty_score: number | null;
+  resource_path: string;
+  dismissed: boolean;
 }
 
 // ─── Exercise catalog (GET /exercise/user-catalog) ────────────────────────────

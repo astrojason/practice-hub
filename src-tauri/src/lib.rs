@@ -1,11 +1,13 @@
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{Read, Seek, SeekFrom},
     net::SocketAddr,
+    path::Path,
     sync::{Arc, Mutex},
     thread,
+    time::UNIX_EPOCH,
 };
-use tauri::Manager;
+use tauri::{Manager, path::BaseDirectory};
 use tiny_http::Header;
 use url::Url;
 
@@ -175,6 +177,98 @@ fn spawn_file_server() {
     });
 }
 
+// ─── GP file analysis ─────────────────────────────────────────────────────────
+// Invokes the bundled Python sidecar (analyze_gp.py) on a local .gp file and
+// returns the raw JSON output as a string.  The caller parses it.
+
+#[tauri::command]
+async fn analyze_gp_file(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<String, String> {
+    let script = app
+        .path()
+        .resolve("sidecar/analyze_gp.py", BaseDirectory::Resource)
+        .map_err(|e| format!("Could not locate analyzer script: {e}"))?;
+
+    let output = std::process::Command::new("python3")
+        .arg(&script)
+        .arg(&file_path)
+        .output()
+        .map_err(|e| format!("Failed to launch python3: {e}"))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+// ─── GP library scanner ───────────────────────────────────────────────────────
+// Recursively walks a directory and returns JSON describing every .gp file
+// found, along with its filesystem metadata for incremental-scan tracking.
+
+#[derive(serde::Serialize)]
+struct GpFileEntry {
+    path: String,
+    filename: String,
+    modified_ms: u64, // Unix timestamp in milliseconds
+    size_bytes: u64,
+}
+
+#[tauri::command]
+async fn scan_gp_directory(root_path: String) -> Result<String, String> {
+    let mut entries: Vec<GpFileEntry> = Vec::new();
+    scan_dir(Path::new(&root_path), &mut entries)
+        .map_err(|e| format!("Scan error: {e}"))?;
+    serde_json::to_string(&entries).map_err(|e| e.to_string())
+}
+
+fn scan_dir(dir: &Path, out: &mut Vec<GpFileEntry>) -> std::io::Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            scan_dir(&path, out)?;
+        } else if let Some(ext) = path.extension() {
+            let ext_lower = ext.to_string_lossy().to_lowercase();
+            if ext_lower == "gp" || ext_lower == "gpx" || ext_lower == "gp7" || ext_lower == "gp8" {
+                let meta = fs::metadata(&path)?;
+                let modified_ms = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                out.push(GpFileEntry {
+                    path: path.to_string_lossy().to_string(),
+                    filename: path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                    modified_ms,
+                    size_bytes: meta.len(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+// ─── Open file with system default handler ────────────────────────────────────
+
+#[tauri::command]
+async fn open_with_default(path: String) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open file: {e}"))?;
+    Ok(())
+}
+
 // ─── Google OAuth command ─────────────────────────────────────────────────────
 // Opens a WebviewWindow for the Google OAuth flow and returns the callback URL.
 
@@ -246,7 +340,12 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![start_auth])
+        .invoke_handler(tauri::generate_handler![
+            start_auth,
+            analyze_gp_file,
+            scan_gp_directory,
+            open_with_default,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running practice-hub");
 }

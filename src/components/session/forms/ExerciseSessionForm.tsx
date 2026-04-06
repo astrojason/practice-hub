@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
 import { postExerciseSession } from "../../../api/client";
 import { LastSessionInfo } from "../LastSessionInfo";
@@ -16,6 +16,7 @@ const RATING_OPTIONS = [
 interface Props {
   token: string;
   exerciseId: number;
+  inUserExercise: boolean;
   initialSeconds: number;
   initialNotes?: string;
   lastSession?: LastSessionData | null;
@@ -26,6 +27,7 @@ interface Props {
 export function ExerciseSessionForm({
   token,
   exerciseId,
+  inUserExercise,
   initialSeconds,
   initialNotes = "",
   lastSession,
@@ -50,6 +52,16 @@ export function ExerciseSessionForm({
     ? Math.round(Number(bpm) / refBpm.current * 100)
     : null;
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key >= "1" && e.key <= "5") setRating(e.key);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -61,6 +73,7 @@ export function ExerciseSessionForm({
         bpm: bpm ? parseInt(bpm) : null,
         rating: rating ? parseInt(rating) : null,
         notes: notes.trim() || null,
+        in_user_exercise: inUserExercise,
       };
       const res = await postExerciseSession(token, payload);
       onSubmit(res.daily_practice_time);

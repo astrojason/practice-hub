@@ -154,9 +154,10 @@ function inferSmResourceType(url: string): "local_file" | "youtube" | "url" {
 interface Props {
   token: string;
   onSignOut: () => Promise<void>;
+  onGpLibrary: () => void;
 }
 
-export function SessionView({ token, onSignOut }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -519,6 +520,7 @@ export function SessionView({ token, onSignOut }: Props) {
         name: child.name,
         resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type })),
         lastSession: child.meta.sessions?.[0] ?? null,
+        inUserExercise: child.meta.user_exercise !== null,
       }));
     } else {
       const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
@@ -748,6 +750,7 @@ export function SessionView({ token, onSignOut }: Props) {
         onMetronome={() => setMetronomeOpen((v) => !v)}
         onSignOut={onSignOut}
         onReports={() => setReportOpen(true)}
+        onGpLibrary={onGpLibrary}
       />
 
       {openSessionModalOpen && (

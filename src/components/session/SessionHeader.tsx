@@ -4,6 +4,7 @@ import {
   ChartBarIcon,
   CheckCircleIcon,
   MagnifyingGlassPlusIcon,
+  MusicalNoteIcon,
   PlusIcon,
 } from "@heroicons/react/16/solid";
 
@@ -21,6 +22,7 @@ interface Props {
   onMetronome: () => void;
   onSignOut: () => void;
   onReports: () => void;
+  onGpLibrary: () => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -45,6 +47,7 @@ export function SessionHeader({
   onMetronome,
   onSignOut,
   onReports,
+  onGpLibrary,
 }: Props) {
   const progressPct = Math.min(
     100,
@@ -73,6 +76,9 @@ export function SessionHeader({
           </button>
           <button onClick={onReports} className="btn-ghost" title="Practice time report">
             <ChartBarIcon className="icon-sm" /> Reports
+          </button>
+          <button onClick={onGpLibrary} className="btn-ghost" title="Guitar Pro library scanner">
+            <MusicalNoteIcon className="icon-sm" /> GP Library
           </button>
           <button onClick={onMetronome} className="btn-ghost" title="Open metronome">
             ♩ Metronome

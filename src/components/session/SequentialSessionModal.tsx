@@ -24,6 +24,7 @@ export interface SequentialChild {
   name: string;
   resources: Resource[];
   lastSession: LastSessionData | null;
+  inUserExercise?: boolean;
 }
 
 interface Props {
@@ -86,6 +87,7 @@ export function SequentialSessionModal({
             <ExerciseSessionForm
               token={token}
               exerciseId={current.id}
+              inUserExercise={current.inUserExercise ?? true}
               initialSeconds={timerElapsed}
               initialNotes={notes}
               lastSession={current.lastSession}

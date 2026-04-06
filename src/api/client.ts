@@ -229,6 +229,39 @@ export async function getCatalogExercises(
   return handleResponse<CatalogExercisesResponse>(response);
 }
 
+// ─── Guitar Pro difficulty ────────────────────────────────────────────────────
+
+export async function pushDifficultyScore(
+  token: string,
+  songId: number,
+  difficultyScore: number
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/song/${songId}/difficulty`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ difficulty_score: difficultyScore }),
+  });
+  await handleResponse<unknown>(response);
+}
+
+export async function registerGpResource(
+  token: string,
+  songId: number,
+  filePath: string,
+  resourceName: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/song/${songId}/resource`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      name: resourceName,
+      url: filePath,
+      type: "guitar_pro",
+    }),
+  });
+  await handleResponse<unknown>(response);
+}
+
 export async function getCatalogStudyMaterials(
   token: string,
   page: number,
