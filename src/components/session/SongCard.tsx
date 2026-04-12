@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
+  ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
   PlayIcon,
@@ -37,6 +38,7 @@ interface Props {
   token: string;
   song: Song;
   isCompletedToday: boolean;
+  isSkippedToday: boolean;
   isTimerActive: boolean;
   isTimerPaused: boolean;
   timerElapsed: number;
@@ -48,6 +50,7 @@ interface Props {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
+  onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
@@ -57,6 +60,7 @@ export function SongCard({
   token,
   song,
   isCompletedToday,
+  isSkippedToday,
   isTimerActive,
   isTimerPaused,
   timerElapsed,
@@ -68,6 +72,7 @@ export function SongCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onSkip,
   onOpenFile,
   onOpenChat,
   isMediaActive,
@@ -127,11 +132,11 @@ export function SongCard({
 
   return (
     <div
-      className={`item-card ${isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
+      className={`item-card ${isSkippedToday ? "skipped" : isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
     >
       <div className="item-card-row">
         <span className="item-status">
-          {isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
+          {isSkippedToday ? <ForwardIcon className="icon-sm" /> : isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
         </span>
         <div className="item-info">
           <span className="item-name">{song.name}</span>
@@ -168,6 +173,11 @@ export function SongCard({
               >
                 <PlusIcon className="icon" />
               </button>
+              {!isCompletedToday && !isSkippedToday && (
+                <button className="btn-ghost btn-skip" onClick={onSkip} title="Skip">
+                  <ForwardIcon className="icon" />
+                </button>
+              )}
             </>
           )}
         </div>

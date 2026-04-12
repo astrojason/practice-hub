@@ -448,6 +448,16 @@ export interface GpFileParsed extends GpFileEntry {
   date_ms: number;     // epoch ms for date comparison
 }
 
+export interface DifficultyVector {
+  speed: number;
+  fret_complexity: number;
+  pick_complexity: number;
+  rhythm_complexity: number;
+  technique_density: number;
+  stamina: number;
+  overall: number;
+}
+
 /** A GP file that matched an Instrumenta song. */
 export interface GpMatch {
   file: GpFileParsed;
@@ -456,6 +466,10 @@ export interface GpMatch {
   artist_name: string;
   /** Computed by the analyzer sidecar; null until analysis completes. */
   difficulty_score: number | null;
+  difficulty_vector: DifficultyVector | null;
+  tempo_bpm: number | null;
+  /** User-overridden score; takes precedence over difficulty_score when pushing. */
+  manual_score: number | null;
   /** Whether this version supersedes a previously scanned version. */
   is_newer_version: boolean;
 }
@@ -478,6 +492,9 @@ export interface GpSeenEntry {
   modified_ms: number;
   song_id: number | null;
   difficulty_score: number | null;
+  difficulty_vector: DifficultyVector | null;
+  tempo_bpm: number | null;
+  manual_score: number | null;
   resource_path: string;
   dismissed: boolean;
 }

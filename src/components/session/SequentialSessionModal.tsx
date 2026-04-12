@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ArrowLeftIcon,
+  ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
   PlayIcon,
@@ -40,6 +41,7 @@ interface Props {
   onPause: () => void;
   onStopAndSave: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
+  onSkip: () => void;
   onFormClose: () => void;
   onCancelReturn: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
@@ -58,6 +60,7 @@ export function SequentialSessionModal({
   onPause,
   onStopAndSave,
   onSessionSubmit,
+  onSkip,
   onFormClose,
   onCancelReturn,
   onOpenFile,
@@ -138,6 +141,9 @@ export function SequentialSessionModal({
             )}
             <button className="btn-primary" onClick={onStopAndSave}>
               <StopIcon className="icon" /> Stop &amp; Save
+            </button>
+            <button className="btn-ghost" onClick={onSkip}>
+              <ForwardIcon className="icon" /> Skip
             </button>
             <button className="btn-ghost" onClick={onCancelReturn}>
               <NoSymbolIcon className="icon" /> Cancel &amp; Return

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
+  ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
   PlayIcon,
@@ -31,6 +32,7 @@ interface CardProps {
   token: string;
   exercise: DashboardExercise;
   isCompletedToday: boolean;
+  isSkippedToday: boolean;
   isTimerActive: boolean;
   isTimerPaused: boolean;
   timerElapsed: number;
@@ -42,6 +44,7 @@ interface CardProps {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
+  onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
@@ -54,6 +57,7 @@ function ExerciseSingleCard({
   token,
   exercise,
   isCompletedToday,
+  isSkippedToday,
   isTimerActive,
   isTimerPaused,
   timerElapsed,
@@ -65,6 +69,7 @@ function ExerciseSingleCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onSkip,
   onOpenFile,
   isChild,
   onStartSequential,
@@ -135,11 +140,11 @@ function ExerciseSingleCard({
 
   return (
     <div
-      className={`item-card ${isChild ? "child-card" : ""} ${isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
+      className={`item-card ${isChild ? "child-card" : ""} ${isSkippedToday ? "skipped" : isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
     >
       <div className="item-card-row">
         <span className="item-status">
-          {isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
+          {isSkippedToday ? <ForwardIcon className="icon-sm" /> : isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
         </span>
         <div className="item-info">
           <span className="item-name">{exercise.name}</span>
@@ -182,6 +187,11 @@ function ExerciseSingleCard({
                   title="Log session"
                 >
                   <PlusIcon className="icon" />
+                </button>
+              )}
+              {!isCompletedToday && !isSkippedToday && (
+                <button className="btn-ghost btn-skip" onClick={onSkip} title="Skip">
+                  <ForwardIcon className="icon" />
                 </button>
               )}
             </>
@@ -277,6 +287,7 @@ interface ExerciseCardProps {
   exercise: DashboardExercise;
   getState: (id: number) => {
     isCompletedToday: boolean;
+    isSkippedToday: boolean;
     isTimerActive: boolean;
     isTimerPaused: boolean;
     timerElapsed: number;
@@ -289,6 +300,7 @@ interface ExerciseCardProps {
   onFormOpen: (id: number) => void;
   onFormClose: (id: number) => void;
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
+  onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onOpenChat?: (id: number) => void;
@@ -306,6 +318,7 @@ export function ExerciseCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onSkip,
   onStartSequential,
   onOpenFile,
   onOpenChat,
@@ -319,6 +332,7 @@ export function ExerciseCard({
         token={token}
         exercise={exercise}
         isCompletedToday={state.isCompletedToday}
+        isSkippedToday={state.isSkippedToday}
         isTimerActive={state.isTimerActive}
         isTimerPaused={state.isTimerPaused}
         timerElapsed={state.timerElapsed}
@@ -330,6 +344,7 @@ export function ExerciseCard({
         onFormOpen={() => onFormOpen(exercise.id)}
         onFormClose={() => onFormClose(exercise.id)}
         onSessionSubmit={(dpt) => onSessionSubmit(exercise.id, dpt)}
+        onSkip={() => onSkip(exercise.id)}
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(exercise.id) : undefined}
         onOpenFile={onOpenFile}
         onOpenChat={onOpenChat ? () => onOpenChat(exercise.id) : undefined}
@@ -343,6 +358,7 @@ export function ExerciseCard({
             token={token}
             exercise={child}
             isCompletedToday={childState.isCompletedToday}
+            isSkippedToday={childState.isSkippedToday}
             isTimerActive={childState.isTimerActive}
             isTimerPaused={childState.isTimerPaused}
             timerElapsed={childState.timerElapsed}
@@ -354,6 +370,7 @@ export function ExerciseCard({
             onFormOpen={() => onFormOpen(child.id)}
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
+            onSkip={() => onSkip(child.id)}
             onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, `exercise-${child.id}`) : undefined}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}

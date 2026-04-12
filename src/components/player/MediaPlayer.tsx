@@ -261,6 +261,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const presetSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const presetStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const presetsRef = useRef<Record<string, Preset>>(loadPresets());
+  // Always points to the latest savePreset, used to flush on unmount
+  const savePresetRef = useRef<(opts?: { silent?: boolean }) => void>(() => {});
 
   // ── Shortcuts ────────────────────────────────────────────────────────────────
   const [shortcutBindings, setShortcutBindings] = useState<Record<string, string>>(loadShortcuts);
@@ -356,6 +358,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   }, [savePreset]);
 
   useEffect(() => { schedulePresetSaveRef.current = schedulePresetSave; }, [schedulePresetSave]);
+  useEffect(() => { savePresetRef.current = savePreset; }, [savePreset]);
 
   // ── Apply preset on load ──────────────────────────────────────────────────
 
@@ -549,6 +552,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       videoLoopCountRef.current = 0;
       vid.src = assetUrl(filePath);
       vid.load();
+      // Restore playback speed from preset
+      vid.playbackRate = speedRef.current;
       if (preset?.loopStart) {
         const ls = parseTimeInput(preset.loopStart, 9999);
         if (ls !== null) vid.currentTime = ls;
@@ -564,7 +569,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     return () => {
       if (!isVideo) audioActions.destroy();
       stopMetronome();
-      if (presetSaveTimerRef.current) clearTimeout(presetSaveTimerRef.current);
+      // Flush any pending debounced save before unmounting so settings aren't lost
+      if (presetSaveTimerRef.current) {
+        clearTimeout(presetSaveTimerRef.current);
+        presetSaveTimerRef.current = null;
+        savePresetRef.current({ silent: true });
+      }
       if (presetStatusTimerRef.current) clearTimeout(presetStatusTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

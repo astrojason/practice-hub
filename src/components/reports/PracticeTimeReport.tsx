@@ -13,10 +13,15 @@ import { getUserStats } from "../../api/client";
 import type { PracticeStats } from "../../api/types";
 
 function fmtSeconds(s: number): string {
-  const h = Math.floor(s / 3600);
+  const days = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  const sec = s % 60;
+  const secStr = sec > 0 ? ` ${sec}s` : "";
+  if (days > 0) return `${days}d ${h}h ${m}m${secStr}`;
+  if (h > 0) return `${h}h ${m}m${secStr}`;
+  if (m > 0) return `${m}m${secStr}`;
+  return `${sec}s`;
 }
 
 type RangeKey = "daily" | "monthly" | "yearly";

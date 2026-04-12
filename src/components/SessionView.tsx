@@ -72,10 +72,22 @@ function hasSessionToday(sessions: { created_timestamp: number }[]): boolean {
 }
 
 const COMPLETED_KEY = "ph_completed";
+const SKIPPED_KEY = "ph_skipped";
 
 function loadStoredCompletedIds(): Set<string> {
   try {
     const stored = JSON.parse(localStorage.getItem(COMPLETED_KEY) ?? "null");
+    const today = new Date().toLocaleDateString("en-CA");
+    if (stored?.date === today && Array.isArray(stored.ids)) {
+      return new Set<string>(stored.ids);
+    }
+  } catch {}
+  return new Set<string>();
+}
+
+function loadStoredSkippedIds(): Set<string> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SKIPPED_KEY) ?? "null");
     const today = new Date().toLocaleDateString("en-CA");
     if (stored?.date === today && Array.isArray(stored.ids)) {
       return new Set<string>(stored.ids);
@@ -173,6 +185,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
   // ── Per-item state ───────────────────────────────────────────────────────────
   // completedIds: "exercise-{id}" | "song-{id}" | "studymaterial-{id}"
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  // skippedIds: subset of completedIds — items marked skipped (no session created)
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(loadStoredSkippedIds());
   // activeTimers: itemKey → Date.now() when the current run started
   const [activeTimers, setActiveTimers] = useState<Map<string, number>>(new Map());
   // pausedElapsed: itemKey → accumulated seconds (set on pause or stop-and-save)
@@ -263,6 +277,14 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     }));
   }, [completedIds]);
 
+  // ── Persist skippedIds for today across restarts ──────────────────────────────
+  useEffect(() => {
+    localStorage.setItem(SKIPPED_KEY, JSON.stringify({
+      date: new Date().toLocaleDateString("en-CA"),
+      ids: [...skippedIds],
+    }));
+  }, [skippedIds]);
+
   // ── Clock tick ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -339,7 +361,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
 
   const allComplete =
     allSuggestedIds.size > 0 &&
-    [...allSuggestedIds].every((id) => completedIds.has(id));
+    [...allSuggestedIds].every((id) => completedIds.has(id) || skippedIds.has(id));
 
   // ── Visual state shift effects ────────────────────────────────────────────────
   useEffect(() => {
@@ -448,6 +470,33 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     setOpenForm(null);
   }
 
+  function handleSkipItems(keys: string[]) {
+    setSkippedIds((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => next.add(k));
+      return next;
+    });
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => next.add(k));
+      // Auto-complete any parent whose children are all now done
+      const allExercises = [...(dashboard?.exercises ?? []), ...additionalExercises];
+      for (const ex of allExercises) {
+        if (ex.child_exercises.length > 0 && ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))) {
+          next.add(`exercise-${ex.id}`);
+        }
+      }
+      const allSms = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
+      for (const sm of allSms) {
+        const children = sm.child_study_materials ?? [];
+        if (children.length > 0 && children.every((c) => next.has(`studymaterial-${c.id}`))) {
+          next.add(`studymaterial-${sm.id}`);
+        }
+      }
+      return next;
+    });
+  }
+
   function handleSessionSubmit(dailyPracticeTime: number, itemKey: string) {
     setServerTotal(dailyPracticeTime);
     setCompletedIds((prev) => {
@@ -486,7 +535,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
   function exerciseGetState(id: number) {
     const key = `exercise-${id}`;
     return {
-      isCompletedToday: completedIds.has(key),
+      isCompletedToday: completedIds.has(key) && !skippedIds.has(key),
+      isSkippedToday: skippedIds.has(key),
       isTimerActive: activeTimers.has(key),
       isTimerPaused: !activeTimers.has(key) && pausedElapsed.has(key),
       timerElapsed: getElapsed(key),
@@ -497,7 +547,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
   function studyMaterialGetState(id: number) {
     const key = `studymaterial-${id}`;
     return {
-      isCompletedToday: completedIds.has(key),
+      isCompletedToday: completedIds.has(key) && !skippedIds.has(key),
+      isSkippedToday: skippedIds.has(key),
       isTimerActive: activeTimers.has(key),
       isTimerPaused: !activeTimers.has(key) && pausedElapsed.has(key),
       timerElapsed: getElapsed(key),
@@ -575,6 +626,32 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     }
   }
 
+  function handleSequentialChildSkip() {
+    if (!sequentialSession) return;
+    const { type, children, currentIndex } = sequentialSession;
+    const childId = children[currentIndex].id;
+    const childKey = type === "exercise"
+      ? `exercise-${childId}`
+      : `studymaterial-${childId}`;
+
+    // Cancel the running timer for this child
+    setActiveTimers((prev) => { const next = new Map(prev); next.delete(childKey); return next; });
+    setPausedElapsed((prev) => { const next = new Map(prev); next.delete(childKey); return next; });
+
+    handleSkipItems([childKey]);
+
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= children.length) {
+      setSequentialSession(null);
+    } else {
+      setSequentialSession((prev) => prev ? { ...prev, currentIndex: nextIndex } : null);
+      const nextKey = type === "exercise"
+        ? `exercise-${children[nextIndex].id}`
+        : `studymaterial-${children[nextIndex].id}`;
+      startTimer(nextKey);
+    }
+  }
+
   function handleCancelSequential() {
     if (!sequentialSession) return;
     const { type, children, currentIndex } = sequentialSession;
@@ -605,10 +682,10 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
       ...e.child_exercises.map((c) => c.id),
     ]);
     return (
-      additionalSongs.filter((s) => completedIds.has(`song-${s.id}`)).length +
-      exIds.filter((id) => completedIds.has(`exercise-${id}`)).length +
+      additionalSongs.filter((s) => isDone(`song-${s.id}`)).length +
+      exIds.filter((id) => isDone(`exercise-${id}`)).length +
       additionalStudyMaterials.flatMap((sm) => [sm, ...(sm.child_study_materials ?? [])])
-        .filter((sm) => completedIds.has(`studymaterial-${sm.id}`)).length
+        .filter((sm) => isDone(`studymaterial-${sm.id}`)).length
     );
   }
 
@@ -677,11 +754,15 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     setChatEntity({ type: "study_material", item: found, sessions: (found.meta.sessions ?? []) as StudyMaterialSession[] });
   }
 
+  function isDone(key: string): boolean {
+    return completedIds.has(key) || skippedIds.has(key);
+  }
+
   // ── Completion counts for group headers ───────────────────────────────────────
   function exerciseCompletedCount(): number {
     if (!dashboard) return 0;
     return collectAllExerciseIds(dashboard.exercises).filter((id) =>
-      completedIds.has(`exercise-${id}`)
+      isDone(`exercise-${id}`)
     ).length;
   }
 
@@ -825,6 +906,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
             onPause={() => pauseTimer(childKey)}
             onStopAndSave={() => stopAndSave(childKey)}
             onSessionSubmit={handleSequentialChildSubmit}
+            onSkip={handleSequentialChildSkip}
             onFormClose={() => setOpenForm(null)}
             onCancelReturn={handleCancelSequential}
             onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, children[currentIndex].name, itemKey ?? childKey)}
@@ -874,6 +956,10 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onSessionSubmit={(id, dpt) =>
                 handleSessionSubmit(dpt, `exercise-${id}`)
               }
+              onSkip={(id) => {
+                const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
+                handleSkipItems(childKeys.length > 0 ? [`exercise-${id}`, ...childKeys] : [`exercise-${id}`]);
+              }}
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
               onOpenChat={(id) => openChatForExercise(id)}
@@ -887,7 +973,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
           title="Study Materials"
           completedCount={
             dashboard.study_materials.flatMap((sm) => [sm, ...(sm.child_study_materials ?? [])])
-              .filter((sm) => completedIds.has(`studymaterial-${sm.id}`)).length
+              .filter((sm) => isDone(`studymaterial-${sm.id}`)).length
           }
           totalCount={
             dashboard.study_materials.reduce((n, sm) => n + 1 + (sm.child_study_materials ?? []).length, 0)
@@ -908,6 +994,10 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onSessionSubmit={(id, dpt) =>
                 handleSessionSubmit(dpt, `studymaterial-${id}`)
               }
+              onSkip={(id) => {
+                const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
+                handleSkipItems(childKeys.length > 0 ? [`studymaterial-${id}`, ...childKeys] : [`studymaterial-${id}`]);
+              }}
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
               onOpenChat={(id) => openChatForStudyMaterial(id)}
@@ -920,7 +1010,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
         <ItemGroup
           title="Project"
           completedCount={
-            projectSongs.filter((s) => completedIds.has(`song-${s.id}`)).length
+            projectSongs.filter((s) => isDone(`song-${s.id}`)).length
           }
           totalCount={projectSongs.length}
         >
@@ -929,7 +1019,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               key={song.id}
               token={token}
               song={song}
-              isCompletedToday={completedIds.has(`song-${song.id}`)}
+              isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
+              isSkippedToday={skippedIds.has(`song-${song.id}`)}
               isTimerActive={activeTimers.has(`song-${song.id}`)}
               isTimerPaused={
                 !activeTimers.has(`song-${song.id}`) &&
@@ -946,6 +1037,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onSessionSubmit={(dpt) =>
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
+              onSkip={() => handleSkipItems([`song-${song.id}`])}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
@@ -957,7 +1049,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
         <ItemGroup
           title="Repertoire Review"
           completedCount={
-            reviewSongs.filter((s) => completedIds.has(`song-${s.id}`)).length
+            reviewSongs.filter((s) => isDone(`song-${s.id}`)).length
           }
           totalCount={reviewSongs.length}
         >
@@ -966,7 +1058,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               key={song.id}
               token={token}
               song={song}
-              isCompletedToday={completedIds.has(`song-${song.id}`)}
+              isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
+              isSkippedToday={skippedIds.has(`song-${song.id}`)}
               isTimerActive={activeTimers.has(`song-${song.id}`)}
               isTimerPaused={
                 !activeTimers.has(`song-${song.id}`) &&
@@ -983,6 +1076,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onSessionSubmit={(dpt) =>
                 handleSessionSubmit(dpt, `song-${song.id}`)
               }
+              onSkip={() => handleSkipItems([`song-${song.id}`])}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
@@ -1001,7 +1095,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 key={song.id}
                 token={token}
                 song={song}
-                isCompletedToday={completedIds.has(`song-${song.id}`)}
+                isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
+                isSkippedToday={skippedIds.has(`song-${song.id}`)}
                 isTimerActive={activeTimers.has(`song-${song.id}`)}
                 isTimerPaused={
                   !activeTimers.has(`song-${song.id}`) &&
@@ -1018,6 +1113,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 onSessionSubmit={(dpt) =>
                   handleSessionSubmit(dpt, `song-${song.id}`)
                 }
+                onSkip={() => handleSkipItems([`song-${song.id}`])}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
                 onOpenChat={() => openChatForSong(song.id)}
               />
@@ -1037,6 +1133,10 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 onSessionSubmit={(id, dpt) =>
                   handleSessionSubmit(dpt, `exercise-${id}`)
                 }
+                onSkip={(id) => {
+                  const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
+                  handleSkipItems(childKeys.length > 0 ? [`exercise-${id}`, ...childKeys] : [`exercise-${id}`]);
+                }}
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
                 onOpenChat={(id) => openChatForExercise(id)}
@@ -1058,6 +1158,10 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 onSessionSubmit={(id, dpt) =>
                   handleSessionSubmit(dpt, `studymaterial-${id}`)
                 }
+                onSkip={(id) => {
+                  const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
+                  handleSkipItems(childKeys.length > 0 ? [`studymaterial-${id}`, ...childKeys] : [`studymaterial-${id}`]);
+                }}
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
                 onOpenChat={(id) => openChatForStudyMaterial(id)}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
+  ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
   PlayIcon,
@@ -37,6 +38,7 @@ interface SingleCardProps {
   token: string;
   material: DashboardStudyMaterial;
   isCompletedToday: boolean;
+  isSkippedToday: boolean;
   isTimerActive: boolean;
   isTimerPaused: boolean;
   timerElapsed: number;
@@ -48,6 +50,7 @@ interface SingleCardProps {
   onFormOpen: () => void;
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
+  onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
@@ -60,6 +63,7 @@ function StudyMaterialSingleCard({
   token,
   material,
   isCompletedToday,
+  isSkippedToday,
   isTimerActive,
   isTimerPaused,
   timerElapsed,
@@ -71,6 +75,7 @@ function StudyMaterialSingleCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onSkip,
   onOpenFile,
   isChild,
   onStartSequential,
@@ -137,11 +142,11 @@ function StudyMaterialSingleCard({
 
   return (
     <div
-      className={`item-card ${isChild ? "child-card" : ""} ${isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
+      className={`item-card ${isChild ? "child-card" : ""} ${isSkippedToday ? "skipped" : isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
     >
       <div className="item-card-row">
         <span className="item-status">
-          {isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
+          {isSkippedToday ? <ForwardIcon className="icon-sm" /> : isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
         </span>
         <div className="item-info">
           <span className="item-name">{material.name}</span>
@@ -179,6 +184,11 @@ function StudyMaterialSingleCard({
                   title="Log session"
                 >
                   <PlusIcon className="icon" />
+                </button>
+              )}
+              {!isCompletedToday && !isSkippedToday && (
+                <button className="btn-ghost btn-skip" onClick={onSkip} title="Skip">
+                  <ForwardIcon className="icon" />
                 </button>
               )}
             </>
@@ -266,6 +276,7 @@ export interface StudyMaterialCardProps {
   material: DashboardStudyMaterial;
   getState: (id: number) => {
     isCompletedToday: boolean;
+    isSkippedToday: boolean;
     isTimerActive: boolean;
     isTimerPaused: boolean;
     timerElapsed: number;
@@ -278,6 +289,7 @@ export interface StudyMaterialCardProps {
   onFormOpen: (id: number) => void;
   onFormClose: (id: number) => void;
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
+  onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onOpenChat?: (id: number) => void;
@@ -295,6 +307,7 @@ export function StudyMaterialCard({
   onFormOpen,
   onFormClose,
   onSessionSubmit,
+  onSkip,
   onStartSequential,
   onOpenFile,
   onOpenChat,
@@ -309,6 +322,7 @@ export function StudyMaterialCard({
         token={token}
         material={material}
         isCompletedToday={state.isCompletedToday}
+        isSkippedToday={state.isSkippedToday}
         isTimerActive={state.isTimerActive}
         isTimerPaused={state.isTimerPaused}
         timerElapsed={state.timerElapsed}
@@ -320,6 +334,7 @@ export function StudyMaterialCard({
         onFormOpen={() => onFormOpen(material.id)}
         onFormClose={() => onFormClose(material.id)}
         onSessionSubmit={(dpt) => onSessionSubmit(material.id, dpt)}
+        onSkip={() => onSkip(material.id)}
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(material.id) : undefined}
         onOpenFile={onOpenFile}
         onOpenChat={onOpenChat ? () => onOpenChat(material.id) : undefined}
@@ -333,6 +348,7 @@ export function StudyMaterialCard({
             token={token}
             material={child}
             isCompletedToday={childState.isCompletedToday}
+            isSkippedToday={childState.isSkippedToday}
             isTimerActive={childState.isTimerActive}
             isTimerPaused={childState.isTimerPaused}
             timerElapsed={childState.timerElapsed}
@@ -344,6 +360,7 @@ export function StudyMaterialCard({
             onFormOpen={() => onFormOpen(child.id)}
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
+            onSkip={() => onSkip(child.id)}
             onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, `studymaterial-${child.id}`) : undefined}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}

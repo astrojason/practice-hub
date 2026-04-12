@@ -20,6 +20,7 @@ import type {
   GpUnmatched,
   GpScanResult,
   GpSeenEntry,
+  DifficultyVector,
 } from "../api/types";
 import type { Song } from "../api/types";
 import { getCatalogSongs } from "../api/client";
@@ -198,10 +199,14 @@ export function useGpScanner(token: string) {
         const song = songIndex.get(key);
 
         let difficultyScore: number | null = null;
+        let difficultyVector: DifficultyVector | null = null;
+        let tempoBpm: number | null = null;
         try {
           const rawResult = await invoke<string>("analyze_gp_file", { filePath: file.path });
           const result = JSON.parse(rawResult);
           difficultyScore = typeof result.difficulty_score === "number" ? result.difficulty_score : null;
+          difficultyVector = result.vector ?? null;
+          tempoBpm = typeof result.tempo_bpm === "number" ? result.tempo_bpm : null;
         } catch {
           // Analysis failed for this file — continue with null score
         }
@@ -218,6 +223,9 @@ export function useGpScanner(token: string) {
             song_name: song.name,
             artist_name: song.artist_name,
             difficulty_score: difficultyScore,
+            difficulty_vector: difficultyVector,
+            tempo_bpm: tempoBpm,
+            manual_score: null,
             is_newer_version: isNewerVersion,
           });
         } else {
@@ -243,6 +251,9 @@ export function useGpScanner(token: string) {
             song_name: song.name,
             artist_name: song.artist_name,
             difficulty_score: prev.difficulty_score,
+            difficulty_vector: prev.difficulty_vector ?? null,
+            tempo_bpm: prev.tempo_bpm ?? null,
+            manual_score: prev.manual_score ?? null,
             is_newer_version: false,
           });
         }
@@ -266,7 +277,10 @@ export function useGpScanner(token: string) {
         seen[match.file.filename] = {
           modified_ms: match.file.modified_ms,
           song_id: match.song_id,
-          difficulty_score: match.difficulty_score,
+          difficulty_score: match.manual_score ?? match.difficulty_score,
+          difficulty_vector: match.difficulty_vector,
+          tempo_bpm: match.tempo_bpm,
+          manual_score: match.manual_score,
           resource_path: match.file.path,
           dismissed: false,
         };
@@ -275,6 +289,25 @@ export function useGpScanner(token: string) {
     },
     []
   );
+
+  const clearSeenCache = useCallback(async () => {
+    const store = await load(STORE_KEY);
+    await store.set("seen", {});
+    await store.save();
+  }, []);
+
+  const updateMatchScore = useCallback((filename: string, score: number | null) => {
+    setScanResult((prev) =>
+      prev
+        ? {
+            ...prev,
+            matches: prev.matches.map((m) =>
+              m.file.filename === filename ? { ...m, manual_score: score } : m
+            ),
+          }
+        : prev
+    );
+  }, []);
 
   const dismissUnmatched = useCallback(async (filename: string) => {
     const seen = await getSeenMap();
@@ -285,6 +318,9 @@ export function useGpScanner(token: string) {
         modified_ms: 0,
         song_id: null,
         difficulty_score: null,
+        difficulty_vector: null,
+        tempo_bpm: null,
+        manual_score: null,
         resource_path: "",
         dismissed: true,
       };
@@ -311,5 +347,7 @@ export function useGpScanner(token: string) {
     scan,
     persistSeenEntries,
     dismissUnmatched,
+    clearSeenCache,
+    updateMatchScore,
   };
 }

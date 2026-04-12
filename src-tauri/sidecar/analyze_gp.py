@@ -1,17 +1,27 @@
 #!/usr/bin/env python3
 """
-Guitar Pro difficulty analyzer — self-contained sidecar for practice-hub.
+Guitar Pro difficulty analyzer v2 — self-contained sidecar for practice-hub.
+
+Changes from v1:
+  - Rhythm complexity axis: time signatures, tuplets, dotted notes, duration variance
+  - Neck position weighting via inverse fret width (logarithmic, physically accurate)
+  - Tempo-dependent legato modifier (fast legato = easier, slow legato = harder)
+  - Exponential reach compounding (fret stretch × string skip)
+  - Technique transition cost (palm mute↔open, tap↔pick)
+  - Learning system: --weights for custom axis weights, --correct for pairwise updates
 
 Usage:
-    python3 analyze_gp.py <path-to-file.gp>
+    python3 analyze_gp.py <file.gp> [--weights weights.json]
+    python3 analyze_gp.py --correct <harder.gp> <easier.gp> [--weights weights.json]
 
 Output (stdout): JSON object
     {
         "difficulty_score": float,        # 0-100 overall score
-        "vector": {                        # per-dimension breakdown
+        "vector": {
             "speed": float,
             "fret_complexity": float,
             "pick_complexity": float,
+            "rhythm_complexity": float,
             "technique_density": float,
             "stamina": float,
             "overall": float
@@ -19,32 +29,22 @@ Output (stdout): JSON object
         "title": str | null,
         "artist": str | null,
         "tempo_bpm": float | null,
-        "tracks": [
-            {
-                "name": str,
-                "instrument": str | null,
-                "difficulty_score": float,
-                "vector": {...}
-            }
-        ]
+        "tracks": [...]
     }
 
-Errors are written to stderr; exit code is non-zero on failure.
+    --correct mode outputs: {"weights": {...}, "was_violation": bool}
 
-Supports Guitar Pro 7/8 (.gp, .gpx, .gp7, .gp8) — zip archives containing
-GPIF XML.  Legacy binary formats (.gp3/.gp4/.gp5) are not supported without
-the pyguitarpro library and are skipped with a warning.
-
-Bug fixed vs original experiment: beat attack counts now reflect actual picked
-notes per beat (excluding hammer-ons/pull-offs) rather than always counting
-each beat as 1 attack.
+Errors → stderr; non-zero exit on failure.
+Supports GP 7/8 (.gp, .gpx, .gp7, .gp8) zip archives containing GPIF XML.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import math
 import sys
+import statistics
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass, field
@@ -61,6 +61,15 @@ class BendInfo:
     semitones: float
     is_release: bool = False
     is_prebend: bool = False
+
+
+@dataclass
+class RhythmInfo:
+    """Parsed rhythm metadata for a beat."""
+    note_value: str = "Quarter"
+    is_dotted: bool = False
+    is_tuplet: bool = False
+    duration_beats: float = 1.0
 
 
 @dataclass
@@ -86,6 +95,7 @@ class BeatEvent:
     beat_position: float
     notes: List[NoteEvent] = field(default_factory=list)
     is_rest: bool = False
+    rhythm: RhythmInfo = field(default_factory=RhythmInfo)
 
 
 @dataclass
@@ -95,6 +105,7 @@ class TrackData:
     string_count: int
     beats: List[BeatEvent] = field(default_factory=list)
     bar_count: int = 0
+    time_signatures: List[str] = field(default_factory=list)  # one per bar
 
 
 @dataclass
@@ -107,6 +118,10 @@ class ParsedSong:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # GPIF parser (Guitar Pro 7/8 — zip archive containing XML)
+# Parsing layer is unchanged from v1 except:
+#   - _rhythm_duration → _rhythm_info (returns RhythmInfo)
+#   - BeatEvent now stores rhythm info
+#   - TrackData now stores time_signatures per bar
 # ──────────────────────────────────────────────────────────────────────────────
 
 class GPIFParserError(RuntimeError):
@@ -199,6 +214,7 @@ def _parse_track(
                  _clean(track_elem.findtext("Instrument/Description"))
 
     beat_events: List[BeatEvent] = []
+    time_signatures: List[str] = []
     beat_position = 0.0
     bar_count = 0
 
@@ -216,6 +232,7 @@ def _parse_track(
             continue
 
         bar_count += 1
+        time_signatures.append(ts_text)
         voice_ids = (bar_elem.findtext("Voices") or "").split()
         for voice_id in voice_ids:
             if voice_id == "-1":
@@ -238,8 +255,8 @@ def _parse_track(
 
                 rhythm_ref = beat_elem.find("Rhythm")
                 rhythm_id = rhythm_ref.attrib.get("ref") if rhythm_ref is not None else None
-                dur = _rhythm_duration(rhythm_id, rhythms) if rhythm_id else 0.25
-                local_pos += dur
+                ri = _rhythm_info(rhythm_id, rhythms) if rhythm_id else RhythmInfo()
+                local_pos += ri.duration_beats
 
         beat_position += beats_in_bar
 
@@ -249,6 +266,7 @@ def _parse_track(
         string_count=string_count,
         beats=beat_events,
         bar_count=bar_count,
+        time_signatures=time_signatures,
     )
 
 
@@ -261,7 +279,6 @@ def _parse_beat(
     note_ids = [n for n in (beat_elem.findtext("Notes") or "").split() if n != "-1"]
     is_rest = not note_ids
 
-    # Detect tap/slap/pop from XProperties
     is_tap = is_slap = is_pop = False
     xprops = beat_elem.find("XProperties")
     if xprops:
@@ -277,18 +294,18 @@ def _parse_beat(
 
     rhythm_ref = beat_elem.find("Rhythm")
     rhythm_id = rhythm_ref.attrib.get("ref") if rhythm_ref is not None else None
-    duration = _rhythm_duration(rhythm_id, rhythms) if rhythm_id else 0.25
+    ri = _rhythm_info(rhythm_id, rhythms) if rhythm_id else RhythmInfo()
 
     notes: List[NoteEvent] = []
     for note_id in note_ids:
         note_elem = notes_map.get(note_id)
         if note_elem is None:
             continue
-        note = _parse_note(note_elem, position, duration, is_tap, is_slap, is_pop)
+        note = _parse_note(note_elem, position, ri.duration_beats, is_tap, is_slap, is_pop)
         if note:
             notes.append(note)
 
-    return BeatEvent(beat_position=position, notes=notes, is_rest=is_rest)
+    return BeatEvent(beat_position=position, notes=notes, is_rest=is_rest, rhythm=ri)
 
 
 def _parse_note(
@@ -375,29 +392,43 @@ def _parse_bend(prop: ET.Element) -> Optional[BendInfo]:
     return None
 
 
-def _rhythm_duration(rhythm_id: Optional[str], rhythms: Dict[str, ET.Element]) -> float:
+def _rhythm_info(rhythm_id: Optional[str], rhythms: Dict[str, ET.Element]) -> RhythmInfo:
+    """Returns full rhythm metadata. Replaces v1's _rhythm_duration."""
     if not rhythm_id:
-        return 0.25
+        return RhythmInfo()
     rhythm = rhythms.get(rhythm_id)
     if rhythm is None:
-        return 0.25
-    note_value = rhythm.findtext("NoteValue")
+        return RhythmInfo()
+
+    note_value = rhythm.findtext("NoteValue") or "Quarter"
     base_durations = {
         "Whole": 4.0, "Half": 2.0, "Quarter": 1.0,
         "Eighth": 0.5, "16th": 0.25, "32nd": 0.125, "64th": 0.0625,
     }
-    base = base_durations.get(note_value or "", 0.25)
+    base = base_durations.get(note_value, 0.25)
+
+    is_dotted = False
     aug = rhythm.find("AugmentationDot")
     if aug is not None:
+        is_dotted = True
         count = int(aug.attrib.get("count", "1"))
         base *= 1.5 if count == 1 else 1.75
+
+    is_tuplet = False
     tuplet = rhythm.find("PrimaryTuplet")
     if tuplet is not None:
+        is_tuplet = True
         num = int(tuplet.attrib.get("num", "1"))
         den = int(tuplet.attrib.get("den", "1"))
         if den > 0:
             base *= den / num
-    return base
+
+    return RhythmInfo(
+        note_value=note_value,
+        is_dotted=is_dotted,
+        is_tuplet=is_tuplet,
+        duration_beats=base,
+    )
 
 
 def _time_sig_to_beats(ts: str) -> float:
@@ -416,43 +447,93 @@ def _clean(value: Optional[str]) -> Optional[str]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Difficulty algorithm (ported from experiments/guitar-difficulty with bug fix)
+# Track selection: prefer the hardest guitar/lead track
 # ──────────────────────────────────────────────────────────────────────────────
+
+_GUITAR_KEYWORDS = ("guitar", "lead", "solo", "gtr", "electric", "rhythm", "riff")
+_BASS_KEYWORDS = ("bass",)
+_DRUM_KEYWORDS = ("drum", "percussion", "kit", "snare")
+
+
+def _is_guitar_track(track: TrackData) -> bool:
+    name = (track.name or "").lower()
+    instr = (track.instrument or "").lower()
+    combined = name + " " + instr
+    if any(k in combined for k in _DRUM_KEYWORDS):
+        return False
+    if any(k in combined for k in _BASS_KEYWORDS):
+        return False
+    return any(k in combined for k in _GUITAR_KEYWORDS) or track.string_count in (6, 7, 8)
+
+
+def _select_primary_track(tracks: List[TrackData]) -> Optional[TrackData]:
+    """Return the guitar track with the most notes (proxy for lead/solo part)."""
+    guitar_tracks = [t for t in tracks if _is_guitar_track(t)]
+    if not guitar_tracks:
+        guitar_tracks = tracks
+    if not guitar_tracks:
+        return None
+    return max(guitar_tracks, key=lambda t: sum(len(b.notes) for b in t.beats))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Difficulty algorithm v2
+# ──────────────────────────────────────────────────────────────────────────────
+
+DEFAULT_WEIGHTS = {
+    "speed":             0.28,
+    "fret_complexity":   0.25,
+    "pick_complexity":   0.18,
+    "rhythm_complexity": 0.15,
+    "technique_density": 0.09,
+    "stamina":           0.05,
+}
+
 
 @dataclass
 class DifficultyVector:
     speed: float = 0.0
     fret_complexity: float = 0.0
     pick_complexity: float = 0.0
+    rhythm_complexity: float = 0.0
     technique_density: float = 0.0
     stamina: float = 0.0
     overall: float = 0.0
 
     def to_dict(self) -> dict:
         return {k: round(v, 2) for k, v in {
-            "speed": self.speed,
-            "fret_complexity": self.fret_complexity,
-            "pick_complexity": self.pick_complexity,
+            "speed":             self.speed,
+            "fret_complexity":   self.fret_complexity,
+            "pick_complexity":   self.pick_complexity,
+            "rhythm_complexity": self.rhythm_complexity,
             "technique_density": self.technique_density,
-            "stamina": self.stamina,
-            "overall": self.overall,
+            "stamina":           self.stamina,
+            "overall":           self.overall,
         }.items()}
 
 
 @dataclass
 class _Metrics:
+    # Note counts
     total_notes: int = 0
     total_beats: int = 0
     duration_beats: float = 0.0
     max_notes_per_beat: int = 0
     avg_notes_per_beat: float = 0.0
     peak_attacks_per_second: float = 0.0
-    max_fret_stretch: int = 0
-    avg_fret_distance: float = 0.0
-    position_shift_count: int = 0
+
+    # Fret / reach
+    max_fret_stretch: int = 0          # largest chord stretch seen (frets)
+    avg_fret_distance: float = 0.0     # average note-to-note fret movement
+    position_shift_count: int = 0      # note-to-note moves > 5 frets
+    cumulative_reach_cost: float = 0.0 # exponential compound reach score
+
+    # Pick / string
     string_skip_count: int = 0
     max_string_skip: int = 0
     direction_changes: int = 0
+
+    # Technique counts
     bend_count: int = 0
     legato_count: int = 0
     vibrato_count: int = 0
@@ -460,38 +541,70 @@ class _Metrics:
     tap_count: int = 0
     tremolo_count: int = 0
     palm_mute_count: int = 0
+    technique_transition_count: int = 0
+
+    # Rhythm
+    tuplet_count: int = 0
+    dotted_count: int = 0
+    note_durations: List[float] = field(default_factory=list)
 
 
-def compute_difficulty_vector(beats: List[BeatEvent], tempo_bpm: float) -> DifficultyVector:
-    if not beats or tempo_bpm <= 0:
-        return DifficultyVector()
+def _fret_position_weight(fret: int) -> float:
+    """
+    Returns difficulty multiplier for a stretch at this neck position.
+    Based on inverse fret spacing: each fret is 2^(-1/12) × the previous.
+    Fret 1 = 1.0 (widest, hardest), Fret 12 ≈ 0.50, Fret 24 ≈ 0.25.
+    """
+    fret = max(1, fret)
+    return 2 ** (-(fret - 1) / 12.0)
 
-    m = _collect_metrics(beats, tempo_bpm)
-    speed = _speed(m, tempo_bpm)
-    fret = _fret(m)
-    pick = _pick(m)
-    technique = _technique(m)
-    stamina = _stamina(m, tempo_bpm)
 
-    speed_component = speed * 0.90
-    complexity = (fret / 100.0) * 3 + (pick / 100.0) * 3 + (technique / 100.0) * 2 + (stamina / 100.0) * 2
-    overall = speed_component + complexity
+def _reach_cost(fret_dist: int, string_dist: int, fret_position: int) -> float:
+    """
+    Exponential compound cost for a reach event.
+    - Fret stretch > 5 is penalized, scaled by neck position
+    - String skip > 1 is penalized
+    - Both together compound exponentially
+    """
+    pos_weight = _fret_position_weight(fret_position)
+    fret_excess = max(0, fret_dist - 5) * pos_weight
+    string_excess = max(0, string_dist - 1)
 
-    return DifficultyVector(
-        speed=speed,
-        fret_complexity=fret,
-        pick_complexity=pick,
-        technique_density=technique,
-        stamina=stamina,
-        overall=overall,
-    )
+    if fret_excess > 0 and string_excess > 0:
+        # Simultaneous stretch + skip: exponential compounding
+        return (fret_excess + string_excess * 0.5) ** 1.6
+    elif fret_excess > 0:
+        return fret_excess ** 1.2
+    elif string_excess > 0:
+        return string_excess * 0.4
+    return 0.0
+
+
+def _legato_speed_modifier(legato_ratio: float, tempo_bpm: float) -> float:
+    """
+    Tempo-dependent legato modifier for the speed axis.
+    Fast tempo + high legato = easier (modifier < 1.0, down to 0.65)
+    Slow tempo + high legato = harder (modifier > 1.0, up to 1.25)
+    Crossover around 100 bpm.
+    """
+    if legato_ratio == 0:
+        return 1.0
+    # Normalize: 0.0 at 60 bpm, 1.0 at 180 bpm
+    tempo_factor = (tempo_bpm - 60.0) / 120.0
+    tempo_factor = max(-0.5, min(1.0, tempo_factor))
+    # At high tempo: legato ratio reduces speed difficulty
+    # At low tempo: legato ratio increases speed difficulty
+    raw = 1.0 - (legato_ratio * tempo_factor * 0.45)
+    return max(0.65, min(1.25, raw))
 
 
 def _collect_metrics(beats: List[BeatEvent], tempo_bpm: float) -> _Metrics:
     m = _Metrics()
     prev_note: Optional[NoteEvent] = None
     prev_string: Optional[int] = None
-    beat_data: List[Tuple[float, float, int]] = []  # (position, duration, attack_count)
+    prev_palm_mute: Optional[bool] = None
+    prev_is_tap: Optional[bool] = None
+    beat_data: List[Tuple[float, float, int]] = []
 
     for beat in beats:
         if beat.is_rest:
@@ -503,26 +616,45 @@ def _collect_metrics(beats: List[BeatEvent], tempo_bpm: float) -> _Metrics:
         if beat_note_count > m.max_notes_per_beat:
             m.max_notes_per_beat = beat_note_count
 
+        # Rhythm metadata
+        if beat.rhythm.is_tuplet:
+            m.tuplet_count += 1
+        if beat.rhythm.is_dotted:
+            m.dotted_count += 1
+        if beat.notes:
+            m.note_durations.append(beat.rhythm.duration_beats)
+
         if beat.notes:
             duration = beat.notes[0].duration_beats
             m.duration_beats += duration
 
-            # FIX: count actual picked notes per beat, not always 1.
-            # Hammer-ons and pull-offs don't require a pick stroke, so they
-            # don't contribute to peak-speed demand.
             picked_attacks = sum(
-                1 for n in beat.notes if not (n.hammer_on or n.pull_off)
+                0.5 if (n.hammer_on or n.pull_off) else 1.0
+                for n in beat.notes
             )
             if picked_attacks > 0:
                 beat_data.append((beat.beat_position, duration, picked_attacks))
 
-            # Fret stretch within chord
+            # Chord fret stretch (position-weighted)
             if len(beat.notes) > 1:
                 frets = [n.fret for n in beat.notes if n.fret > 0]
                 if len(frets) > 1:
                     stretch = max(frets) - min(frets)
                     if stretch > m.max_fret_stretch:
                         m.max_fret_stretch = stretch
+                    min_fret = min(frets)
+                    cost = _reach_cost(stretch, 0, min_fret)
+                    m.cumulative_reach_cost += cost
+
+            # Technique transition detection
+            beat_is_tap = any(n.is_tap for n in beat.notes)
+            beat_palm_mute = any(n.palm_mute for n in beat.notes)
+            if prev_palm_mute is not None and prev_palm_mute != beat_palm_mute:
+                m.technique_transition_count += 1
+            if prev_is_tap is not None and prev_is_tap != beat_is_tap:
+                m.technique_transition_count += 1
+            prev_palm_mute = beat_palm_mute
+            prev_is_tap = beat_is_tap
 
             for note in beat.notes:
                 if note.bend:
@@ -543,7 +675,7 @@ def _collect_metrics(beats: List[BeatEvent], tempo_bpm: float) -> _Metrics:
                 if prev_note is not None:
                     fret_dist = abs(note.fret - prev_note.fret)
                     m.avg_fret_distance += fret_dist
-                    if fret_dist > 4:
+                    if fret_dist > 5:
                         m.position_shift_count += 1
 
                 if prev_string is not None:
@@ -554,6 +686,13 @@ def _collect_metrics(beats: List[BeatEvent], tempo_bpm: float) -> _Metrics:
                         m.max_string_skip = string_skip
                     if string_skip >= 1:
                         m.direction_changes += 1
+
+                    # Note-to-note compound reach cost
+                    if prev_note is not None:
+                        fret_dist = abs(note.fret - prev_note.fret)
+                        min_fret = min(note.fret, prev_note.fret)
+                        cost = _reach_cost(fret_dist, string_skip, max(1, min_fret))
+                        m.cumulative_reach_cost += cost
 
                 prev_note = note
                 prev_string = note.string
@@ -590,25 +729,36 @@ def _normalize(value: float, min_val: float, max_val: float) -> float:
     return max(0.0, min(1.0, (value - min_val) / (max_val - min_val)))
 
 
+# ── Scoring functions ─────────────────────────────────────────────────────────
+
 def _speed(m: _Metrics, tempo_bpm: float) -> float:
     if m.total_beats == 0 or m.duration_beats == 0:
         return 0.0
-    return _normalize(m.peak_attacks_per_second, 4, 14) * 100
+    legato_ratio = m.legato_count / max(m.total_notes, 1)
+    modifier = _legato_speed_modifier(legato_ratio, tempo_bpm)
+    raw = _normalize(m.peak_attacks_per_second, 4, 14) * 100
+    return min(100.0, raw * modifier)
 
 
 def _fret(m: _Metrics) -> float:
     if m.total_notes == 0:
         return 0.0
-    stretch_score = _normalize(m.max_fret_stretch, 0, 6) * 100
+    # Cumulative reach cost normalized (tuned: FFwF-level playing ≈ 0.8 reach/note)
+    reach_density = m.cumulative_reach_cost / max(m.total_notes, 1)
+    reach_score = _normalize(reach_density, 0, 1.5) * 100
+
     shift_rate = m.position_shift_count / max(m.total_notes, 1)
-    shift_score = _normalize(shift_rate, 0, 0.15) * 100
-    distance_score = _normalize(m.avg_fret_distance, 0, 4) * 100
+    shift_score = _normalize(shift_rate, 0, 0.20) * 100
+
+    distance_score = _normalize(m.avg_fret_distance, 0, 5) * 100
+
+    # Tap reduces fret difficulty (two hands share the burden)
     tap_ratio = m.tap_count / max(m.total_notes, 1)
-    tap_reduction = tap_ratio * 0.3
-    base = (stretch_score * 0.25 + shift_score * 0.45 + distance_score * 0.30)
+    tap_reduction = tap_ratio * 0.25
+
+    base = (reach_score * 0.45 + shift_score * 0.35 + distance_score * 0.20)
     base = max(0, base * (1 - tap_reduction))
-    speed_mult = 0.4 + 0.6 * _normalize(m.peak_attacks_per_second, 4, 10)
-    return base * speed_mult
+    return min(100.0, base)
 
 
 def _pick(m: _Metrics) -> float:
@@ -616,25 +766,92 @@ def _pick(m: _Metrics) -> float:
         return 0.0
     picked_notes = m.total_notes - m.legato_count
     pick_ratio = picked_notes / max(m.total_notes, 1)
+
+    # String skips — exponential: skipping 3 strings is much harder than 3× skipping 1
     skip_rate = m.string_skip_count / max(picked_notes, 1)
-    skip_score = _normalize(skip_rate, 0, 0.2) * 100
-    max_skip_score = _normalize(m.max_string_skip, 1, 4) * 100
+    skip_score = _normalize(skip_rate, 0, 0.25) * 100
+    max_skip_score = _normalize(m.max_string_skip ** 1.4, 1, 8) * 100
+
     cross_rate = m.direction_changes / max(picked_notes, 1)
     cross_score = _normalize(cross_rate, 0, 0.6) * 100
-    base = skip_score * 0.45 + cross_score * 0.35 + max_skip_score * 0.20
+
+    base = skip_score * 0.40 + cross_score * 0.35 + max_skip_score * 0.25
     base = base * (0.3 + 0.7 * pick_ratio)
-    speed_mult = 0.3 + 0.7 * _normalize(m.peak_attacks_per_second, 4, 10)
-    return base * speed_mult
+    speed_mult = 0.3 + 0.7 * _normalize(m.peak_attacks_per_second, 4, 12)
+    return min(100.0, base * speed_mult)
+
+
+def _rhythm(m: _Metrics, time_signatures: List[str]) -> float:
+    """
+    Stacked modifier model: baseline is 4/4 quarter notes = 0.
+    Each divergence adds to the score.
+    """
+    score = 0.0
+    total_notes = max(m.total_notes, 1)
+
+    # Time signature divergence
+    unique_sigs = set(time_signatures) if time_signatures else {"4/4"}
+    non_standard = [s for s in unique_sigs if s != "4/4"]
+    if non_standard:
+        score += 0.30
+    # Multiple time signature changes (each additional change adds more)
+    if len(unique_sigs) > 1:
+        score += 0.15 * (len(unique_sigs) - 1)
+
+    # Note value complexity: 8ths, 16ths, 32nds are progressively harder
+    note_value_scores = {
+        "Whole": 0.0, "Half": 0.0, "Quarter": 0.0,
+        "Eighth": 0.05, "16th": 0.15, "32nd": 0.30, "64th": 0.50,
+    }
+    if m.note_durations:
+        # Use the most common short note value as the representative
+        duration_counts: Dict[float, int] = {}
+        for d in m.note_durations:
+            duration_counts[d] = duration_counts.get(d, 0) + 1
+        most_common_dur = max(duration_counts, key=duration_counts.__getitem__)
+        # Map duration back to approximate note value score
+        # Quarter=1.0, Eighth=0.5, 16th=0.25, 32nd=0.125
+        if most_common_dur <= 0.125:
+            score += 0.30
+        elif most_common_dur <= 0.25:
+            score += 0.15
+        elif most_common_dur <= 0.5:
+            score += 0.05
+
+    # Duration variance (rhythmic irregularity)
+    if len(m.note_durations) >= 4:
+        try:
+            variance = statistics.variance(m.note_durations)
+            score += min(0.25, variance * 3)
+        except statistics.StatisticsError:
+            pass
+
+    # Tuplets
+    if m.tuplet_count > 0:
+        tuplet_density = m.tuplet_count / total_notes
+        score += min(0.30, tuplet_density * 2.5)
+
+    # Dotted notes (rhythmic complexity without being as hard as tuplets)
+    if m.dotted_count > 0:
+        dot_density = m.dotted_count / total_notes
+        score += min(0.10, dot_density * 0.8)
+
+    # Technique transition cost feeds into rhythm: fast switches break the groove
+    if m.technique_transition_count > 0:
+        transition_density = m.technique_transition_count / total_notes
+        score += min(0.20, transition_density * 3)
+
+    return _normalize(score, 0, 1.8) * 100
 
 
 def _technique(m: _Metrics) -> float:
     if m.total_notes == 0:
         return 0.0
     hard = (
-        m.bend_count * 2.0
+        m.bend_count      * 2.0
         + m.harmonic_count * 1.5
-        + m.tremolo_count * 1.5
-        + m.vibrato_count * 0.3
+        + m.tremolo_count  * 1.5
+        + m.vibrato_count  * 0.3
     )
     density = hard / m.total_notes
     return _normalize(density, 0, 0.4) * 100
@@ -650,46 +867,214 @@ def _stamina(m: _Metrics, tempo_bpm: float) -> float:
     return _normalize(stamina_raw, 0, 100) * 100
 
 
+def compute_difficulty_vector(
+    beats: List[BeatEvent],
+    tempo_bpm: float,
+    time_signatures: Optional[List[str]] = None,
+    weights: Optional[Dict[str, float]] = None,
+) -> DifficultyVector:
+    if not beats or tempo_bpm <= 0:
+        return DifficultyVector()
+
+    w = weights or DEFAULT_WEIGHTS
+    ts = time_signatures or ["4/4"]
+
+    m = _collect_metrics(beats, tempo_bpm)
+    speed      = _speed(m, tempo_bpm)
+    fret       = _fret(m)
+    pick       = _pick(m)
+    rhythm     = _rhythm(m, ts)
+    technique  = _technique(m)
+    stamina    = _stamina(m, tempo_bpm)
+
+    overall = (
+        speed     * w.get("speed",             0.28)
+        + fret    * w.get("fret_complexity",   0.25)
+        + pick    * w.get("pick_complexity",   0.18)
+        + rhythm  * w.get("rhythm_complexity", 0.15)
+        + technique * w.get("technique_density", 0.09)
+        + stamina * w.get("stamina",           0.05)
+    )
+
+    return DifficultyVector(
+        speed=speed,
+        fret_complexity=fret,
+        pick_complexity=pick,
+        rhythm_complexity=rhythm,
+        technique_density=technique,
+        stamina=stamina,
+        overall=overall,
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Track selection: prefer the hardest guitar/lead track
+# Learning system
 # ──────────────────────────────────────────────────────────────────────────────
 
-_GUITAR_KEYWORDS = ("guitar", "lead", "solo", "gtr", "electric", "rhythm", "riff")
-_BASS_KEYWORDS = ("bass",)
-_DRUM_KEYWORDS = ("drum", "percussion", "kit", "snare")
+def load_weights(path: Optional[str]) -> Dict[str, float]:
+    """Load weights from JSON file, falling back to defaults."""
+    if path is None:
+        return dict(DEFAULT_WEIGHTS)
+    try:
+        with open(path) as f:
+            loaded = json.load(f)
+        # Validate and fill missing keys with defaults
+        w = dict(DEFAULT_WEIGHTS)
+        w.update({k: float(v) for k, v in loaded.items() if k in DEFAULT_WEIGHTS})
+        # Renormalize to sum to 1.0
+        total = sum(w.values())
+        if total > 0:
+            w = {k: v / total for k, v in w.items()}
+        return w
+    except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
+        print(f"Warning: could not load weights from {path}: {exc}", file=sys.stderr)
+        return dict(DEFAULT_WEIGHTS)
 
 
-def _is_guitar_track(track: TrackData) -> bool:
-    name = (track.name or "").lower()
-    instr = (track.instrument or "").lower()
-    combined = name + " " + instr
-    if any(k in combined for k in _DRUM_KEYWORDS):
-        return False
-    if any(k in combined for k in _BASS_KEYWORDS):
-        return False
-    return any(k in combined for k in _GUITAR_KEYWORDS) or track.string_count in (6, 7, 8)
+def correct_weights(
+    vec_harder: DifficultyVector,
+    vec_easier: DifficultyVector,
+    current_weights: Dict[str, float],
+    learning_rate: float = 0.05,
+) -> Tuple[Dict[str, float], bool]:
+    """
+    Pairwise correction: harder_song should score higher than easier_song.
+    If it doesn't (violation), nudge weights toward axes where harder > easier.
+    Returns (new_weights, was_violation).
+    """
+    was_violation = vec_harder.overall <= vec_easier.overall
 
+    if not was_violation:
+        return current_weights, False
 
-def _select_primary_track(tracks: List[TrackData]) -> Optional[TrackData]:
-    """Return the guitar track with the most notes (proxy for lead/solo part)."""
-    guitar_tracks = [t for t in tracks if _is_guitar_track(t)]
-    if not guitar_tracks:
-        guitar_tracks = tracks  # Fall back to all tracks
-    if not guitar_tracks:
-        return None
-    return max(guitar_tracks, key=lambda t: sum(len(b.notes) for b in t.beats))
+    axes = ["speed", "fret_complexity", "pick_complexity",
+            "rhythm_complexity", "technique_density", "stamina"]
+    harder_vals = vec_harder.to_dict()
+    easier_vals = vec_easier.to_dict()
+
+    new_weights = dict(current_weights)
+    for axis in axes:
+        diff = harder_vals.get(axis, 0) - easier_vals.get(axis, 0)
+        if diff > 0:
+            # Harder song scores higher on this axis — increase its weight
+            new_weights[axis] = new_weights[axis] + learning_rate * (diff / 100.0)
+        else:
+            # Harder song scores lower on this axis — decrease its weight
+            new_weights[axis] = max(0.01, new_weights[axis] + learning_rate * (diff / 100.0))
+
+    # Renormalize
+    total = sum(new_weights.values())
+    if total > 0:
+        new_weights = {k: v / total for k, v in new_weights.items()}
+
+    return new_weights, True
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
+def analyze(path: Path, weights: Dict[str, float]) -> dict:
+    song = parse_gpif_file(path)
+    tempo = song.tempo_bpm or 120.0
+
+    track_results = []
+    for track in song.tracks:
+        vec = compute_difficulty_vector(track.beats, tempo, track.time_signatures, weights)
+        track_results.append({
+            "name": track.name,
+            "instrument": track.instrument,
+            "difficulty_score": round(vec.overall, 2),
+            "vector": vec.to_dict(),
+        })
+
+    primary = _select_primary_track(song.tracks)
+    if primary:
+        primary_vec = compute_difficulty_vector(primary.beats, tempo, primary.time_signatures, weights)
+        primary_score = round(primary_vec.overall, 2)
+        primary_vector = primary_vec.to_dict()
+    else:
+        primary_score = 0.0
+        primary_vector = DifficultyVector().to_dict()
+
+    return {
+        "difficulty_score": primary_score,
+        "vector": primary_vector,
+        "title": song.title,
+        "artist": song.artist,
+        "tempo_bpm": tempo,
+        "tracks": track_results,
+    }
+
+
 def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Usage: analyze_gp.py <file.gp>"}), file=sys.stderr)
+    args = sys.argv[1:]
+
+    # Parse --weights flag
+    weights_path = None
+    if "--weights" in args:
+        idx = args.index("--weights")
+        if idx + 1 < len(args):
+            weights_path = args[idx + 1]
+            args = args[:idx] + args[idx + 2:]
+        else:
+            print(json.dumps({"error": "--weights requires a path argument"}), file=sys.stderr)
+            sys.exit(1)
+
+    weights = load_weights(weights_path)
+
+    # --correct mode: pairwise ranking correction
+    if args and args[0] == "--correct":
+        if len(args) < 3:
+            print(json.dumps({"error": "Usage: --correct <harder.gp> <easier.gp>"}), file=sys.stderr)
+            sys.exit(1)
+
+        path_a = Path(args[1])
+        path_b = Path(args[2])
+
+        for p in (path_a, path_b):
+            if not p.exists():
+                print(json.dumps({"error": f"File not found: {p}"}), file=sys.stderr)
+                sys.exit(1)
+
+        try:
+            song_a = parse_gpif_file(path_a)
+            song_b = parse_gpif_file(path_b)
+        except GPIFParserError as exc:
+            print(json.dumps({"error": str(exc)}), file=sys.stderr)
+            sys.exit(1)
+
+        tempo_a = song_a.tempo_bpm or 120.0
+        tempo_b = song_b.tempo_bpm or 120.0
+
+        primary_a = _select_primary_track(song_a.tracks)
+        primary_b = _select_primary_track(song_b.tracks)
+
+        if not primary_a or not primary_b:
+            print(json.dumps({"error": "Could not find a primary guitar track in one or both files"}), file=sys.stderr)
+            sys.exit(1)
+
+        vec_a = compute_difficulty_vector(primary_a.beats, tempo_a, primary_a.time_signatures, weights)
+        vec_b = compute_difficulty_vector(primary_b.beats, tempo_b, primary_b.time_signatures, weights)
+
+        new_weights, was_violation = correct_weights(vec_a, vec_b, weights)
+
+        print(json.dumps({
+            "weights": new_weights,
+            "was_violation": was_violation,
+            "score_harder": round(vec_a.overall, 2),
+            "score_easier": round(vec_b.overall, 2),
+            "vector_harder": vec_a.to_dict(),
+            "vector_easier": vec_b.to_dict(),
+        }))
+        return
+
+    # Standard analysis mode
+    if not args:
+        print(json.dumps({"error": "Usage: analyze_gp.py <file.gp> [--weights weights.json]"}), file=sys.stderr)
         sys.exit(1)
 
-    path = Path(sys.argv[1])
+    path = Path(args[0])
     if not path.exists():
         print(json.dumps({"error": f"File not found: {path}"}), file=sys.stderr)
         sys.exit(1)
@@ -700,42 +1085,11 @@ def main():
         sys.exit(1)
 
     try:
-        song = parse_gpif_file(path)
+        result = analyze(path, weights)
     except GPIFParserError as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         sys.exit(1)
 
-    tempo = song.tempo_bpm or 120.0
-
-    # Score all tracks
-    track_results = []
-    for track in song.tracks:
-        vec = compute_difficulty_vector(track.beats, tempo)
-        track_results.append({
-            "name": track.name,
-            "instrument": track.instrument,
-            "difficulty_score": round(vec.overall, 2),
-            "vector": vec.to_dict(),
-        })
-
-    # Primary score = hardest guitar track
-    primary = _select_primary_track(song.tracks)
-    if primary:
-        primary_vec = compute_difficulty_vector(primary.beats, tempo)
-        primary_score = round(primary_vec.overall, 2)
-        primary_vector = primary_vec.to_dict()
-    else:
-        primary_score = 0.0
-        primary_vector = DifficultyVector().to_dict()
-
-    result = {
-        "difficulty_score": primary_score,
-        "vector": primary_vector,
-        "title": song.title,
-        "artist": song.artist,
-        "tempo_bpm": tempo,
-        "tracks": track_results,
-    }
     print(json.dumps(result))
 
 
