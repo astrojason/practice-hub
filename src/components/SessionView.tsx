@@ -957,8 +957,12 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 handleSessionSubmit(dpt, `exercise-${id}`)
               }
               onSkip={(id) => {
-                const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
-                handleSkipItems(childKeys.length > 0 ? [`exercise-${id}`, ...childKeys] : [`exercise-${id}`]);
+                if (id === ex.id) {
+                  const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
+                  handleSkipItems([`exercise-${id}`, ...childKeys]);
+                } else {
+                  handleSkipItems([`exercise-${id}`]);
+                }
               }}
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
@@ -995,8 +999,12 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 handleSessionSubmit(dpt, `studymaterial-${id}`)
               }
               onSkip={(id) => {
-                const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
-                handleSkipItems(childKeys.length > 0 ? [`studymaterial-${id}`, ...childKeys] : [`studymaterial-${id}`]);
+                if (id === sm.id) {
+                  const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
+                  handleSkipItems([`studymaterial-${id}`, ...childKeys]);
+                } else {
+                  handleSkipItems([`studymaterial-${id}`]);
+                }
               }}
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
@@ -1134,8 +1142,12 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                   handleSessionSubmit(dpt, `exercise-${id}`)
                 }
                 onSkip={(id) => {
-                  const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
-                  handleSkipItems(childKeys.length > 0 ? [`exercise-${id}`, ...childKeys] : [`exercise-${id}`]);
+                  if (id === ex.id) {
+                    const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
+                    handleSkipItems([`exercise-${id}`, ...childKeys]);
+                  } else {
+                    handleSkipItems([`exercise-${id}`]);
+                  }
                 }}
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
@@ -1159,8 +1171,12 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                   handleSessionSubmit(dpt, `studymaterial-${id}`)
                 }
                 onSkip={(id) => {
-                  const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
-                  handleSkipItems(childKeys.length > 0 ? [`studymaterial-${id}`, ...childKeys] : [`studymaterial-${id}`]);
+                  if (id === sm.id) {
+                    const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
+                    handleSkipItems([`studymaterial-${id}`, ...childKeys]);
+                  } else {
+                    handleSkipItems([`studymaterial-${id}`]);
+                  }
                 }}
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
