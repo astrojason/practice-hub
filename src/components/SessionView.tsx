@@ -55,6 +55,7 @@ import { SongCard } from "./session/SongCard";
 import { StudyMaterialCard } from "./session/StudyMaterialCard";
 import { OpenSessionForm } from "./session/forms/OpenSessionForm";
 import { QuickAddPanel } from "./session/QuickAddPanel";
+import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
 import { Metronome } from "./player/Metronome";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
@@ -194,7 +195,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
   // openForm: which item's form is expanded (only one at a time)
   const [openForm, setOpenForm] = useState<string | null>(null);
   const [openSessionModalOpen, setOpenSessionModalOpen] = useState(false);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
 
   // ── Sequential session (parent-triggers-children flow) ───────────────────────
   const [sequentialSession, setSequentialSession] = useState<{
@@ -285,6 +287,33 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     }));
   }, [skippedIds]);
 
+  // ── Auto-complete parents when all children are done (completed or skipped) ───
+  useEffect(() => {
+    if (!dashboard) return;
+    const allDone = (key: string) => completedIds.has(key) || skippedIds.has(key);
+    const toComplete: string[] = [];
+    for (const ex of [...dashboard.exercises, ...additionalExercises]) {
+      const parentKey = `exercise-${ex.id}`;
+      if (ex.child_exercises.length > 0 && !allDone(parentKey) && ex.child_exercises.every((c) => allDone(`exercise-${c.id}`))) {
+        toComplete.push(parentKey);
+      }
+    }
+    for (const sm of [...dashboard.study_materials, ...additionalStudyMaterials]) {
+      const parentKey = `studymaterial-${sm.id}`;
+      const children = sm.child_study_materials ?? [];
+      if (children.length > 0 && !allDone(parentKey) && children.every((c) => allDone(`studymaterial-${c.id}`))) {
+        toComplete.push(parentKey);
+      }
+    }
+    if (toComplete.length > 0) {
+      setCompletedIds((prev) => {
+        const next = new Set(prev);
+        toComplete.forEach((k) => next.add(k));
+        return next;
+      });
+    }
+  }, [completedIds, skippedIds, dashboard, additionalExercises, additionalStudyMaterials]);
+
   // ── Clock tick ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -354,10 +383,6 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     return ids;
   }, [dashboard, additionalStudyMaterials]);
 
-  const projectTags = useMemo(
-    () => (dashboard?.project?.songs ?? []).flatMap((s) => s.tags),
-    [dashboard]
-  );
 
   const allComplete =
     allSuggestedIds.size > 0 &&
@@ -827,7 +852,8 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
         }}
         openSessionActive={activeTimers.has(OPEN_SESSION_KEY) || pausedElapsed.has(OPEN_SESSION_KEY)}
         openSessionElapsed={getElapsed(OPEN_SESSION_KEY)}
-        onQuickAdd={() => setShowQuickAdd((v) => !v)}
+        onAdd={() => setShowAdd((v) => !v)}
+        onQuickAdd={() => setShowQuickAddModal((v) => !v)}
         onMetronome={() => setMetronomeOpen((v) => !v)}
         onSignOut={onSignOut}
         onReports={() => setReportOpen(true)}
@@ -854,17 +880,25 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
         />
       )}
 
-      {showQuickAdd && (
+      {showAdd && (
         <QuickAddPanel
+          overdueSongs={dashboard?.overdue ?? []}
+          existingSongIds={existingSongIds}
+          onAddSong={handleAddSong}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
+
+      {showQuickAddModal && (
+        <QuickAddModal
           token={token}
           existingSongIds={existingSongIds}
           existingExerciseIds={existingExerciseIds}
           existingStudyMaterialIds={existingStudyMaterialIds}
-          projectTags={projectTags}
           onAddSong={handleAddSong}
           onAddExercise={handleAddExercise}
           onAddStudyMaterial={handleAddStudyMaterial}
-          onClose={() => setShowQuickAdd(false)}
+          onClose={() => setShowQuickAddModal(false)}
         />
       )}
 

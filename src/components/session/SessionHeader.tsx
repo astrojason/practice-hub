@@ -18,6 +18,7 @@ interface Props {
   openSessionElapsed: number;
   onRebuild: () => void;
   onOpenSession: () => void;
+  onAdd: () => void;
   onQuickAdd: () => void;
   onMetronome: () => void;
   onSignOut: () => void;
@@ -43,6 +44,7 @@ export function SessionHeader({
   openSessionElapsed,
   onRebuild,
   onOpenSession,
+  onAdd,
   onQuickAdd,
   onMetronome,
   onSignOut,
@@ -70,6 +72,9 @@ export function SessionHeader({
           <button onClick={onOpenSession} className={`btn-secondary${openSessionActive ? " btn-open-session-active" : ""}`}>
             <PlusIcon className="icon-sm" />
             {openSessionActive ? formatTime(openSessionElapsed) : "Open Session"}
+          </button>
+          <button onClick={onAdd} className="btn-secondary">
+            <PlusIcon className="icon-sm" /> Add
           </button>
           <button onClick={onQuickAdd} className="btn-secondary">
             <MagnifyingGlassPlusIcon className="icon-sm" /> Quick add

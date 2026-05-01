@@ -780,6 +780,40 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
   flex-direction: column;
 }
 
+.qa-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.qa-filter-pill {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.qa-filter-pill:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.qa-filter-pill.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+.qa-filter-pill--playlist {
+  border-style: dashed;
+}
+
 /* ── Quick Add sections ── */
 .qa-section {
   border-bottom: 1px solid var(--border-dim);
@@ -874,6 +908,51 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
   color: var(--muted);
   text-align: center;
   border-top: 1px solid var(--border-dim);
+}
+
+.qa-empty-center {
+  padding: 24px 12px;
+  border-top: none;
+}
+
+.qa-section-header--static {
+  cursor: default;
+  pointer-events: none;
+}
+.qa-section-header--static:hover { background: transparent; }
+
+/* ── Quick Add Modal (centered) ── */
+.qa-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+}
+
+.qa-modal-card {
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 120px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.qa-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 /* ─── Media Player ───────────────────────────────────────────────────────────── */
