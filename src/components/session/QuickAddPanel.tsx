@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { ChevronDownIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/16/solid";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FunnelIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+} from "@heroicons/react/16/solid";
 import type { Song } from "../../api/types";
 
 interface Props {
@@ -17,8 +23,11 @@ export function QuickAddPanel({
 }: Props) {
   const [overdueCollapsed, setOverdueCollapsed] = useState(false);
   const [addedSongIds, setAddedSongIds] = useState<Set<number>>(new Set());
+  const [filterOpen, setFilterOpen] = useState(false);
   const [filterTuning, setFilterTuning] = useState<string | null>(null);
   const [filterPlaylist, setFilterPlaylist] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -27,17 +36,6 @@ export function QuickAddPanel({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  const visibleOverdue = useMemo(
-    () =>
-      overdueSongs.filter((s) => {
-        if (existingSongIds.has(s.id) || addedSongIds.has(s.id)) return false;
-        if (filterTuning && s.tuning_name !== filterTuning) return false;
-        if (filterPlaylist && !(s.meta.song_lists ?? []).some((pl) => pl.name === filterPlaylist)) return false;
-        return true;
-      }),
-    [overdueSongs, existingSongIds, addedSongIds, filterTuning, filterPlaylist]
-  );
 
   const uniqueTunings = useMemo(() => {
     const seen = new Set<string>();
@@ -59,45 +57,126 @@ export function QuickAddPanel({
       });
   }, [overdueSongs]);
 
+  const hasFilterOptions = uniqueTunings.length > 1 || uniquePlaylists.length > 0;
+  const activeFilterCount = (filterTuning ? 1 : 0) + (filterPlaylist ? 1 : 0);
+
+  const q = search.trim().toLowerCase();
+
+  const visibleOverdue = useMemo(
+    () =>
+      overdueSongs.filter((s) => {
+        if (existingSongIds.has(s.id) || addedSongIds.has(s.id)) return false;
+        if (filterTuning && s.tuning_name !== filterTuning) return false;
+        if (filterPlaylist && !(s.meta.song_lists ?? []).some((pl) => pl.name === filterPlaylist)) return false;
+        if (q && !s.name.toLowerCase().includes(q) && !s.artist_name.toLowerCase().includes(q)) return false;
+        return true;
+      }),
+    [overdueSongs, existingSongIds, addedSongIds, filterTuning, filterPlaylist, q]
+  );
+
   function handleAddSong(song: Song) {
     setAddedSongIds((prev) => new Set(prev).add(song.id));
     onAddSong(song);
     onClose();
   }
 
+  function toggleFilterPanel() {
+    setFilterOpen((v) => {
+      if (!v) setTimeout(() => searchRef.current?.focus(), 50);
+      return !v;
+    });
+  }
+
   return (
     <div className="quick-add-backdrop" onClick={onClose}>
       <div className="quick-add-panel" onClick={(e) => e.stopPropagation()}>
+        {/* ── Header ── */}
         <div className="quick-add-header">
           <span className="quick-add-title">Add</span>
-          <button className="btn-ghost quick-add-close" onClick={onClose}>
-            <XMarkIcon />
-          </button>
+          <div className="quick-add-header-actions">
+            {hasFilterOptions && (
+              <button
+                className={`btn-ghost qa-filter-btn${filterOpen ? " active" : ""}`}
+                onClick={toggleFilterPanel}
+                title="Filter"
+              >
+                <FunnelIcon />
+                {activeFilterCount > 0 && (
+                  <span className="qa-filter-badge">{activeFilterCount}</span>
+                )}
+              </button>
+            )}
+            <button className="btn-ghost quick-add-close" onClick={onClose}>
+              <XMarkIcon />
+            </button>
+          </div>
         </div>
 
-        {(uniqueTunings.length > 1 || uniquePlaylists.length > 0) && (
-          <div className="qa-filters">
-            {uniqueTunings.length > 1 && uniqueTunings.map((t) => (
+        {/* ── Filter panel ── */}
+        {filterOpen && (
+          <div className="qa-filter-panel">
+            <div className="qa-filter-search-wrap">
+              <MagnifyingGlassIcon className="qa-filter-search-icon icon-sm" />
+              <input
+                ref={searchRef}
+                type="search"
+                className="qa-filter-search"
+                placeholder="Search…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            {uniqueTunings.length > 1 && (
+              <div className="qa-filter-group">
+                <span className="qa-filter-group-label">Tuning</span>
+                <div className="qa-filter-pills">
+                  {uniqueTunings.map((t) => (
+                    <button
+                      key={t}
+                      className={`qa-filter-pill${filterTuning === t ? " active" : ""}`}
+                      onClick={() => setFilterTuning((prev) => (prev === t ? null : t))}
+                      // eslint-disable-next-line react/no-danger
+                      dangerouslySetInnerHTML={{ __html: t }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {uniquePlaylists.length > 0 && (
+              <div className="qa-filter-group">
+                <span className="qa-filter-group-label">Playlist</span>
+                <div className="qa-filter-pills">
+                  {uniquePlaylists.map((pl) => (
+                    <button
+                      key={pl.name}
+                      className={`qa-filter-pill qa-filter-pill--playlist${filterPlaylist === pl.name ? " active" : ""}`}
+                      onClick={() => setFilterPlaylist((prev) => (prev === pl.name ? null : pl.name))}
+                      // eslint-disable-next-line react/no-danger
+                      dangerouslySetInnerHTML={{ __html: pl.name }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(activeFilterCount > 0 || search) && (
               <button
-                key={t}
-                className={`qa-filter-pill${filterTuning === t ? " active" : ""}`}
-                onClick={() => setFilterTuning((prev) => (prev === t ? null : t))}
+                className="qa-filter-clear"
+                onClick={() => {
+                  setFilterTuning(null);
+                  setFilterPlaylist(null);
+                  setSearch("");
+                }}
               >
-                {t}
+                Clear filters
               </button>
-            ))}
-            {uniquePlaylists.map((pl) => (
-              <button
-                key={pl.name}
-                className={`qa-filter-pill qa-filter-pill--playlist${filterPlaylist === pl.name ? " active" : ""}`}
-                onClick={() => setFilterPlaylist((prev) => (prev === pl.name ? null : pl.name))}
-              >
-                {pl.name}
-              </button>
-            ))}
+            )}
           </div>
         )}
 
+        {/* ── Body ── */}
         <div className="quick-add-body">
           {visibleOverdue.length === 0 ? (
             <div className="qa-empty qa-empty-center">No overdue items</div>

@@ -780,13 +780,89 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
   flex-direction: column;
 }
 
-.qa-filters {
+.quick-add-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.qa-filter-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.qa-filter-btn.active { color: var(--accent-light); }
+.qa-filter-btn svg { width: 14px; height: 14px; }
+
+.qa-filter-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 8px;
+  line-height: 10px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ── Filter panel (slides in below header) ── */
+.qa-filter-panel {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+}
+
+.qa-filter-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+}
+.qa-filter-search-wrap:focus-within { border-color: var(--accent); }
+
+.qa-filter-search-icon { color: var(--muted); flex-shrink: 0; }
+
+.qa-filter-search {
+  flex: 1;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+}
+.qa-filter-search::placeholder { color: var(--muted); }
+
+.qa-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.qa-filter-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.qa-filter-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  gap: 5px;
 }
 
 .qa-filter-pill {
@@ -808,11 +884,33 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
 .qa-filter-pill.active {
   background: var(--accent-dim);
   border-color: var(--accent);
+  border-style: solid;
   color: var(--accent-light);
 }
 .qa-filter-pill--playlist {
   border-style: dashed;
 }
+.qa-filter-pill--playlist.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  border-style: solid;
+  color: var(--accent-light);
+}
+
+.qa-filter-clear {
+  align-self: flex-end;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.qa-filter-clear:hover { color: var(--text-dim); background: transparent; }
 
 /* ── Quick Add sections ── */
 .qa-section {
