@@ -136,9 +136,34 @@ function collectAllExerciseIds(exercises: DashboardExercise[]): number[] {
 }
 
 function nestStudyMaterials(flat: DashboardStudyMaterial[]): DashboardStudyMaterial[] {
+  // Collect every item recursively — the API may return some parents already
+  // nested (children inside child_study_materials) while other branches arrive flat.
+  // We need all IDs in one pool before deciding how to build the tree.
+  function collectAll(items: DashboardStudyMaterial[]): DashboardStudyMaterial[] {
+    const result: DashboardStudyMaterial[] = [];
+    for (const sm of items) {
+      result.push(sm);
+      for (const child of sm.child_study_materials ?? []) {
+        result.push(...collectAll([child]));
+      }
+    }
+    return result;
+  }
+
+  const all = collectAll(flat);
+  const idsInAll = new Set(all.map((sm) => sm.id));
+
+  // If nothing references a sibling as its parent, structure is already correct.
+  const hasParentRefs = all.some(
+    (sm) => sm.parent_study_material_id != null && idsInAll.has(sm.parent_study_material_id)
+  );
+  if (!hasParentRefs) return flat;
+
   const byId = new Map<number, DashboardStudyMaterial>();
-  for (const sm of flat) {
-    byId.set(sm.id, { ...sm, child_study_materials: [] });
+  for (const sm of all) {
+    if (!byId.has(sm.id)) {
+      byId.set(sm.id, { ...sm, child_study_materials: [] });
+    }
   }
   const roots: DashboardStudyMaterial[] = [];
   for (const [, sm] of byId) {

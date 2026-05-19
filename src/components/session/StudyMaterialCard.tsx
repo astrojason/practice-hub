@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
@@ -57,6 +59,9 @@ interface SingleCardProps {
   onStartSequential?: () => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
+  /** Collapse toggle for parent cards with children */
+  childrenCollapsed?: boolean;
+  onToggleChildren?: () => void;
 }
 
 function StudyMaterialSingleCard({
@@ -81,6 +86,8 @@ function StudyMaterialSingleCard({
   onStartSequential,
   onOpenChat,
   isMediaActive,
+  childrenCollapsed,
+  onToggleChildren,
 }: SingleCardProps) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
@@ -157,6 +164,15 @@ function StudyMaterialSingleCard({
           )}
         </div>
         <div className="item-actions">
+          {onToggleChildren && (
+            <button
+              className="btn-ghost btn-collapse"
+              onClick={onToggleChildren}
+              title={childrenCollapsed ? "Expand" : "Collapse"}
+            >
+              {childrenCollapsed ? <ChevronRightIcon className="icon" /> : <ChevronDownIcon className="icon" />}
+            </button>
+          )}
           <button
             className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
             onClick={onOpenChat}
@@ -314,6 +330,7 @@ export function StudyMaterialCard({
   isMediaActive,
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
+  const [childrenCollapsed, setChildrenCollapsed] = useState(false);
   const state = getState(material.id);
 
   return (
@@ -339,8 +356,10 @@ export function StudyMaterialCard({
         onOpenFile={onOpenFile}
         onOpenChat={onOpenChat ? () => onOpenChat(material.id) : undefined}
         isMediaActive={isMediaActive}
+        childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
+        onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
       />
-      {(material.child_study_materials ?? []).map((child) => {
+      {!childrenCollapsed && (material.child_study_materials ?? []).map((child) => {
         const childState = getState(child.id);
         return (
           <StudyMaterialSingleCard

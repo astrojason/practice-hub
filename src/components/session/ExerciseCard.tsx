@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
@@ -51,6 +53,9 @@ interface CardProps {
   onStartSequential?: () => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
+  /** Collapse toggle for parent cards with children */
+  childrenCollapsed?: boolean;
+  onToggleChildren?: () => void;
 }
 
 function ExerciseSingleCard({
@@ -75,6 +80,8 @@ function ExerciseSingleCard({
   onStartSequential,
   onOpenChat,
   isMediaActive,
+  childrenCollapsed,
+  onToggleChildren,
 }: CardProps) {
   const ue = exercise.meta.user_exercise;
   const tags: string[] = [];
@@ -160,6 +167,15 @@ function ExerciseSingleCard({
           )}
         </div>
         <div className="item-actions">
+          {onToggleChildren && (
+            <button
+              className="btn-ghost btn-collapse"
+              onClick={onToggleChildren}
+              title={childrenCollapsed ? "Expand" : "Collapse"}
+            >
+              {childrenCollapsed ? <ChevronRightIcon className="icon" /> : <ChevronDownIcon className="icon" />}
+            </button>
+          )}
           <button
             className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
             onClick={onOpenChat}
@@ -325,6 +341,7 @@ export function ExerciseCard({
   isMediaActive,
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
+  const [childrenCollapsed, setChildrenCollapsed] = useState(false);
   const state = getState(exercise.id);
   return (
     <div className="exercise-group">
@@ -349,8 +366,10 @@ export function ExerciseCard({
         onOpenFile={onOpenFile}
         onOpenChat={onOpenChat ? () => onOpenChat(exercise.id) : undefined}
         isMediaActive={isMediaActive}
+        childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
+        onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
       />
-      {exercise.child_exercises.map((child) => {
+      {!childrenCollapsed && exercise.child_exercises.map((child) => {
         const childState = getState(child.id);
         return (
           <ExerciseSingleCard
