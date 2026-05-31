@@ -5,11 +5,13 @@ import {
   ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
+  PencilSquareIcon,
   PlayIcon,
   PlusIcon,
   StopIcon,
 } from "@heroicons/react/16/solid";
 import { SongSessionForm } from "./forms/SongSessionForm";
+import { SongEditForm } from "./forms/SongEditForm";
 import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
@@ -54,6 +56,7 @@ interface Props {
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
+  onEntityEdited?: (song: Song) => void;
 }
 
 export function SongCard({
@@ -76,9 +79,11 @@ export function SongCard({
   onOpenFile,
   onOpenChat,
   isMediaActive,
+  onEntityEdited,
 }: Props) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const mediaWasOpenedRef = useRef(false);
@@ -146,6 +151,15 @@ export function SongCard({
           </span>
         </div>
         <div className="item-actions">
+          {!inSession && (
+            <button
+              className="btn-ghost"
+              onClick={() => setEditOpen(true)}
+              title="Edit"
+            >
+              <PencilSquareIcon className="icon" />
+            </button>
+          )}
           <button
             className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
             onClick={onOpenChat}
@@ -265,6 +279,22 @@ export function SongCard({
               </div>
             </div>
           )}
+        </SessionModal>
+      )}
+      {editOpen && (
+        <SessionModal
+          title={`Edit: ${song.name}`}
+          onClose={() => setEditOpen(false)}
+        >
+          <SongEditForm
+            token={token}
+            song={song}
+            onSuccess={(updated) => {
+              setEditOpen(false);
+              onEntityEdited?.(updated);
+            }}
+            onCancel={() => setEditOpen(false)}
+          />
         </SessionModal>
       )}
     </div>

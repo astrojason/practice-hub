@@ -7,11 +7,13 @@ import {
   ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
+  PencilSquareIcon,
   PlayIcon,
   PlusIcon,
   StopIcon,
 } from "@heroicons/react/16/solid";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
+import { StudyMaterialEditForm } from "./forms/StudyMaterialEditForm";
 import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
@@ -62,6 +64,7 @@ interface SingleCardProps {
   /** Collapse toggle for parent cards with children */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
+  onEntityEdited?: (id: number, name: string, url: string | null) => void;
 }
 
 function StudyMaterialSingleCard({
@@ -88,9 +91,11 @@ function StudyMaterialSingleCard({
   isMediaActive,
   childrenCollapsed,
   onToggleChildren,
+  onEntityEdited,
 }: SingleCardProps) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const mediaWasOpenedRef = useRef(false);
@@ -171,6 +176,15 @@ function StudyMaterialSingleCard({
               title={childrenCollapsed ? "Expand" : "Collapse"}
             >
               {childrenCollapsed ? <ChevronRightIcon className="icon" /> : <ChevronDownIcon className="icon" />}
+            </button>
+          )}
+          {!inSession && (
+            <button
+              className="btn-ghost"
+              onClick={() => setEditOpen(true)}
+              title="Edit"
+            >
+              <PencilSquareIcon className="icon" />
             </button>
           )}
           <button
@@ -283,6 +297,23 @@ function StudyMaterialSingleCard({
           )}
         </SessionModal>
       )}
+
+      {editOpen && (
+        <SessionModal
+          title={`Edit: ${material.name}`}
+          onClose={() => setEditOpen(false)}
+        >
+          <StudyMaterialEditForm
+            token={token}
+            material={material}
+            onSuccess={(id, name, url) => {
+              setEditOpen(false);
+              onEntityEdited?.(id, name, url);
+            }}
+            onCancel={() => setEditOpen(false)}
+          />
+        </SessionModal>
+      )}
     </div>
   );
 }
@@ -310,6 +341,7 @@ export interface StudyMaterialCardProps {
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
+  onEntityEdited?: (id: number, name: string, url: string | null) => void;
 }
 
 export function StudyMaterialCard({
@@ -328,6 +360,7 @@ export function StudyMaterialCard({
   onOpenFile,
   onOpenChat,
   isMediaActive,
+  onEntityEdited,
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(false);
@@ -358,6 +391,7 @@ export function StudyMaterialCard({
         isMediaActive={isMediaActive}
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
         onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
+        onEntityEdited={onEntityEdited}
       />
       {!childrenCollapsed && (material.child_study_materials ?? []).map((child) => {
         const childState = getState(child.id);
@@ -384,6 +418,7 @@ export function StudyMaterialCard({
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}
             isChild
+            onEntityEdited={onEntityEdited}
           />
         );
       })}

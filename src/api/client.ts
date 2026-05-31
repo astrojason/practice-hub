@@ -1,6 +1,13 @@
 import { API_BASE_URL } from "../config";
 import type {
+  Artist,
   DashboardData,
+  DashboardExercise,
+  DashboardStudyMaterial,
+  Tuning,
+  UpdateExercisePayload,
+  UpdateSongPayload,
+  UpdateStudyMaterialPayload,
   UserProfile,
   UserSettings,
   UpdateUserSettingsPayload,
@@ -260,6 +267,63 @@ export async function registerGpResource(
     }),
   });
   await handleResponse<unknown>(response);
+}
+
+// ─── Artists / Tunings ───────────────────────────────────────────────────────
+
+export async function getArtists(token: string): Promise<{ artists: Artist[] }> {
+  const response = await fetch(`${API_BASE_URL}/artist?all=true`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ artists: Artist[] }>(response);
+}
+
+export async function getTunings(token: string): Promise<{ tunings: Tuning[] }> {
+  const response = await fetch(`${API_BASE_URL}/tuning?all=true`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ tunings: Tuning[] }>(response);
+}
+
+// ─── Entity edit ─────────────────────────────────────────────────────────────
+
+export async function updateSong(
+  token: string,
+  songId: number,
+  payload: UpdateSongPayload
+): Promise<Song> {
+  const response = await fetch(`${API_BASE_URL}/song/${songId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Song>(response);
+}
+
+export async function updateExercise(
+  token: string,
+  exerciseId: number,
+  payload: UpdateExercisePayload
+): Promise<DashboardExercise> {
+  const response = await fetch(`${API_BASE_URL}/exercise/${exerciseId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<DashboardExercise>(response);
+}
+
+export async function updateStudyMaterial(
+  token: string,
+  studyMaterialId: number,
+  payload: UpdateStudyMaterialPayload
+): Promise<DashboardStudyMaterial> {
+  const response = await fetch(`${API_BASE_URL}/study-material/${studyMaterialId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<DashboardStudyMaterial>(response);
 }
 
 export async function getCatalogStudyMaterials(

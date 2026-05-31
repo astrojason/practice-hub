@@ -458,30 +458,105 @@ label.form-full {
 select,
 input[type="number"],
 input[type="text"],
+input[type="date"],
 textarea {
   background: var(--surface-2); color: var(--text);
   border: 1px solid var(--border); border-radius: 4px;
   padding: 5px 8px; font-size: 13px; font-family: inherit;
   outline: none; transition: border-color 0.12s;
   appearance: auto; box-sizing: border-box;
+  color-scheme: dark;
 }
 select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 
 select,
 input[type="number"],
-input[type="text"] {
+input[type="text"],
+input[type="date"] {
   height: 30px; line-height: 1;
 }
 select               { cursor: pointer; min-width: 92px; }
 input[type="number"] { width: 72px; }
 textarea             { width: 100%; resize: vertical; min-height: 50px; }
+input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
+
+/* ─── Entity edit forms ──────────────────────────────────────────────────────── */
+.edit-form {
+  padding: 14px 16px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.edit-form-row {
+  display: flex; flex-direction: column; gap: 5px;
+}
+
+.edit-form-row > label,
+.edit-label-text {
+  font-size: 11px; font-weight: 500; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+.edit-form-row input[type="text"],
+.edit-form-row input[type="number"],
+.edit-form-row input[type="date"],
+.edit-form-row select {
+  width: 100%;
+}
+
+.edit-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+
+.edit-resource-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.edit-resource-list {
+  display: flex; flex-direction: column; gap: 5px;
+}
+
+.edit-resource-row {
+  display: flex; gap: 4px; align-items: center;
+}
+
+.edit-resource-row input[type="text"] {
+  flex: 1; min-width: 0;
+}
+
+.edit-resource-row select {
+  flex-shrink: 0; width: 80px; min-width: 80px;
+}
+
+.edit-resource-remove {
+  flex-shrink: 0; width: 26px; height: 26px; padding: 0;
+  background: transparent; color: var(--muted); border-radius: 4px;
+}
+.edit-resource-remove:hover { color: var(--red); background: var(--red-dim); }
+.edit-resource-remove svg { width: 12px; height: 12px; }
+
+.edit-resource-browse {
+  flex-shrink: 0; width: 26px; height: 26px; padding: 0;
+  background: transparent; color: var(--muted); border-radius: 4px;
+}
+.edit-resource-browse:hover { color: var(--accent); background: var(--accent-dim); }
+.edit-resource-browse svg { width: 12px; height: 12px; }
+
+.edit-url-row {
+  display: flex; gap: 4px; align-items: center;
+}
+.edit-url-row input[type="text"] { flex: 1; }
+
+.edit-form-actions {
+  display: flex; gap: 8px; padding-top: 2px;
+}
 
 .form-error { font-size: 12px; color: var(--red); }
 
 .form-actions {
   display: flex; align-items: center; gap: 7px; padding-top: 2px;
 }
-.form-actions .btn-primary { padding: 6px 14px; font-size: 13px; }
+.form-actions .btn-primary { padding: 6px 14px; font-size: 13px; min-width: 90px; }
 .form-actions .btn-ghost   { padding: 6px 9px;  font-size: 13px; }
 
 /* ─── Session modal ──────────────────────────────────────────────────────────── */
@@ -1481,21 +1556,9 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
   color: #fff;
 }
 
-/* ─── Media player: full-window video layout ─────────────────────────────────── */
-
-/* When a video-area exists inside the player, go full-screen overlay */
-.media-player:has(.media-player__video-area) {
-  position: fixed;
-  inset: 0;
-  z-index: 300;
-  display: flex;
-  flex-direction: column;
-  background: #000;
-}
+/* ─── Media player: video area ───────────────────────────────────────────────── */
 
 .media-player__video-area {
-  flex: 1;
-  min-height: 0;
   background: #000;
   display: flex;
   align-items: center;
@@ -1503,25 +1566,11 @@ textarea             { width: 100%; resize: vertical; min-height: 50px; }
   overflow: hidden;
 }
 
-/* Override the old max-height constraint for full-window video */
-.media-player:has(.media-player__video-area) .media-player__video {
-  width: 100%;
-  height: 100%;
-  max-height: none;
-  object-fit: contain;
-}
-
 /* Controls panel — scrollable area below video (or below canvas for audio) */
 .media-player__controls {
   flex-shrink: 0;
-  overflow-y: auto;
-  max-height: 42vh;
   background: var(--surface);
   border-top: 1px solid var(--border-dim);
-}
-
-.media-player:not(:has(.media-player__video-area)) .media-player__controls {
-  max-height: none;
 }
 
 /* Two-column controls layout */

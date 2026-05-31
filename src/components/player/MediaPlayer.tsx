@@ -95,6 +95,7 @@ const defaultShortcuts: Record<string, string> = {
   nudgeLoopEndBackSmall: "Ctrl+ArrowUp",
   nudgeLoopEndForwardSmall: "Ctrl+ArrowDown",
   addMarker: "m",
+  closePlayer: "Escape",
 };
 
 const shortcutMeta: Record<string, { label: string; description: string }> = {
@@ -119,6 +120,7 @@ const shortcutMeta: Record<string, { label: string; description: string }> = {
   nudgeLoopEndBackSmall: { label: "Loop end −0.5s", description: "Nudge loop end back 0.5s" },
   nudgeLoopEndForwardSmall: { label: "Loop end +0.5s", description: "Nudge loop end forward 0.5s" },
   addMarker: { label: "Add marker", description: "Drop a marker at current playhead" },
+  closePlayer: { label: "Close player", description: "Close the media player" },
 };
 
 const shortcutOrder = Object.keys(defaultShortcuts);
@@ -1244,6 +1246,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         case "nudgeMarkerBack": nudgeSelectedMarker(-MARKER_NUDGE); break;
         case "nudgeMarkerForward": nudgeSelectedMarker(MARKER_NUDGE); break;
         case "addMarker": addMarkerFromCurrentTime(); break;
+        case "closePlayer": onClose(); break;
       }
     };
     document.addEventListener("keydown", onKeyDown);

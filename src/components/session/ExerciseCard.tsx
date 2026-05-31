@@ -7,15 +7,17 @@ import {
   ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
+  PencilSquareIcon,
   PlayIcon,
   PlusIcon,
   StopIcon,
 } from "@heroicons/react/16/solid";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
+import { ExerciseEditForm } from "./forms/ExerciseEditForm";
 import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
-import type { DashboardExercise, ExerciseSession } from "../../api/types";
+import type { DashboardExercise, ExerciseSession, Resource } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -56,6 +58,7 @@ interface CardProps {
   /** Collapse toggle for parent cards with children */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
+  onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
 }
 
 function ExerciseSingleCard({
@@ -82,6 +85,7 @@ function ExerciseSingleCard({
   isMediaActive,
   childrenCollapsed,
   onToggleChildren,
+  onEntityEdited,
 }: CardProps) {
   const ue = exercise.meta.user_exercise;
   const tags: string[] = [];
@@ -91,6 +95,7 @@ function ExerciseSingleCard({
 
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const mediaWasOpenedRef = useRef(false);
@@ -174,6 +179,15 @@ function ExerciseSingleCard({
               title={childrenCollapsed ? "Expand" : "Collapse"}
             >
               {childrenCollapsed ? <ChevronRightIcon className="icon" /> : <ChevronDownIcon className="icon" />}
+            </button>
+          )}
+          {!inSession && (
+            <button
+              className="btn-ghost"
+              onClick={() => setEditOpen(true)}
+              title="Edit"
+            >
+              <PencilSquareIcon className="icon" />
             </button>
           )}
           <button
@@ -294,6 +308,23 @@ function ExerciseSingleCard({
           )}
         </SessionModal>
       )}
+
+      {editOpen && (
+        <SessionModal
+          title={`Edit: ${exercise.name}`}
+          onClose={() => setEditOpen(false)}
+        >
+          <ExerciseEditForm
+            token={token}
+            exercise={exercise}
+            onSuccess={(id, name, resources) => {
+              setEditOpen(false);
+              onEntityEdited?.(id, name, resources);
+            }}
+            onCancel={() => setEditOpen(false)}
+          />
+        </SessionModal>
+      )}
     </div>
   );
 }
@@ -321,6 +352,7 @@ interface ExerciseCardProps {
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
+  onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
 }
 
 export function ExerciseCard({
@@ -339,6 +371,7 @@ export function ExerciseCard({
   onOpenFile,
   onOpenChat,
   isMediaActive,
+  onEntityEdited,
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(false);
@@ -368,6 +401,7 @@ export function ExerciseCard({
         isMediaActive={isMediaActive}
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
         onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
+        onEntityEdited={onEntityEdited}
       />
       {!childrenCollapsed && exercise.child_exercises.map((child) => {
         const childState = getState(child.id);
@@ -394,6 +428,7 @@ export function ExerciseCard({
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}
             isChild
+            onEntityEdited={onEntityEdited}
           />
         );
       })}

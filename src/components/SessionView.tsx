@@ -8,6 +8,7 @@ import type {
   DashboardExercise,
   DashboardStudyMaterial,
   ExerciseSession,
+  Resource,
   Song,
   SongSession,
   StudyMaterialSession,
@@ -712,6 +713,50 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     setSequentialSession(null);
   }
 
+  // ── Entity-edited handlers ────────────────────────────────────────────────────
+  function handleSongEdited(updated: Song) {
+    setDashboard((prev) => {
+      if (!prev) return prev;
+      const replaceInList = (songs: Song[]) =>
+        songs.map((s) => (s.id === updated.id ? updated : s));
+      return {
+        ...prev,
+        project: prev.project ? { ...prev.project, songs: replaceInList(prev.project.songs) } : prev.project,
+        to_review: prev.to_review ? { ...prev.to_review, songs: replaceInList(prev.to_review.songs) } : prev.to_review,
+        overdue: replaceInList(prev.overdue),
+      };
+    });
+    setAdditionalSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+  }
+
+  function handleExerciseEdited(id: number, name: string, resources: Resource[] | null) {
+    const mergeEx = (ex: DashboardExercise): DashboardExercise => ({
+      ...ex,
+      name: ex.id === id ? name : ex.name,
+      resources: ex.id === id ? resources : ex.resources,
+      child_exercises: ex.child_exercises.map((c) =>
+        c.id === id ? { ...c, name, resources } : c
+      ),
+    });
+    setDashboard((prev) => prev && { ...prev, exercises: prev.exercises.map(mergeEx) });
+    setAdditionalExercises((prev) => prev.map(mergeEx));
+  }
+
+  function handleStudyMaterialEdited(id: number, name: string, url: string | null) {
+    const mergeSm = (sm: DashboardStudyMaterial): DashboardStudyMaterial => ({
+      ...sm,
+      name: sm.id === id ? name : sm.name,
+      url: sm.id === id ? url : sm.url,
+      child_study_materials: (sm.child_study_materials ?? []).map((c) =>
+        c.id === id ? { ...c, name, url } : c
+      ),
+    });
+    setDashboard((prev) =>
+      prev && { ...prev, study_materials: prev.study_materials.map(mergeSm) }
+    );
+    setAdditionalStudyMaterials((prev) => prev.map(mergeSm));
+  }
+
   // ── Quick Add handlers ────────────────────────────────────────────────────────
   function handleAddSong(song: Song) {
     setAdditionalSongs((prev) => [...prev, song]);
@@ -1027,6 +1072,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
               onOpenChat={(id) => openChatForExercise(id)}
               isMediaActive={playerState !== null}
+              onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
             />
           ))}
         </ItemGroup>
@@ -1069,6 +1115,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
               onOpenChat={(id) => openChatForStudyMaterial(id)}
               isMediaActive={playerState !== null}
+              onEntityEdited={(id, name, url) => handleStudyMaterialEdited(id, name, url)}
             />
           ))}
         </ItemGroup>
@@ -1108,6 +1155,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
+              onEntityEdited={handleSongEdited}
             />
           ))}
         </ItemGroup>
@@ -1147,6 +1195,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
+              onEntityEdited={handleSongEdited}
             />
           ))}
         </ItemGroup>
@@ -1183,6 +1232,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 onSkip={() => handleSkipItems([`song-${song.id}`])}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
                 onOpenChat={() => openChatForSong(song.id)}
+                onEntityEdited={handleSongEdited}
               />
             ))}
             {additionalExercises.map((ex) => (
@@ -1212,6 +1262,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
                 onOpenChat={(id) => openChatForExercise(id)}
                 isMediaActive={playerState !== null}
+                onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
               />
             ))}
             {additionalStudyMaterials.map((sm) => (
@@ -1241,6 +1292,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
                 onOpenChat={(id) => openChatForStudyMaterial(id)}
                 isMediaActive={playerState !== null}
+                onEntityEdited={(id, name, url) => handleStudyMaterialEdited(id, name, url)}
               />
             ))}
           </ItemGroup>

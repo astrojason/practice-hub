@@ -1,3 +1,41 @@
+// ─── Catalog primitives ───────────────────────────────────────────────────────
+
+export interface Artist {
+  id: number;
+  name: string;
+}
+
+export interface Tuning {
+  id: number;
+  name: string;
+}
+
+// ─── Edit payloads ────────────────────────────────────────────────────────────
+
+export interface UpdateSongPayload {
+  name: string;
+  artist_id: number;
+  tuning_id: number;
+  seconds: number;
+  bpm: number | null;
+  resources: { name: string; url: string; type: string }[];
+  song_lists: number[];
+  difficulty: number;
+  date_learned: string | null;
+}
+
+export interface UpdateExercisePayload {
+  name: string;
+  resources: { name: string; url: string; type: string }[];
+}
+
+export interface UpdateStudyMaterialPayload {
+  name: string;
+  url: string;
+  type: string;
+  parent_study_material_id: number | null;
+}
+
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
 export type StudyRating = "Awful" | "Bad" | "Neutral" | "Good" | "Great";
