@@ -71,11 +71,14 @@ const PRESET_KEY = "practicePlayerPresets";
 const SHORTCUT_KEY = "practicePlayerShortcuts";
 const LOOP_NUDGE = 0.5;
 const MARKER_NUDGE = 0.5;
+const SEEK_STEP = 5;
 
 const defaultShortcuts: Record<string, string> = {
   increaseSpeed: "=",
   decreaseSpeed: "-",
   togglePlayPause: "Space",
+  seekBackward: "ArrowLeft",
+  seekForward: "ArrowRight",
   jumpForward: ".",
   jumpBackward: ",",
   setLoopStart: "a",
@@ -87,10 +90,10 @@ const defaultShortcuts: Record<string, string> = {
   nudgeLoopEndForward: "'",
   nudgeMarkerBack: "Shift+ArrowLeft",
   nudgeMarkerForward: "Shift+ArrowRight",
-  nudgeLoopStartBackSmall: "ArrowLeft",
-  nudgeLoopStartForwardSmall: "ArrowRight",
-  nudgeLoopEndBackSmall: "ArrowUp",
-  nudgeLoopEndForwardSmall: "ArrowDown",
+  nudgeLoopStartBackSmall: "Ctrl+ArrowLeft",
+  nudgeLoopStartForwardSmall: "Ctrl+ArrowRight",
+  nudgeLoopEndBackSmall: "Ctrl+ArrowUp",
+  nudgeLoopEndForwardSmall: "Ctrl+ArrowDown",
   addMarker: "m",
 };
 
@@ -98,6 +101,8 @@ const shortcutMeta: Record<string, { label: string; description: string }> = {
   increaseSpeed: { label: "Increase speed", description: "Raise playback speed by one step" },
   decreaseSpeed: { label: "Decrease speed", description: "Lower playback speed by one step" },
   togglePlayPause: { label: "Play / pause", description: "Toggle playback" },
+  seekBackward: { label: "Seek backward", description: `Seek back ${SEEK_STEP}s` },
+  seekForward: { label: "Seek forward", description: `Seek forward ${SEEK_STEP}s` },
   jumpForward: { label: "Skip forward", description: "Jump ahead by 5%" },
   jumpBackward: { label: "Skip backward", description: "Jump back by 5%" },
   setLoopStart: { label: "Set loop start", description: "Drop loop start at playhead" },
@@ -1203,6 +1208,20 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         case "togglePlayPause": handlePlayPause(); break;
         case "increaseSpeed": applySpeed(Math.min(2.0, curSpd + step).toFixed(2)); break;
         case "decreaseSpeed": applySpeed(Math.max(0.25, curSpd - step).toFixed(2)); break;
+        case "seekBackward": {
+          if (dur <= 0) break;
+          const t = Math.max(0, currentTime - SEEK_STEP);
+          if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+          else audioActions.seek(t);
+          break;
+        }
+        case "seekForward": {
+          if (dur <= 0) break;
+          const t = Math.min(dur, currentTime + SEEK_STEP);
+          if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+          else audioActions.seek(t);
+          break;
+        }
         case "jumpForward": jumpByPercent(0.05); break;
         case "jumpBackward": jumpByPercent(-0.05); break;
         case "setLoopStart": setLoopPointFromPlayhead("start"); break;
