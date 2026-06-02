@@ -339,3 +339,13 @@ export async function getCatalogStudyMaterials(
   });
   return handleResponse<CatalogStudyMaterialsResponse>(response);
 }
+
+export async function getStudyMaterialById(
+  token: string,
+  id: number
+): Promise<DashboardStudyMaterial> {
+  const response = await fetch(`${API_BASE_URL}/study-material/${id}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<DashboardStudyMaterial>(response);
+}

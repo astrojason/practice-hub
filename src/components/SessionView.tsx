@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getDashboard, getExerciseCatalog, getUser, rebuildDashboard } from "../api/client";
+import { getDashboard, getExerciseCatalog, getStudyMaterialById, getUser, rebuildDashboard } from "../api/client";
 import type {
   CatalogExercise,
   CatalogExerciseWithActive,
@@ -152,24 +152,25 @@ function nestStudyMaterials(flat: DashboardStudyMaterial[]): DashboardStudyMater
   }
 
   const all = collectAll(flat);
-  const idsInAll = new Set(all.map((sm) => sm.id));
+  const idsInAll = new Set(all.map((sm) => Number(sm.id)));
 
   // If nothing references a sibling as its parent, structure is already correct.
   const hasParentRefs = all.some(
-    (sm) => sm.parent_study_material_id != null && idsInAll.has(sm.parent_study_material_id)
+    (sm) => sm.parent_study_material_id != null && idsInAll.has(Number(sm.parent_study_material_id))
   );
   if (!hasParentRefs) return flat;
 
   const byId = new Map<number, DashboardStudyMaterial>();
   for (const sm of all) {
-    if (!byId.has(sm.id)) {
-      byId.set(sm.id, { ...sm, child_study_materials: [] });
+    const id = Number(sm.id);
+    if (!byId.has(id)) {
+      byId.set(id, { ...sm, child_study_materials: [] });
     }
   }
   const roots: DashboardStudyMaterial[] = [];
   for (const [, sm] of byId) {
     if (sm.parent_study_material_id != null) {
-      const parent = byId.get(sm.parent_study_material_id);
+      const parent = byId.get(Number(sm.parent_study_material_id));
       if (parent) {
         parent.child_study_materials!.push(sm);
       } else {
@@ -180,6 +181,19 @@ function nestStudyMaterials(flat: DashboardStudyMaterial[]): DashboardStudyMater
     }
   }
   return roots;
+}
+
+// Returns IDs of parent study materials that are referenced by orphaned root items
+// but not present in the nested list.
+function findOrphanParentIds(nested: DashboardStudyMaterial[]): number[] {
+  const presentIds = new Set(nested.map((sm) => sm.id));
+  const orphanIds = new Set<number>();
+  for (const sm of nested) {
+    if (sm.parent_study_material_id != null && !presentIds.has(sm.parent_study_material_id)) {
+      orphanIds.add(sm.parent_study_material_id);
+    }
+  }
+  return [...orphanIds];
 }
 
 function inferSmResourceType(url: string): "local_file" | "youtube" | "url" {
@@ -277,10 +291,27 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     });
 
     Promise.all([loadDash, loadUser])
-      .then(() => {
+      .then(async () => {
         const raw = dashResult!;
         const user = userResult!;
-        const dash = { ...raw, study_materials: nestStudyMaterials(raw.study_materials) };
+        let nestedSms = nestStudyMaterials(raw.study_materials);
+
+        // If any top-level study material is an orphan (its parent isn't in the dashboard
+        // response), fetch the parent and re-nest so the hierarchy displays correctly.
+        const orphanParentIds = findOrphanParentIds(nestedSms);
+        if (orphanParentIds.length > 0) {
+          const fetched = await Promise.all(
+            orphanParentIds.map((id) =>
+              getStudyMaterialById(token, id).catch(() => null)
+            )
+          );
+          const validParents = fetched.filter(Boolean) as typeof nestedSms;
+          if (validParents.length > 0) {
+            nestedSms = nestStudyMaterials([...raw.study_materials, ...validParents]);
+          }
+        }
+
+        const dash = { ...raw, study_materials: nestedSms };
         setDashboard(dash);
         setUserProfile(user);
         setServerTotal(user.time_practiced_today ?? 0);
@@ -797,7 +828,18 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
     setIsRebuilding(true);
     try {
       const raw = await rebuildDashboard(token);
-      const dash = { ...raw, study_materials: nestStudyMaterials(raw.study_materials) };
+      let nestedSms = nestStudyMaterials(raw.study_materials);
+      const orphanParentIds = findOrphanParentIds(nestedSms);
+      if (orphanParentIds.length > 0) {
+        const fetched = await Promise.all(
+          orphanParentIds.map((id) => getStudyMaterialById(token, id).catch(() => null))
+        );
+        const validParents = fetched.filter(Boolean) as typeof nestedSms;
+        if (validParents.length > 0) {
+          nestedSms = nestStudyMaterials([...raw.study_materials, ...validParents]);
+        }
+      }
+      const dash = { ...raw, study_materials: nestedSms };
       setDashboard(dash);
       setCompletedIds((prev) => mergeCompletedFromDash(dash, prev));
     } catch {
