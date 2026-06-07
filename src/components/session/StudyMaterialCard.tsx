@@ -367,7 +367,7 @@ export function StudyMaterialCard({
   const state = getState(material.id);
 
   return (
-    <div className={hasChildren ? "exercise-group" : undefined}>
+    <div className="exercise-group">
       <StudyMaterialSingleCard
         token={token}
         material={material}

@@ -330,7 +330,6 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
 }
 .item-card:last-child { border-bottom: none; }
 
-.item-group-body > .item-card:nth-child(even),
 .item-group-body > .exercise-group:nth-child(even) > .item-card:first-child { background: rgba(255,255,255,0.025); }
 .item-card.active   { background: var(--accent-dim); }
 .item-card.completed .item-card-row { opacity: 0.45; }
