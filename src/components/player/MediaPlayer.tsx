@@ -560,6 +560,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       vid.src = assetUrl(filePath);
       vid.load();
       // Restore playback speed from preset
+      vid.preservesPitch = true;
       vid.playbackRate = speedRef.current;
       if (preset?.loopStart) {
         const ls = parseTimeInput(preset.loopStart, 9999);
@@ -606,6 +607,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           const s = next.toFixed(2);
           setSpeedInput(s);
           speedRef.current = next;
+          vid.preservesPitch = true;
           vid.playbackRate = next;
           schedulePresetSaveRef.current();
         }
@@ -885,7 +887,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     setSpeedInput(s);
     speedRef.current = v;
     if (isVideo) {
-      if (videoRef.current) videoRef.current.playbackRate = v;
+      if (videoRef.current) {
+        videoRef.current.preservesPitch = true;
+        videoRef.current.playbackRate = v;
+      }
     } else {
       audioActions.setSpeed(v);
     }
