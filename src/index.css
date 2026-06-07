@@ -330,13 +330,14 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
 }
 .item-card:last-child { border-bottom: none; }
 
-.item-group-body .item-card:nth-child(even) { background: rgba(255,255,255,0.025); }
+.item-group-body > .item-card:nth-child(even),
+.item-group-body > .exercise-group:nth-child(even) > .item-card:first-child { background: rgba(255,255,255,0.025); }
 .item-card.active   { background: var(--accent-dim); }
 .item-card.completed .item-card-row { opacity: 0.45; }
 .item-card.skipped .item-card-row { opacity: 0.28; }
 
-.child-card { background: rgba(0, 0, 0, 0.15); }
-.child-card .item-card-row { padding-left: 32px; }
+.child-card { background: rgba(255, 255, 255, 0.04); border-left: 2px solid rgba(255,255,255,0.06); }
+.child-card .item-card-row { padding-left: 30px; }
 
 .item-card-row {
   display: flex; align-items: center; gap: 10px;
