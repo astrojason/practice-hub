@@ -50,6 +50,9 @@ interface Preset {
   loopIncreaseAt: string;
   loopIncreaseEnabled: boolean;
   loopPlaybackEnabled: boolean;
+  loopBreakEnabled?: boolean;
+  loopBreakAfter?: string;
+  loopBreakDuration?: string;
   metronomeBpm: number;
   pitchSemitones: number;
   pitchCents: number;
@@ -242,6 +245,17 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const loopIncreaseAtRef = useRef(3);
   const schedulePresetSaveRef = useRef<() => void>(() => {});
 
+  // ── Loop break ───────────────────────────────────────────────────────────────
+  const [loopBreakEnabled, setLoopBreakEnabledLocal] = useState(false);
+  const [loopBreakAfter, setLoopBreakAfterLocal] = useState(8);
+  const [loopBreakDuration, setLoopBreakDurationLocal] = useState(3);
+  const loopBreakEnabledRef = useRef(false);
+  const loopBreakAfterRef = useRef(8);
+  const loopBreakDurationRef = useRef(3);
+  const videoBreakCountRef = useRef(0);
+  const videoBreakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const performCountInRef = useRef<() => Promise<void>>(async () => {});
+
   // ── Pitch ───────────────────────────────────────────────────────────────────
   const [pitchSemitones, setPitchSemitonesLocal] = useState(0);
   const [pitchCents, setPitchCentsLocal] = useState(0);
@@ -311,6 +325,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     speedRef.current = audioState.speed;
   }, [audioState.speed, isVideo]);
   useEffect(() => { shortcutBindingsRef.current = shortcutBindings; }, [shortcutBindings]);
+  useEffect(() => { loopBreakEnabledRef.current = loopBreakEnabled; }, [loopBreakEnabled]);
+  useEffect(() => { loopBreakAfterRef.current = loopBreakAfter; }, [loopBreakAfter]);
+  useEffect(() => { loopBreakDurationRef.current = loopBreakDuration; }, [loopBreakDuration]);
   useEffect(() => { waveMarkersRef.current = waveMarkers; }, [waveMarkers]);
   useEffect(() => { selectedMarkerIdxRef.current = selectedMarkerIdx; }, [selectedMarkerIdx]);
   useEffect(() => { regionsRef.current = regions; }, [regions]);
@@ -346,6 +363,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       loopIncreaseAt: String(loopIncreaseAt),
       loopIncreaseEnabled,
       loopPlaybackEnabled: loopEnabled,
+      loopBreakEnabled,
+      loopBreakAfter: String(loopBreakAfter),
+      loopBreakDuration: String(loopBreakDuration),
       metronomeBpm: metronomeBpmRef.current,
       pitchSemitones,
       pitchCents,
@@ -357,7 +377,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (!opts.silent) setPresetStatus("Preset saved");
     else setPresetStatusText("All changes saved");
   }, [filePath, isVideo, loopStartInput, loopEndInput, loopIncreaseBy, loopIncreaseAt,
-      loopIncreaseEnabled, loopEnabled, pitchSemitones, pitchCents, setPresetStatus]);
+      loopIncreaseEnabled, loopEnabled, loopBreakEnabled, loopBreakAfter, loopBreakDuration,
+      pitchSemitones, pitchCents, setPresetStatus]);
 
   const schedulePresetSave = useCallback(() => {
     if (presetSaveTimerRef.current) clearTimeout(presetSaveTimerRef.current);
@@ -381,6 +402,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       audioActions.setLoopIncreaseEnabled(false);
       setLoopIncreaseByLocal(5);
       setLoopIncreaseAtLocal(3);
+      setLoopBreakEnabledLocal(false);
+      audioActions.setLoopBreakEnabled(false);
+      setLoopBreakAfterLocal(8);
+      audioActions.setLoopBreakAfter(8);
+      setLoopBreakDurationLocal(3);
+      audioActions.setLoopBreakDuration(3);
       const spd = "1.00";
       setSpeedInput(spd);
       speedRef.current = 1.0;
@@ -417,6 +444,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     const incAt = parseFloat(preset.loopIncreaseAt) || 3;
     setLoopIncreaseAtLocal(incAt);
     audioActions.setLoopIncreaseAt(incAt);
+    const breakEn = typeof preset.loopBreakEnabled === "boolean" ? preset.loopBreakEnabled : false;
+    setLoopBreakEnabledLocal(breakEn);
+    audioActions.setLoopBreakEnabled(breakEn);
+    const breakAfter = parseInt(preset.loopBreakAfter ?? "8") || 8;
+    setLoopBreakAfterLocal(breakAfter);
+    audioActions.setLoopBreakAfter(breakAfter);
+    const breakDur = parseInt(preset.loopBreakDuration ?? "3") || 3;
+    setLoopBreakDurationLocal(breakDur);
+    audioActions.setLoopBreakDuration(breakDur);
     const spd = (preset.playbackSpeed ?? 1).toFixed(2);
     setSpeedInput(spd);
     speedRef.current = preset.playbackSpeed ?? 1;
@@ -514,6 +550,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     else startMetronome();
   };
 
+  useEffect(() => { performCountInRef.current = performCountIn; }, [performCountIn]);
+
   // Keep count-in callback in engine
   useEffect(() => {
     if (!isVideo && metronomeEnabled && metronomeCountIn) {
@@ -522,6 +560,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       audioActions.setCountIn(null);
     }
   }, [isVideo, metronomeEnabled, metronomeCountIn, performCountIn, audioActions]);
+
+  useEffect(() => {
+    if (!isVideo) {
+      audioActions.setBreakCountIn(loopBreakEnabled ? performCountIn : null);
+    }
+  }, [isVideo, loopBreakEnabled, performCountIn, audioActions]);
 
   // Tap tempo
   const tapTimestampsRef = useRef<number[]>([]);
@@ -557,6 +601,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       const vid = videoRef.current;
       if (!vid) return;
       videoLoopCountRef.current = 0;
+      videoBreakCountRef.current = 0;
       vid.src = assetUrl(filePath);
       vid.load();
       // Restore playback speed from preset
@@ -599,7 +644,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
       if (loopEnabled && le !== null && vid.currentTime >= le) {
         vid.currentTime = ls;
-        if (vid.paused) vid.play().catch(() => {});
         videoLoopCountRef.current++;
         if (loopIncreaseEnabledRef.current && loopIncreaseAtRef.current > 0 && videoLoopCountRef.current >= loopIncreaseAtRef.current) {
           videoLoopCountRef.current = 0;
@@ -611,6 +655,22 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           vid.playbackRate = next;
           schedulePresetSaveRef.current();
         }
+        if (loopBreakEnabledRef.current && loopBreakAfterRef.current > 0) {
+          videoBreakCountRef.current++;
+          if (videoBreakCountRef.current >= loopBreakAfterRef.current) {
+            videoBreakCountRef.current = 0;
+            vid.pause();
+            if (videoBreakTimerRef.current) clearTimeout(videoBreakTimerRef.current);
+            videoBreakTimerRef.current = setTimeout(() => {
+              performCountInRef.current().then(() => {
+                videoBreakTimerRef.current = null;
+                vid.play().catch(() => {});
+              });
+            }, loopBreakDurationRef.current * 1000);
+            return;
+          }
+        }
+        if (vid.paused) vid.play().catch(() => {});
       }
     };
     const onMeta = () => setVideoDuration(vid.duration);
@@ -634,6 +694,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       vid.removeEventListener("play", onPlay);
       vid.removeEventListener("pause", onPause);
       vid.removeEventListener("ended", onEnded);
+      if (videoBreakTimerRef.current) { clearTimeout(videoBreakTimerRef.current); videoBreakTimerRef.current = null; }
     };
   }, [isVideo, loopEnabled, loopStartInput, loopEndInput]);
 
@@ -1608,6 +1669,54 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                   title="Loop count before bump"
                 />
                 <span>loops</span>
+              </div>
+              <div className="media-player__loop-increase">
+                <label className="media-player__checkbox-label">
+                  <input
+                    type="checkbox"
+                    id="loopBreak"
+                    checked={loopBreakEnabled}
+                    onChange={e => {
+                      setLoopBreakEnabledLocal(e.target.checked);
+                      audioActions.setLoopBreakEnabled(e.target.checked);
+                      schedulePresetSave();
+                    }}
+                  />
+                  Break
+                </label>
+                <span>Pause</span>
+                <input
+                  type="number"
+                  id="loopBreakDuration"
+                  className="media-player__loop-num-input"
+                  min="1" max="60"
+                  value={loopBreakDuration}
+                  disabled={!loopBreakEnabled}
+                  onChange={e => {
+                    const v = parseInt(e.target.value) || 3;
+                    setLoopBreakDurationLocal(v);
+                    audioActions.setLoopBreakDuration(v);
+                    schedulePresetSave();
+                  }}
+                  title="Seconds to pause"
+                />
+                <span>sec every</span>
+                <input
+                  type="number"
+                  id="loopBreakAfter"
+                  className="media-player__loop-num-input"
+                  min="1" max="50"
+                  value={loopBreakAfter}
+                  disabled={!loopBreakEnabled}
+                  onChange={e => {
+                    const v = parseInt(e.target.value) || 8;
+                    setLoopBreakAfterLocal(v);
+                    audioActions.setLoopBreakAfter(v);
+                    schedulePresetSave();
+                  }}
+                  title="Loops between breaks"
+                />
+                <span>loops + count-in</span>
               </div>
             </section>
 

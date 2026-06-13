@@ -37,6 +37,10 @@ export interface AudioEngineActions {
   setLoopIncreaseAt: (v: number) => void;
   setPitch: (semitones: number, cents: number) => void;
   setCountIn: (fn: (() => Promise<void>) | null) => void;
+  setLoopBreakEnabled: (v: boolean) => void;
+  setLoopBreakAfter: (v: number) => void;
+  setLoopBreakDuration: (v: number) => void;
+  setBreakCountIn: (fn: (() => Promise<void>) | null) => void;
   destroy: () => void;
   getContext: () => AudioContext | null;
 }
@@ -124,6 +128,11 @@ interface EngineRef {
   pitchSemitones: number;
   pitchCents: number;
   countIn: (() => Promise<void>) | null;
+  loopBreakEnabled: boolean;
+  loopBreakAfter: number;
+  loopBreakDuration: number;
+  loopBreakCount: number;
+  breakCountIn: (() => Promise<void>) | null;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -150,6 +159,11 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     pitchSemitones: 0,
     pitchCents: 0,
     countIn: null,
+    loopBreakEnabled: false,
+    loopBreakAfter: 8,
+    loopBreakDuration: 3,
+    loopBreakCount: 0,
+    breakCountIn: null,
   });
 
   const [status, setStatus] = useState<AudioEngineStatus>("idle");
@@ -241,6 +255,23 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
           if (eng.raf !== null) { cancelAnimationFrame(eng.raf); eng.raf = null; }
           if (eng.gain) { try { eng.gain.disconnect(); } catch (_) {} eng.gain = null; }
 
+          if (eng.loopBreakEnabled && eng.loopBreakAfter > 0) {
+            eng.loopBreakCount++;
+            if (eng.loopBreakCount >= eng.loopBreakAfter) {
+              eng.loopBreakCount = 0;
+              setTimeout(() => {
+                const breakFn = eng.breakCountIn;
+                if (breakFn) {
+                  breakFn().then(() => { startEngine(); eng.isHandlingLoop = false; });
+                } else {
+                  startEngine();
+                  eng.isHandlingLoop = false;
+                }
+              }, eng.loopBreakDuration * 1000);
+              return;
+            }
+          }
+
           if (eng.countIn) {
             eng.countIn().then(() => {
               startEngine();
@@ -271,6 +302,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     eng.pendingSrc = path;
     eng.isHandlingLoop = false;
     eng.loopCount = 0;
+    eng.loopBreakCount = 0;
     eng._pausedAt = 0;
 
     setStatus("loading");
@@ -378,6 +410,11 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     e.current.countIn = fn;
   }, []);
 
+  const setLoopBreakEnabled = useCallback((v: boolean) => { e.current.loopBreakEnabled = v; }, []);
+  const setLoopBreakAfter = useCallback((v: number) => { e.current.loopBreakAfter = v; }, []);
+  const setLoopBreakDuration = useCallback((v: number) => { e.current.loopBreakDuration = v; }, []);
+  const setBreakCountIn = useCallback((fn: (() => Promise<void>) | null) => { e.current.breakCountIn = fn; }, []);
+
   const destroy = useCallback(() => {
     stopEngine(true);
     const eng = e.current;
@@ -405,7 +442,9 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     loadFile, play, pause, seek, setSpeed,
     setLoopStart, setLoopEnd, setLoopEnabled,
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
-    setPitch, setCountIn, destroy, getContext,
+    setPitch, setCountIn,
+    setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
+    destroy, getContext,
   };
 
   return [state, actions];
