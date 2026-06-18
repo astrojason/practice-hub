@@ -259,11 +259,13 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
     mediaType: "audio" | "video";
     itemName: string;
     itemKey?: string;
+    songId?: number;
   } | null>(null);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
 
   const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string, itemKey?: string) => {
-    setPlayerState({ path, mediaType, itemName, itemKey });
+    const songId = itemKey?.startsWith("song-") ? Number(itemKey.slice(5)) : undefined;
+    setPlayerState({ path, mediaType, itemName, itemKey, songId: Number.isFinite(songId) ? songId : undefined });
   };
 
   const OPEN_SESSION_KEY = "open-session";
@@ -1025,6 +1027,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
           onClose={() => setPlayerState(null)}
           timerElapsed={playerState.itemKey ? getElapsed(playerState.itemKey) : undefined}
           isTimerActive={playerState.itemKey ? activeTimers.has(playerState.itemKey) : false}
+          token={token}
+          songId={playerState.songId}
         />
       )}
 

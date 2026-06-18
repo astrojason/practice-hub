@@ -8,6 +8,7 @@ import {
 } from "react";
 import { XMarkIcon, BackwardIcon, ForwardIcon } from "@heroicons/react/16/solid";
 import { useAudioEngine, assetUrl } from "./useAudioEngine";
+import { createSongSection, updateSongSection, deleteSongSection } from "../../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,10 @@ interface Props {
   isTimerActive?: boolean;
   /** When set, automatically seeks to and activates the region matching this section id */
   activeSectionId?: number | null;
+  /** Auth token — required for DB region save/delete */
+  token?: string;
+  /** Song ID — when provided, regions are synced to the DB as song sections */
+  songId?: number;
 }
 
 interface WaveMarker {
@@ -206,7 +211,7 @@ function scheduleClick(ctx: AudioContext, time: number, accent: boolean) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive, activeSectionId }: Props) {
+export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive, activeSectionId, token, songId }: Props) {
   const detectedType = getMediaTypeFromPath(filePath);
   const isVideo = detectedType === "video";
 
@@ -274,6 +279,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const [regions, setRegions] = useState<Region[]>([]);
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const [regionNameInput, setRegionNameInput] = useState("");
+  const [editingRegionId, setEditingRegionId] = useState<string | null>(null);
+  const [editingRegionName, setEditingRegionName] = useState("");
   const regionsRef = useRef<Region[]>([]);
   const activeRegionIdRef = useRef<string | null>(null);
 
@@ -1152,20 +1159,34 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
   // ── Regions ───────────────────────────────────────────────────────────────────
 
-  const saveRegion = () => {
-    const ls = parseTimeInput(loopStartInput, dur);
-    const le = parseTimeInput(loopEndInput, dur);
-    if (ls === null || le === null) {
-      showToast("Set loop start and end before saving a region.", { icon: "⚠️", tone: "warning" });
+  const saveRegion = async () => {
+    if (dur <= 0) {
+      showToast("Media not loaded.", { icon: "⚠️", tone: "warning" });
       return;
     }
+    const ls = parseTimeInput(loopStartInput, dur) ?? 0;
+    const le = parseTimeInput(loopEndInput, dur) ?? dur;
     if (le <= ls) {
       showToast("Loop end must be after loop start.", { icon: "⚠️", tone: "warning" });
       return;
     }
+    const name = regionNameInput.trim() || `Region ${regionsRef.current.length + 1}`;
+    let sectionId: number | undefined;
+    if (token && songId) {
+      try {
+        const section = await createSongSection(token, songId, {
+          name,
+          start_seconds: ls,
+          end_seconds: le,
+        });
+        sectionId = section.id;
+      } catch (err) {
+        showToast(`Failed to save region to server: ${err instanceof Error ? err.message : String(err)}`, { icon: "⚠️", tone: "warning" });
+      }
+    }
     const newRegion: Region = {
       id: createRegionId(),
-      name: regionNameInput.trim() || `Region ${regionsRef.current.length + 1}`,
+      name,
       start: ls,
       end: le,
       playbackSpeed: speedRef.current,
@@ -1173,12 +1194,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       speedIncreaseInterval: loopIncreaseAt,
       increaseEnabled: loopIncreaseEnabled,
       createdAt: Date.now(),
+      section_id: sectionId,
     };
     const next = [...regionsRef.current, newRegion];
     setRegions(next);
     regionsRef.current = next;
-    setActiveRegionId(newRegion.id);
-    activeRegionIdRef.current = newRegion.id;
+    setActiveRegionId(null);
+    activeRegionIdRef.current = null;
     setRegionNameInput("");
     setPresetStatus("Region saved");
     showToast(`Region "${newRegion.name}" saved.`, { icon: "📍" });
@@ -1186,6 +1208,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   };
 
   const applyRegion = (id: string) => {
+    if (activeRegionIdRef.current === id) {
+      setActiveRegionId(null);
+      activeRegionIdRef.current = null;
+      return;
+    }
     const region = regionsRef.current.find(r => r.id === id);
     if (!region) return;
     setLoopStartInput(formatTime(region.start));
@@ -1216,6 +1243,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   };
 
   const deleteRegion = (id: string) => {
+    const region = regionsRef.current.find(r => r.id === id);
     const next = regionsRef.current.filter(r => r.id !== id);
     setRegions(next);
     regionsRef.current = next;
@@ -1224,15 +1252,26 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       activeRegionIdRef.current = null;
       setRegionNameInput("");
     }
+    if (token && region?.section_id) {
+      deleteSongSection(token, region.section_id).catch(err => {
+        showToast(`Failed to delete region from server: ${err instanceof Error ? err.message : String(err)}`, { icon: "⚠️", tone: "warning" });
+      });
+    }
     setPresetStatus("Region removed");
     showToast("Region removed.", { icon: "🗑", tone: "warning" });
     savePreset({ silent: true });
   };
 
   const renameRegion = (id: string, name: string) => {
+    const region = regionsRef.current.find(r => r.id === id);
     const next = regionsRef.current.map(r => r.id === id ? { ...r, name } : r);
     setRegions(next);
     regionsRef.current = next;
+    if (token && region?.section_id) {
+      updateSongSection(token, region.section_id, { name }).catch(err => {
+        showToast(`Failed to rename region on server: ${err instanceof Error ? err.message : String(err)}`, { icon: "⚠️", tone: "warning" });
+      });
+    }
     savePreset({ silent: true });
   };
 
@@ -1785,20 +1824,26 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
             <section className="mp-section">
               <div className="mp-section-header">
                 <span className="mp-section-label">Regions</span>
+                {activeRegionId && (
+                  <button
+                    className="btn-ghost btn-xs"
+                    onClick={() => { setActiveRegionId(null); activeRegionIdRef.current = null; }}
+                    title="Deselect region"
+                  >
+                    Deselect
+                  </button>
+                )}
               </div>
               <div className="mp-row">
                 <input
                   type="text"
                   id="regionNameInput"
                   className="mp-region-name-input"
-                  placeholder="Region name…"
+                  placeholder="New region name…"
                   value={regionNameInput}
-                  onChange={e => {
-                    setRegionNameInput(e.target.value);
-                    if (activeRegionId) renameRegion(activeRegionId, e.target.value);
-                  }}
+                  onChange={e => setRegionNameInput(e.target.value)}
                 />
-                <button className="btn-ghost btn-xs" id="addRegionBtn" onClick={saveRegion} title="Save current loop as region">Save Region</button>
+                <button className="btn-ghost btn-xs" id="addRegionBtn" onClick={saveRegion} title="Save current loop as a new region">Save Region</button>
               </div>
               {regions.length > 0 && (
                 <ul id="regionList" className="mp-region-list">
@@ -1807,25 +1852,48 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                     const incStr = region.increaseEnabled && region.speedIncreasePercent > 0
                       ? ` · +${region.speedIncreasePercent}% every ${region.speedIncreaseInterval} loops`
                       : "";
+                    const isEditing = editingRegionId === region.id;
                     return (
                       <li
                         key={region.id}
                         data-region-id={region.id}
                         className={`mp-region-item ${region.id === activeRegionId ? "is-active" : ""}`}
-                        onClick={() => applyRegion(region.id)}
+                        onClick={() => { if (!isEditing) applyRegion(region.id); }}
                         style={{ cursor: "pointer" }}
                       >
-                        <div className="mp-region-title">
-                          {region.name || `Region ${idx + 1}`}
-                        </div>
+                        {isEditing ? (
+                          <input
+                            className="mp-region-name-input"
+                            value={editingRegionName}
+                            autoFocus
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => setEditingRegionName(e.target.value)}
+                            onBlur={() => {
+                              renameRegion(region.id, editingRegionName.trim() || region.name);
+                              setEditingRegionId(null);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                renameRegion(region.id, editingRegionName.trim() || region.name);
+                                setEditingRegionId(null);
+                              } else if (e.key === "Escape") {
+                                setEditingRegionId(null);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div className="mp-region-title">
+                            {region.name || `Region ${idx + 1}`}
+                          </div>
+                        )}
                         <div className="mp-region-meta">
                           {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{incStr}
                         </div>
                         <div className="mp-region-actions">
                           <button className="btn-ghost btn-xs" data-region-action="rename" onClick={(e) => {
                             e.stopPropagation();
-                            setActiveRegionId(region.id);
-                            setRegionNameInput(region.name ?? "");
+                            setEditingRegionId(region.id);
+                            setEditingRegionName(region.name ?? "");
                           }}>Rename</button>
                           <button className="btn-ghost btn-xs" data-region-action="delete" onClick={(e) => {
                             e.stopPropagation();

@@ -31,6 +31,9 @@ import type {
   PracticePlan,
   PracticePlanWithEntries,
   TodayEntry,
+  SongSection,
+  CreateSongSectionPayload,
+  UpdateSongSectionPayload,
 } from "./types";
 
 function authHeaders(token: string): HeadersInit {
@@ -431,6 +434,42 @@ export async function updatePracticePlanEntry(
 
 export async function deletePracticePlanEntry(token: string, entryId: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/practice-plan/entry/${entryId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  await handleResponse<unknown>(response);
+}
+
+// ─── Song sections ────────────────────────────────────────────────────────────
+
+export async function createSongSection(
+  token: string,
+  songId: number,
+  payload: CreateSongSectionPayload
+): Promise<SongSection> {
+  const response = await fetch(`${API_BASE_URL}/song/${songId}/section`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<SongSection>(response);
+}
+
+export async function updateSongSection(
+  token: string,
+  sectionId: number,
+  payload: UpdateSongSectionPayload
+): Promise<SongSection> {
+  const response = await fetch(`${API_BASE_URL}/song/section/${sectionId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<SongSection>(response);
+}
+
+export async function deleteSongSection(token: string, sectionId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/song/section/${sectionId}`, {
     method: "DELETE",
     headers: authHeaders(token),
   });

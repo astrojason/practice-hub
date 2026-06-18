@@ -116,6 +116,20 @@ export interface SongSection {
   mastery_notes: string | null;
 }
 
+export interface CreateSongSectionPayload {
+  name: string;
+  start_seconds: number | null;
+  end_seconds: number | null;
+  order?: number;
+}
+
+export interface UpdateSongSectionPayload {
+  name?: string;
+  start_seconds?: number | null;
+  end_seconds?: number | null;
+  order?: number;
+}
+
 export interface SongSectionSession {
   id: number;
   song_session_id: number;
