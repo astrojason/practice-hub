@@ -1792,6 +1792,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                         key={region.id}
                         data-region-id={region.id}
                         className={`mp-region-item ${region.id === activeRegionId ? "is-active" : ""}`}
+                        onClick={() => applyRegion(region.id)}
+                        style={{ cursor: "pointer" }}
                       >
                         <div className="mp-region-title">
                           {region.name || `Region ${idx + 1}`}
@@ -1800,12 +1802,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                           {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{incStr}
                         </div>
                         <div className="mp-region-actions">
-                          <button className="btn-ghost btn-xs" data-region-action="apply" onClick={() => applyRegion(region.id)}>Apply</button>
-                          <button className="btn-ghost btn-xs" data-region-action="rename" onClick={() => {
+                          <button className="btn-ghost btn-xs" data-region-action="rename" onClick={(e) => {
+                            e.stopPropagation();
                             setActiveRegionId(region.id);
                             setRegionNameInput(region.name ?? "");
                           }}>Rename</button>
-                          <button className="btn-ghost btn-xs" data-region-action="delete" onClick={() => deleteRegion(region.id)}>Remove</button>
+                          <button className="btn-ghost btn-xs" data-region-action="delete" onClick={(e) => {
+                            e.stopPropagation();
+                            deleteRegion(region.id);
+                          }}>Remove</button>
                         </div>
                       </li>
                     );

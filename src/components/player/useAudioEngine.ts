@@ -225,7 +225,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     eng.gain = gain;
 
     if (eng.duration > 0) {
-      eng.shifter.percentagePlayed = (eng._pausedAt / eng.duration) * 100;
+      eng.shifter.percentagePlayed = eng._pausedAt / eng.duration;
     }
 
     eng.ctx.resume();
