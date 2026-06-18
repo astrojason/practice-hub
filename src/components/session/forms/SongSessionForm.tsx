@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
 import { postSongSession } from "../../../api/client";
+import { ErrorModal } from "../../ErrorModal";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
 import type { SongSessionPayload } from "../../../api/types";
@@ -218,7 +219,7 @@ export function SongSessionForm({
         />
       </label>
 
-      {error && <p className="form-error">{error}</p>}
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
 
       <div className="form-actions">
         <button type="submit" disabled={submitting} className="btn-primary">

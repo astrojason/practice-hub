@@ -10,6 +10,7 @@ import type {
   CatalogExerciseWithActive,
 } from "../../api/types";
 import { useOpenAIKey } from "../../hooks/useOpenAIKey";
+import { ErrorModal } from "../ErrorModal";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -362,7 +363,7 @@ export function ChatPanel({ context, onClose }: Props) {
                   </div>
                 </div>
               )}
-              {error && <div className="chat-error">{error}</div>}
+              {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
               <div ref={bottomRef} />
             </div>
 

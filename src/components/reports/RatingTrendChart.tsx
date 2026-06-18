@@ -14,6 +14,7 @@ import {
   getExerciseSessionHistory,
   getStudyMaterialSessionHistory,
 } from "../../api/client";
+import { ErrorModal } from "../ErrorModal";
 
 type AnySession = SongSession | ExerciseSession | StudyMaterialSession;
 type EntityType = "song" | "exercise" | "study_material";
@@ -100,7 +101,7 @@ export function RatingTrendChart({ token, entityType, entityId, sessions: preloa
   }, [token, entityType, entityId, preloaded]);
 
   if (loading) return <div className="chart-loading">Loading history…</div>;
-  if (error) return <div className="chart-error">{error}</div>;
+  if (error) return <ErrorModal error={error} onDismiss={() => setError(null)} />;
   if (sessions.length === 0) return <div className="chart-empty">No sessions logged yet.</div>;
 
   const points = toChartPoints(sessions);

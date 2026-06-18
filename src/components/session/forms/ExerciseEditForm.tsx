@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/16/solid";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { updateExercise } from "../../../api/client";
+import { ErrorModal } from "../../ErrorModal";
 import type { DashboardExercise, Resource, UpdateExercisePayload } from "../../../api/types";
 
 interface ResourceRow {
@@ -138,7 +139,7 @@ export function ExerciseEditForm({ token, exercise, onSuccess, onCancel }: Props
           </div>
         )}
       </div>
-      {error && <div className="form-error">{error}</div>}
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
       <div className="edit-form-actions">
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Save"}

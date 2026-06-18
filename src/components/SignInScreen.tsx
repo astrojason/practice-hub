@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ErrorModal } from "./ErrorModal";
 
 interface Props {
   onSignIn: () => Promise<void>;
@@ -32,7 +33,7 @@ export function SignInScreen({ onSignIn }: Props) {
           ? "Opening browser — complete sign-in there…"
           : "Sign in with Google"}
       </button>
-      {error && <p className="error">{error}</p>}
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
     </div>
   );
 }

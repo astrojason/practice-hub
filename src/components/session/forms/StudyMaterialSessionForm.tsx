@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { postStudyMaterialSession } from "../../../api/client";
+import { ErrorModal } from "../../ErrorModal";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
 import type { StudyMaterialSessionPayload } from "../../../api/types";
@@ -103,7 +104,7 @@ export function StudyMaterialSessionForm({
         />
       </label>
 
-      {error && <p className="form-error">{error}</p>}
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
 
       <div className="form-actions">
         <button type="submit" disabled={submitting} className="btn-primary">

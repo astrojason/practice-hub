@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderOpenIcon } from "@heroicons/react/16/solid";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { updateStudyMaterial } from "../../../api/client";
+import { ErrorModal } from "../../ErrorModal";
 import type { DashboardStudyMaterial, UpdateStudyMaterialPayload } from "../../../api/types";
 
 function inferType(url: string | null): string {
@@ -97,7 +98,7 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
           )}
         </div>
       </div>
-      {error && <div className="form-error">{error}</div>}
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
       <div className="edit-form-actions">
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Save"}

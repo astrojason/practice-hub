@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FolderOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/16/solid";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { getArtists, getTunings, updateSong } from "../../../api/client";
+import { ErrorModal } from "../../ErrorModal";
 import type { Artist, Resource, Song, Tuning, UpdateSongPayload } from "../../../api/types";
 
 const DIFFICULTY_LABELS = ["None", "Beginner", "Intermediate", "Advanced", "Expert", "Master"];
@@ -61,8 +62,8 @@ export function SongEditForm({ token, song, onSuccess, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getArtists(token).then(({ artists }) => setArtists(artists)).catch(() => {});
-    getTunings(token).then(({ tunings }) => setTunings(tunings)).catch(() => {});
+    getArtists(token).then(({ artists }) => setArtists(artists)).catch((err) => setError(err instanceof Error ? err.message : "Failed to load artists"));
+    getTunings(token).then(({ tunings }) => setTunings(tunings)).catch((err) => setError(err instanceof Error ? err.message : "Failed to load tunings"));
   }, [token]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -250,7 +251,7 @@ export function SongEditForm({ token, song, onSuccess, onCancel }: Props) {
           </div>
         )}
       </div>
-      {error && <div className="form-error">{error}</div>}
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
       <div className="edit-form-actions">
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Save"}

@@ -10,6 +10,7 @@ import {
   deletePracticePlanEntry,
   getCatalogSongs,
 } from "../api/client";
+import { ErrorModal } from "./ErrorModal";
 import type { PracticePlan, PracticePlanWithEntries, PracticePlanEntry, TodayEntry, SongSection } from "../api/types";
 import { API_BASE_URL } from "../config";
 
@@ -70,6 +71,7 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
   const [durationMinutes, setDurationMinutes] = useState("5");
   const [addError, setAddError] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
+  const [panelError, setPanelError] = useState<string | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSongSearch = (q: string) => {
@@ -81,7 +83,7 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
         const res = await getCatalogSongs(token, 1, 10, q);
         setSongResults(res.songs.map(s => ({ id: s.id, name: s.name, artist_name: s.artist_name })));
       } catch (err) {
-        console.error("Song search error:", err);
+        setAddError(err instanceof Error ? err.message : "Song search failed.");
       }
     }, 300);
   };
@@ -99,7 +101,7 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
         setSections(data.sections ?? []);
       }
     } catch (err) {
-      console.error("Sections fetch error:", err);
+      setAddError(err instanceof Error ? err.message : "Failed to load sections.");
     }
   };
 
@@ -132,11 +134,12 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
   };
 
   const handleDelete = async (entryId: number) => {
+    setPanelError(null);
     try {
       await deletePracticePlanEntry(token, entryId);
       onRefresh();
     } catch (err) {
-      console.error("Delete entry error:", err);
+      setPanelError(err instanceof Error ? err.message : "Failed to delete block.");
     }
   };
 
@@ -144,6 +147,7 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
     const idx = dayEntries.indexOf(entry);
     const swap = dir === "up" ? dayEntries[idx - 1] : dayEntries[idx + 1];
     if (!swap) return;
+    setPanelError(null);
     try {
       await Promise.all([
         updatePracticePlanEntry(token, entry.id, { block_order: swap.block_order }),
@@ -151,7 +155,7 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
       ]);
       onRefresh();
     } catch (err) {
-      console.error("Reorder error:", err);
+      setPanelError(err instanceof Error ? err.message : "Failed to reorder blocks.");
     }
   };
 
@@ -161,6 +165,7 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
         <span className="cal-day-panel__title">Day {day}</span>
         <button className="btn-ghost btn-xs" onClick={onClose}>✕</button>
       </div>
+      {panelError && <ErrorModal error={panelError} onDismiss={() => setPanelError(null)} />}
       {dayEntries.length === 0 && <p className="cal-empty">No blocks for this day.</p>}
       <ul className="cal-block-list">
         {dayEntries.map((entry, idx) => (
@@ -227,7 +232,7 @@ function DayPanel({ token, plan, day, onClose, onRefresh }: DayPanelProps) {
               className="cal-input cal-input--short"
             />
           </div>
-          {addError && <p className="cal-error">{addError}</p>}
+          {addError && <ErrorModal error={addError} onDismiss={() => setAddError(null)} />}
           <div className="cal-row">
             <button className="btn-primary btn-xs" onClick={handleAddBlock} disabled={addLoading}>
               {addLoading ? "Adding…" : "Add"}
@@ -314,8 +319,12 @@ function PlanTab({ token }: PlanTabProps) {
 
   const refreshSelectedPlan = async () => {
     if (!selectedPlan) return;
-    const data = await getPracticePlan(token, selectedPlan.id);
-    setSelectedPlan(data.plan);
+    try {
+      const data = await getPracticePlan(token, selectedPlan.id);
+      setSelectedPlan(data.plan);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh plan.");
+    }
   };
 
   // Build calendar grid
@@ -351,7 +360,7 @@ function PlanTab({ token }: PlanTabProps) {
     <div className="cal-plan-tab">
       <div className="cal-sidebar">
         {loading && <p className="cal-loading">Loading plans…</p>}
-        {error && <p className="cal-error">{error}</p>}
+        {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
         <ul className="cal-plan-list">
           {plans.map(plan => (
             <li
@@ -403,7 +412,7 @@ function PlanTab({ token }: PlanTabProps) {
               className="cal-input"
             />
           </div>
-          {createError && <p className="cal-error">{createError}</p>}
+          {createError && <ErrorModal error={createError} onDismiss={() => setCreateError(null)} />}
           <button className="btn-primary btn-xs" onClick={handleCreate} disabled={createLoading}>
             {createLoading ? "Creating…" : "Create Plan"}
           </button>
@@ -567,7 +576,7 @@ function TodayTab({ token }: TodayTabProps) {
   }, []);
 
   if (loading) return <p className="cal-loading">Loading today's plan…</p>;
-  if (error) return <p className="cal-error">{error}</p>;
+  if (error) return <ErrorModal error={error} onDismiss={() => setError(null)} />;
 
   if (entries.length === 0) {
     return (

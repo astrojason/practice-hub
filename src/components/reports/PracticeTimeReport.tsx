@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { getUserStats } from "../../api/client";
 import type { PracticeStats } from "../../api/types";
+import { ErrorModal } from "../ErrorModal";
 
 function fmtSeconds(s: number): string {
   const days = Math.floor(s / 86400);
@@ -74,7 +75,7 @@ export function PracticeTimeReport({ token, onClose }: Props) {
         </div>
 
         {loading && <div className="report-loading">Loading…</div>}
-        {error && <div className="chart-error">{error}</div>}
+        {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
 
         {stats && (
           <div className="modal-body report-body">

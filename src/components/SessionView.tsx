@@ -16,6 +16,7 @@ import type {
 } from "../api/types";
 import { ChatPanel } from "./chat/ChatPanel";
 import type { ChatEntity } from "./chat/ChatPanel";
+import { ErrorModal } from "./ErrorModal";
 import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 
 // ─── Catalog → dashboard shape converters ─────────────────────────────────────
@@ -218,6 +219,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
   const [loadError, setLoadError] = useState<{ message: string; which: string } | null>(null);
   const [loadTrigger, setLoadTrigger] = useState(0);
   const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuildError, setRebuildError] = useState<string | null>(null);
 
   // ── Timer state ─────────────────────────────────────────────────────────────
   // displayedSeconds = serverTotal + sum of all in-session elapsed (running + paused)
@@ -829,6 +831,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
 
   async function handleRebuild() {
     setIsRebuilding(true);
+    setRebuildError(null);
     try {
       const raw = await rebuildDashboard(token);
       let nestedSms = nestStudyMaterials(raw.study_materials);
@@ -845,8 +848,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
       const dash = { ...raw, study_materials: nestedSms };
       setDashboard(dash);
       setCompletedIds((prev) => mergeCompletedFromDash(dash, prev));
-    } catch {
-      // silent — dashboard stays unchanged
+    } catch (err) {
+      setRebuildError(err instanceof Error ? err.message : "Rebuild failed. Try again.");
     } finally {
       setIsRebuilding(false);
     }
@@ -945,6 +948,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
 
   return (
     <div className="session-view">
+      {rebuildError && <ErrorModal error={rebuildError} onDismiss={() => setRebuildError(null)} />}
       {/* Full-screen confetti canvas — hidden until triggered */}
       <canvas
         ref={confettiCanvasRef}

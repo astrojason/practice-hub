@@ -24,7 +24,12 @@ E2E tests require the Vite dev server running on port 1420 (`npm run dev` in a s
 
 ## Error handling
 
-Nothing is allowed to fail silently. All errors must be surfaced in the UI with a visible message containing enough detail to diagnose the problem.
+Nothing is allowed to fail silently. Every `catch` block — including `.catch()` chains — **must** surface the error in the UI. No empty `catch {}`, no `catch(() => {})`, no `console.error`-only handlers.
+
+Rules:
+- Show the **actual error message** (`err instanceof Error ? err.message : String(err)`), not a generic "Something went wrong."
+- Use the `ErrorModal` component (`src/components/ErrorModal.tsx`) to display errors — it renders as a centered, dismissable overlay (Escape or click-outside closes it). The error text inside is selectable/copyable by default.
+- `/* non-critical */` is only acceptable for truly fire-and-forget side effects (e.g. analytics pings) that have no user-visible impact if they fail. When in doubt, surface it.
 
 ## Rust / Tauri commands
 
