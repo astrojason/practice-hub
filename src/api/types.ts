@@ -103,6 +103,34 @@ export interface OpenSession {
   updated_timestamp: number;
 }
 
+// ─── Song sections ────────────────────────────────────────────────────────────
+
+export interface SongSection {
+  id: number;
+  song_id: number;
+  name: string;
+  order: number | null;
+  start_seconds: number | null; // null = no specific region (whole piece)
+  end_seconds: number | null;
+  mastery: number; // 0 = unrated, 1–5
+  mastery_notes: string | null;
+}
+
+export interface SongSectionSession {
+  id: number;
+  song_session_id: number;
+  song_section_id: number;
+  seconds: number;
+  notes: string | null;
+  created_timestamp: number;
+}
+
+export interface SongSectionSessionPayload {
+  song_section_id: number;
+  seconds: number;
+  notes: string | null;
+}
+
 // ─── Song ─────────────────────────────────────────────────────────────────────
 
 export interface SongMeta {
@@ -114,6 +142,7 @@ export interface SongMeta {
   difficulty_name: string | null;
   song_lists?: SongListRef[];
   sessions?: SongSession[];
+  sections?: SongSection[];
 }
 
 export interface SongListRef {
@@ -536,6 +565,39 @@ export interface GpSeenEntry {
   resource_path: string;
   dismissed: boolean;
 }
+
+// ─── Practice plan ────────────────────────────────────────────────────────────
+
+export interface PracticePlan {
+  id: number;
+  name: string;
+  start_date: string; // YYYY-MM-DD
+  end_date: string;
+  is_active_plan: boolean;
+  created_timestamp: number;
+  updated_timestamp: number;
+}
+
+export interface PracticePlanEntry {
+  id: number;
+  practice_plan_id: number;
+  song_section_id: number;
+  song_id: number;
+  song_name: string;
+  artist_name: string;
+  section_name: string;
+  start_seconds: number | null;
+  end_seconds: number | null;
+  day_of_plan: number;
+  block_order: number;
+  block_duration_seconds: number;
+}
+
+export interface PracticePlanWithEntries extends PracticePlan {
+  entries: PracticePlanEntry[];
+}
+
+export type TodayEntry = PracticePlanEntry;
 
 // ─── Exercise catalog (GET /exercise/user-catalog) ────────────────────────────
 

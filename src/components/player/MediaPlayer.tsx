@@ -21,6 +21,8 @@ interface Props {
   /** Session practice timer for the item associated with this file */
   timerElapsed?: number;
   isTimerActive?: boolean;
+  /** When set, automatically seeks to and activates the region matching this section id */
+  activeSectionId?: number | null;
 }
 
 interface WaveMarker {
@@ -38,6 +40,7 @@ interface Region {
   speedIncreaseInterval: number;
   increaseEnabled: boolean;
   createdAt: number;
+  section_id?: number;
 }
 
 interface Preset {
@@ -203,7 +206,7 @@ function scheduleClick(ctx: AudioContext, time: number, accent: boolean) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive }: Props) {
+export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive, activeSectionId }: Props) {
   const detectedType = getMediaTypeFromPath(filePath);
   const isVideo = detectedType === "video";
 
@@ -332,6 +335,23 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   useEffect(() => { selectedMarkerIdxRef.current = selectedMarkerIdx; }, [selectedMarkerIdx]);
   useEffect(() => { regionsRef.current = regions; }, [regions]);
   useEffect(() => { activeRegionIdRef.current = activeRegionId; }, [activeRegionId]);
+
+  // ── Active section linkage ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeSectionId == null) return;
+    const region = regionsRef.current.find(r => r.section_id === activeSectionId);
+    if (!region) return;
+    setActiveRegionId(region.id);
+    activeRegionIdRef.current = region.id;
+    if (isVideo && videoRef.current) {
+      videoRef.current.currentTime = region.start;
+    } else {
+      audioActions.seek(region.start);
+      audioActions.setLoopStart(region.start);
+      audioActions.setLoopEnd(region.end);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSectionId]);
 
   // ── Toast ────────────────────────────────────────────────────────────────────
 

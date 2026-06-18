@@ -24,6 +24,7 @@ interface Props {
   onSignOut: () => void;
   onReports: () => void;
   onGpLibrary: () => void;
+  onCalendar: () => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -50,6 +51,7 @@ export function SessionHeader({
   onSignOut,
   onReports,
   onGpLibrary,
+  onCalendar,
 }: Props) {
   const progressPct = Math.min(
     100,
@@ -84,6 +86,9 @@ export function SessionHeader({
           </button>
           <button onClick={onGpLibrary} className="btn-ghost" title="Guitar Pro library scanner">
             <MusicalNoteIcon className="icon-sm" /> GP Library
+          </button>
+          <button onClick={onCalendar} className="btn-ghost" title="Practice calendar">
+            Calendar
           </button>
           <button onClick={onMetronome} className="btn-ghost" title="Open metronome">
             ♩ Metronome

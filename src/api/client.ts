@@ -28,6 +28,9 @@ import type {
   StudyMaterialSessionListResponse,
   PracticeStats,
   CatalogExerciseWithActive,
+  PracticePlan,
+  PracticePlanWithEntries,
+  TodayEntry,
 } from "./types";
 
 function authHeaders(token: string): HeadersInit {
@@ -348,4 +351,88 @@ export async function getStudyMaterialById(
     headers: authHeaders(token),
   });
   return handleResponse<DashboardStudyMaterial>(response);
+}
+
+// ─── Practice plans ───────────────────────────────────────────────────────────
+
+export async function getPracticePlans(token: string): Promise<{ plans: PracticePlan[] }> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ plans: PracticePlan[] }>(response);
+}
+
+export async function getActivePracticePlan(token: string): Promise<{ plan: PracticePlanWithEntries | null }> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan/active`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ plan: PracticePlanWithEntries | null }>(response);
+}
+
+export async function getPracticePlan(token: string, id: number): Promise<{ plan: PracticePlanWithEntries }> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan/${id}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ plan: PracticePlanWithEntries }>(response);
+}
+
+export async function createPracticePlan(
+  token: string,
+  data: { name: string; start_date: string; end_date: string }
+): Promise<{ plan: PracticePlan }> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ plan: PracticePlan }>(response);
+}
+
+export async function activatePracticePlan(token: string, id: number): Promise<{ plan: PracticePlan }> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan/${id}/activate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ plan: PracticePlan }>(response);
+}
+
+export async function getTodaysPracticePlan(token: string): Promise<{ day: number; entries: TodayEntry[] }> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan/today`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ day: number; entries: TodayEntry[] }>(response);
+}
+
+export async function addPracticePlanEntry(
+  token: string,
+  planId: number,
+  data: { song_section_id: number; day_of_plan: number; block_order: number; block_duration_seconds: number }
+): Promise<unknown> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan/${planId}/entry`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<unknown>(response);
+}
+
+export async function updatePracticePlanEntry(
+  token: string,
+  entryId: number,
+  data: Partial<{ block_order: number; block_duration_seconds: number; day_of_plan: number }>
+): Promise<unknown> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan/entry/${entryId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<unknown>(response);
+}
+
+export async function deletePracticePlanEntry(token: string, entryId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/practice-plan/entry/${entryId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  await handleResponse<unknown>(response);
 }

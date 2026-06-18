@@ -208,9 +208,10 @@ interface Props {
   token: string;
   onSignOut: () => Promise<void>;
   onGpLibrary: () => void;
+  onCalendar: () => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -970,6 +971,7 @@ export function SessionView({ token, onSignOut, onGpLibrary }: Props) {
         onSignOut={onSignOut}
         onReports={() => setReportOpen(true)}
         onGpLibrary={onGpLibrary}
+        onCalendar={onCalendar}
       />
 
       {openSessionModalOpen && (
