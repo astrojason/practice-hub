@@ -1202,6 +1202,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     setActiveRegionId(null);
     activeRegionIdRef.current = null;
     setRegionNameInput("");
+    setLoopStartInput("");
+    setLoopEndInput("");
+    audioActions.setLoopStart(null);
+    audioActions.setLoopEnd(null);
     setPresetStatus("Region saved");
     showToast(`Region "${newRegion.name}" saved.`, { icon: "📍" });
     savePreset({ silent: true });
@@ -1211,6 +1215,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (activeRegionIdRef.current === id) {
       setActiveRegionId(null);
       activeRegionIdRef.current = null;
+      setRegionNameInput("");
+      setLoopStartInput("");
+      setLoopEndInput("");
+      audioActions.setLoopStart(null);
+      audioActions.setLoopEnd(null);
       return;
     }
     const region = regionsRef.current.find(r => r.id === id);
