@@ -105,8 +105,8 @@ test("Calendar view shows Plan and Today tabs", async ({ page }) => {
 
   await page.locator("button", { hasText: "Calendar" }).click();
 
-  await expect(page.locator("button", { hasText: "Plan" })).toBeVisible();
-  await expect(page.locator("button", { hasText: "Today" })).toBeVisible();
+  await expect(page.locator("button.cal-tab", { hasText: "Plan" })).toBeVisible();
+  await expect(page.locator("button.cal-tab", { hasText: "Today" })).toBeVisible();
 });
 
 test("Today tab shows empty state message when no entries", async ({ page }) => {

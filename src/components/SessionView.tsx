@@ -1185,6 +1185,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
               key={song.id}
               token={token}
               song={song}
+              currentListId={dashboard.project?.id}
               isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
               isSkippedToday={skippedIds.has(`song-${song.id}`)}
               isTimerActive={activeTimers.has(`song-${song.id}`)}
@@ -1225,6 +1226,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
               key={song.id}
               token={token}
               song={song}
+              currentListId={dashboard.to_review?.id}
               isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
               isSkippedToday={skippedIds.has(`song-${song.id}`)}
               isTimerActive={activeTimers.has(`song-${song.id}`)}

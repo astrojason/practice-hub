@@ -39,6 +39,7 @@ export function isStruggling(sessions: SongSession[]): boolean {
 interface Props {
   token: string;
   song: Song;
+  currentListId?: number;
   isCompletedToday: boolean;
   isSkippedToday: boolean;
   isTimerActive: boolean;
@@ -62,6 +63,7 @@ interface Props {
 export function SongCard({
   token,
   song,
+  currentListId,
   isCompletedToday,
   isSkippedToday,
   isTimerActive,
@@ -289,6 +291,7 @@ export function SongCard({
           <SongEditForm
             token={token}
             song={song}
+            currentListId={currentListId}
             onSuccess={(updated) => {
               setEditOpen(false);
               onEntityEdited?.(updated);

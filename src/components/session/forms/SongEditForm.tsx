@@ -36,11 +36,12 @@ interface ResourceRow {
 interface Props {
   token: string;
   song: Song;
+  currentListId?: number;
   onSuccess: (updated: Song) => void;
   onCancel: () => void;
 }
 
-export function SongEditForm({ token, song, onSuccess, onCancel }: Props) {
+export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }: Props) {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [tunings, setTunings] = useState<Tuning[]>([]);
   const [name, setName] = useState(song.name);
@@ -80,7 +81,12 @@ export function SongEditForm({ token, song, onSuccess, onCancel }: Props) {
       resources: resources
         .filter((r) => r.url)
         .map((r) => ({ name: r.name, url: r.url, type: r.type })),
-      song_lists: (song.meta.song_lists ?? []).map((l) => l.id),
+      song_lists: [
+        ...new Set([
+          ...(song.meta.song_lists ?? []).map((l) => l.id),
+          ...(currentListId != null ? [currentListId] : []),
+        ]),
+      ],
       difficulty: Number(difficulty),
       date_learned: dateLearned || null,
     };
