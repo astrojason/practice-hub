@@ -5,7 +5,8 @@ import { updateStudyMaterial } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { DashboardStudyMaterial, UpdateStudyMaterialPayload } from "../../../api/types";
 
-function inferType(url: string | null): string {
+function inferType(url: string | null, storedType?: string): string {
+  if (storedType) return storedType;
   if (!url) return "url";
   if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
@@ -22,7 +23,7 @@ interface Props {
 export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: Props) {
   const [name, setName] = useState(material.name);
   const [url, setUrl] = useState(material.url ?? "");
-  const [type, setType] = useState(inferType(material.url ?? ""));
+  const [type, setType] = useState(inferType(material.url ?? "", material.url_type));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

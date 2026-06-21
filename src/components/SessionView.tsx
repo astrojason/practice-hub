@@ -41,6 +41,7 @@ function catalogStudyMaterialToDashboard(sm: CatalogStudyMaterial): DashboardStu
     id: sm.id,
     name: sm.name,
     url: sm.url,
+    url_type: sm.url_type,
     instrument: sm.instrument,
     parent_study_material_id: sm.parent_study_material_id,
     session_type: "study_material",
@@ -197,7 +198,9 @@ function findOrphanParentIds(nested: DashboardStudyMaterial[]): number[] {
   return [...orphanIds];
 }
 
-function inferSmResourceType(url: string): "local_file" | "youtube" | "url" {
+function inferSmResourceType(url: string, urlType?: string): Resource["type"] {
+  if (urlType === "local_folder") return "local_folder";
+  if (urlType === "local_file") return "local_file";
   if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
   return "url";
@@ -673,7 +676,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
         id: child.id,
         name: child.name,
         resources: child.url
-          ? [{ name: "Open material", url: child.url, type: inferSmResourceType(child.url) }]
+          ? [{ name: "Open material", url: child.url, type: inferSmResourceType(child.url, child.url_type) }]
           : [],
         lastSession: child.meta.sessions?.[0] ?? null,
       }));

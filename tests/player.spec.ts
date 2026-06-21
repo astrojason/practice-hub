@@ -141,6 +141,87 @@ test("closes MediaPlayer when the close button is clicked", async ({ page }) => 
   await expect(page.locator(".media-player")).not.toBeVisible();
 });
 
+test.describe("local_folder study material", () => {
+  const folderDashboard = {
+    scale: null,
+    key_signature: null,
+    overdue: [],
+    to_review: { songs: [] },
+    to_learn: { songs: [] },
+    project: { songs: [] },
+    exercises: [],
+    study_materials: [
+      {
+        id: 1,
+        name: "Song Folder",
+        url: "/path/to/my/songs",
+        url_type: "local_folder",
+        instrument: null,
+        parent_study_material_id: null,
+        session_type: "study_material",
+        created_timestamp: 0,
+        updated_timestamp: 0,
+        child_study_materials: [],
+        meta: { user_study_material: null, sessions: [] },
+      },
+    ],
+    chord: null,
+    progression: null,
+    interval: null,
+  };
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("ph:refreshToken", "fake-refresh-token");
+    });
+    await page.route("**/securetoken.googleapis.com/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ id_token: "fake-id-token", refresh_token: "fake-refresh-token" }),
+      })
+    );
+    await page.route("**/user/me", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 1,
+          firebase_uid: "test-uid",
+          email: "test@example.com",
+          display_name: "Test User",
+          daily_minutes_goal: 30,
+          timezone: "America/New_York",
+          time_practiced_today: 0,
+          total_time_practiced: 0,
+          max_days_no_review: 7,
+          min_days_between_reviews: 1,
+          num_songs_to_learn: 5,
+        }),
+      })
+    );
+    await page.route("**/user/dashboard**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(folderDashboard),
+      })
+    );
+    await page.goto("/");
+  });
+
+  test("shows folder picker UI instead of opening player directly", async ({ page }) => {
+    await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+
+    const card = page.locator(".item-card").first();
+    await card.locator('button[title="Log session"]').click();
+
+    // A local_folder resource must render as a folder-toggle, not a plain local file button.
+    await expect(page.locator(".modal-resource-link--folder-toggle", { hasText: "Open material" })).toBeVisible();
+    await expect(page.locator(".modal-resource-link--local", { hasText: "Open material" })).not.toBeVisible();
+  });
+});
+
 test("opens standalone Metronome panel from header button", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
 

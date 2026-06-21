@@ -19,7 +19,9 @@ import { LastSessionInfo } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
 import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
 
-function inferResourceType(url: string): Resource["type"] {
+function inferResourceType(url: string, urlType?: string): Resource["type"] {
+  if (urlType === "local_folder") return "local_folder";
+  if (urlType === "local_file") return "local_file";
   if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
   return "url";
@@ -146,7 +148,7 @@ function StudyMaterialSingleCard({
   }
 
   const resources: Resource[] = material.url
-    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url) }]
+    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.url_type) }]
     : [];
   const sessions = (material.meta.sessions ?? []) as StudyMaterialSession[];
   const lastSession = sessions[0] ?? null;
