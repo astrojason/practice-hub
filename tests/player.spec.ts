@@ -155,7 +155,7 @@ test.describe("local_folder study material", () => {
         id: 1,
         name: "Song Folder",
         url: "/path/to/my/songs",
-        url_type: "local_folder",
+        type: "local_folder",
         instrument: null,
         parent_study_material_id: null,
         session_type: "study_material",

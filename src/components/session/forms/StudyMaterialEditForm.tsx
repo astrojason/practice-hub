@@ -16,14 +16,14 @@ function inferType(url: string | null, storedType?: string): string {
 interface Props {
   token: string;
   material: DashboardStudyMaterial;
-  onSuccess: (id: number, name: string, url: string | null) => void;
+  onSuccess: (id: number, name: string, url: string | null, type: string) => void;
   onCancel: () => void;
 }
 
 export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: Props) {
   const [name, setName] = useState(material.name);
   const [url, setUrl] = useState(material.url ?? "");
-  const [type, setType] = useState(inferType(material.url ?? "", material.url_type));
+  const [type, setType] = useState(inferType(material.url ?? "", material.type));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +40,7 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
     };
     try {
       await updateStudyMaterial(token, material.id, payload);
-      onSuccess(material.id, payload.name, url || null);
+      onSuccess(material.id, payload.name, url || null, type);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {

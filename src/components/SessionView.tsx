@@ -41,7 +41,7 @@ function catalogStudyMaterialToDashboard(sm: CatalogStudyMaterial): DashboardStu
     id: sm.id,
     name: sm.name,
     url: sm.url,
-    url_type: sm.url_type,
+    type: sm.type,
     instrument: sm.instrument,
     parent_study_material_id: sm.parent_study_material_id,
     session_type: "study_material",
@@ -198,9 +198,9 @@ function findOrphanParentIds(nested: DashboardStudyMaterial[]): number[] {
   return [...orphanIds];
 }
 
-function inferSmResourceType(url: string, urlType?: string): Resource["type"] {
-  if (urlType === "local_folder") return "local_folder";
-  if (urlType === "local_file") return "local_file";
+function inferSmResourceType(url: string, storedType?: string): Resource["type"] {
+  if (storedType === "local_folder") return "local_folder";
+  if (storedType === "local_file") return "local_file";
   if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
   return "url";
@@ -676,7 +676,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
         id: child.id,
         name: child.name,
         resources: child.url
-          ? [{ name: "Open material", url: child.url, type: inferSmResourceType(child.url, child.url_type) }]
+          ? [{ name: "Open material", url: child.url, type: inferSmResourceType(child.url, child.type) }]
           : [],
         lastSession: child.meta.sessions?.[0] ?? null,
       }));
@@ -781,13 +781,14 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
     setAdditionalExercises((prev) => prev.map(mergeEx));
   }
 
-  function handleStudyMaterialEdited(id: number, name: string, url: string | null) {
+  function handleStudyMaterialEdited(id: number, name: string, url: string | null, type: string) {
     const mergeSm = (sm: DashboardStudyMaterial): DashboardStudyMaterial => ({
       ...sm,
       name: sm.id === id ? name : sm.name,
       url: sm.id === id ? url : sm.url,
+      type: sm.id === id ? type : sm.type,
       child_study_materials: (sm.child_study_materials ?? []).map((c) =>
-        c.id === id ? { ...c, name, url } : c
+        c.id === id ? { ...c, name, url, type } : c
       ),
     });
     setDashboard((prev) =>
@@ -1170,7 +1171,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
               onOpenChat={(id) => openChatForStudyMaterial(id)}
               isMediaActive={playerState !== null}
-              onEntityEdited={(id, name, url) => handleStudyMaterialEdited(id, name, url)}
+              onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
             />
           ))}
         </ItemGroup>
@@ -1349,7 +1350,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
                 onOpenChat={(id) => openChatForStudyMaterial(id)}
                 isMediaActive={playerState !== null}
-                onEntityEdited={(id, name, url) => handleStudyMaterialEdited(id, name, url)}
+                onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
               />
             ))}
           </ItemGroup>

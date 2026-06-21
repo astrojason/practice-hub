@@ -227,7 +227,7 @@ export interface DashboardStudyMaterial {
   id: number;
   name: string;
   url: string | null;
-  url_type?: string;
+  type?: string;
   instrument: number | null;
   parent_study_material_id: number | null;
   session_type: "study_material";
@@ -653,7 +653,7 @@ export interface CatalogStudyMaterial {
   id: number;
   name: string;
   url: string | null;
-  url_type?: string;
+  type?: string;
   instrument: number | null;
   parent_study_material_id: number | null;
   child_study_materials?: CatalogStudyMaterial[];

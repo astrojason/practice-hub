@@ -19,9 +19,9 @@ import { LastSessionInfo } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
 import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
 
-function inferResourceType(url: string, urlType?: string): Resource["type"] {
-  if (urlType === "local_folder") return "local_folder";
-  if (urlType === "local_file") return "local_file";
+function inferResourceType(url: string, storedType?: string): Resource["type"] {
+  if (storedType === "local_folder") return "local_folder";
+  if (storedType === "local_file") return "local_file";
   if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
   return "url";
@@ -66,7 +66,7 @@ interface SingleCardProps {
   /** Collapse toggle for parent cards with children */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
-  onEntityEdited?: (id: number, name: string, url: string | null) => void;
+  onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
 }
 
 function StudyMaterialSingleCard({
@@ -148,7 +148,7 @@ function StudyMaterialSingleCard({
   }
 
   const resources: Resource[] = material.url
-    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.url_type) }]
+    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type) }]
     : [];
   const sessions = (material.meta.sessions ?? []) as StudyMaterialSession[];
   const lastSession = sessions[0] ?? null;
@@ -308,9 +308,9 @@ function StudyMaterialSingleCard({
           <StudyMaterialEditForm
             token={token}
             material={material}
-            onSuccess={(id, name, url) => {
+            onSuccess={(id, name, url, type) => {
               setEditOpen(false);
-              onEntityEdited?.(id, name, url);
+              onEntityEdited?.(id, name, url, type);
             }}
             onCancel={() => setEditOpen(false)}
           />
@@ -343,7 +343,7 @@ export interface StudyMaterialCardProps {
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
-  onEntityEdited?: (id: number, name: string, url: string | null) => void;
+  onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
 }
 
 export function StudyMaterialCard({
