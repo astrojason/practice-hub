@@ -219,7 +219,7 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
                 />
                 <input
                   type="text"
-                  placeholder={r.type === "local_file" ? "/path/to/file" : "https://..."}
+                  placeholder={r.type === "local_file" ? "/path/to/file" : r.type === "local_folder" ? "/path/to/folder" : "https://..."}
                   value={r.url}
                   onChange={(e) => updateResource(r.id, "url", e.target.value)}
                 />
@@ -230,14 +230,15 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
                   <option value="url">URL</option>
                   <option value="youtube">YouTube</option>
                   <option value="local_file">File</option>
+                  <option value="local_folder">Folder</option>
                 </select>
-                {r.type === "local_file" && (
+                {(r.type === "local_file" || r.type === "local_folder") && (
                   <button
                     type="button"
                     className="edit-resource-browse"
-                    title="Browse for file"
+                    title={r.type === "local_folder" ? "Browse for folder" : "Browse for file"}
                     onClick={async () => {
-                      const path = await openFilePicker({ multiple: false, directory: false });
+                      const path = await openFilePicker({ multiple: false, directory: r.type === "local_folder" });
                       if (typeof path === "string") updateResource(r.id, "url", path);
                     }}
                   >

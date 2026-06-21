@@ -22,7 +22,7 @@ interface Props {
 export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: Props) {
   const [name, setName] = useState(material.name);
   const [url, setUrl] = useState(material.url ?? "");
-  const [type, setType] = useState(inferType(material.url));
+  const [type, setType] = useState(inferType(material.url ?? ""));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,11 +69,12 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
           <option value="url">URL</option>
           <option value="youtube">YouTube</option>
           <option value="local_file">File</option>
+          <option value="local_folder">Folder</option>
         </select>
       </div>
       <div className="edit-form-row">
         <label htmlFor="sm-ef-url">
-          {type === "local_file" ? "File path" : "URL"}
+          {type === "local_file" ? "File path" : type === "local_folder" ? "Folder path" : "URL"}
         </label>
         <div className="edit-url-row">
           <input
@@ -81,15 +82,15 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={type === "local_file" ? "/path/to/file" : "https://..."}
+            placeholder={type === "local_file" ? "/path/to/file" : type === "local_folder" ? "/path/to/folder" : "https://..."}
           />
-          {type === "local_file" && (
+          {(type === "local_file" || type === "local_folder") && (
             <button
               type="button"
               className="edit-resource-browse"
-              title="Browse for file"
+              title={type === "local_folder" ? "Browse for folder" : "Browse for file"}
               onClick={async () => {
-                const path = await openFilePicker({ multiple: false, directory: false });
+                const path = await openFilePicker({ multiple: false, directory: type === "local_folder" });
                 if (typeof path === "string") setUrl(path);
               }}
             >

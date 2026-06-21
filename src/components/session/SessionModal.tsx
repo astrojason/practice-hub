@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ArrowTopRightOnSquareIcon, FolderOpenIcon, XMarkIcon } from "@heroicons/react/16/solid";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Resource } from "../../api/types";
 
@@ -7,6 +8,61 @@ import type { Resource } from "../../api/types";
 function mediaTypeFromPath(path: string): "audio" | "video" {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return ["mp4", "mov", "webm", "m4v", "ogv"].includes(ext) ? "video" : "audio";
+}
+
+interface FolderEntry {
+  path: string;
+  filename: string;
+}
+
+interface LocalFolderResourceProps {
+  name: string;
+  folderPath: string;
+  onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
+}
+
+function LocalFolderResource({ name, folderPath, onOpenFile }: LocalFolderResourceProps) {
+  const [files, setFiles] = useState<FolderEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || files !== null) return;
+    invoke<string>("list_local_folder", { path: folderPath })
+      .then((json) => setFiles(JSON.parse(json) as FolderEntry[]))
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [expanded, files, folderPath]);
+
+  return (
+    <div className="modal-resource-folder">
+      <button
+        className="modal-resource-link modal-resource-link--folder-toggle"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <FolderOpenIcon style={{ width: 11, height: 11 }} />
+        {name}
+        <span className="modal-resource-folder-arrow">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded && (
+        <div className="modal-resource-folder-files">
+          {error && <span className="modal-resource-folder-error">{error}</span>}
+          {!error && files === null && <span className="modal-resource-folder-loading">Loading…</span>}
+          {!error && files !== null && files.length === 0 && (
+            <span className="modal-resource-folder-empty">No media files found</span>
+          )}
+          {!error && files !== null && files.map((f) => (
+            <button
+              key={f.path}
+              className="modal-resource-link modal-resource-link--local modal-resource-folder-file"
+              onClick={() => onOpenFile?.(f.path, mediaTypeFromPath(f.path))}
+            >
+              {f.filename}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -45,8 +101,17 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
             <span className="modal-section-label">Resources</span>
             <div className="modal-resource-links">
               {resources.map((r) => {
+                if (r.type === "local_folder") {
+                  return (
+                    <LocalFolderResource
+                      key={r.url}
+                      name={r.name}
+                      folderPath={r.url}
+                      onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt); onClose(); } : undefined}
+                    />
+                  );
+                }
                 if (r.type === "local_file") {
-                  // Open in the in-app player
                   return (
                     <button
                       key={r.url}

@@ -1549,6 +1549,47 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   border-color: var(--accent);
 }
 
+/* ─── Local folder resource ──────────────────────────────────────────────────── */
+
+.modal-resource-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-resource-link--folder-toggle {
+  gap: 5px;
+}
+
+.modal-resource-folder-arrow {
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+.modal-resource-folder-files {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 14px;
+}
+
+.modal-resource-folder-file {
+  font-size: 12px;
+  text-align: left;
+}
+
+.modal-resource-folder-loading,
+.modal-resource-folder-empty,
+.modal-resource-folder-error {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 6px;
+}
+
+.modal-resource-folder-error {
+  color: var(--error, #f87171);
+}
+
 /* is-active state for toggle buttons */
 .btn-ghost.is-active,
 .btn-primary.is-active {

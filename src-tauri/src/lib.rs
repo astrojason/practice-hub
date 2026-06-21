@@ -258,6 +258,47 @@ fn scan_dir(dir: &Path, out: &mut Vec<GpFileEntry>) -> std::io::Result<()> {
     Ok(())
 }
 
+// ─── Local folder media listing ───────────────────────────────────────────────
+// Returns all audio/video files (non-recursive) in a directory, sorted by name.
+
+#[derive(serde::Serialize)]
+struct LocalFolderEntry {
+    path: String,
+    filename: String,
+}
+
+const MEDIA_EXTENSIONS: &[&str] = &[
+    "mp3", "wav", "flac", "aac", "ogg", "opus", "m4a", "wma",
+    "mp4", "mov", "webm", "m4v", "mkv", "ogv", "avi",
+];
+
+#[tauri::command]
+async fn list_local_folder(path: String) -> Result<String, String> {
+    let dir = Path::new(&path);
+    if !dir.is_dir() {
+        return Err(format!("Not a directory: {}", path));
+    }
+    let mut entries: Vec<LocalFolderEntry> = Vec::new();
+    let read = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {e}"))?;
+    for entry in read {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
+        let p = entry.path();
+        if p.is_file() {
+            if let Some(ext) = p.extension() {
+                let ext_lower = ext.to_string_lossy().to_lowercase();
+                if MEDIA_EXTENSIONS.contains(&ext_lower.as_str()) {
+                    entries.push(LocalFolderEntry {
+                        path: p.to_string_lossy().to_string(),
+                        filename: p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                    });
+                }
+            }
+        }
+    }
+    entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+    serde_json::to_string(&entries).map_err(|e| e.to_string())
+}
+
 // ─── Open file with system default handler ────────────────────────────────────
 
 #[tauri::command]
@@ -345,6 +386,7 @@ pub fn run() {
             start_auth,
             analyze_gp_file,
             scan_gp_directory,
+            list_local_folder,
             open_with_default,
         ])
         .run(tauri::generate_context!())

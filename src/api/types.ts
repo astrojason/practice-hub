@@ -49,7 +49,7 @@ export type StudyFocus =
 export interface Resource {
   name: string;
   url: string;
-  type?: "url" | "local_file" | "youtube" | "guitar_pro";
+  type?: "url" | "local_file" | "youtube" | "guitar_pro" | "local_folder";
 }
 
 // ─── Session records (as returned by POST and inside meta.sessions) ───────────
