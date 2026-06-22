@@ -267,10 +267,50 @@ struct LocalFolderEntry {
     filename: String,
 }
 
+// Formats actually decodable by Web Audio API or HTML5 video in the webview.
 const MEDIA_EXTENSIONS: &[&str] = &[
-    "mp3", "wav", "flac", "aac", "ogg", "opus", "m4a", "wma",
-    "mp4", "mov", "webm", "m4v", "mkv", "ogv", "avi",
+    "mp3", "wav", "flac", "aac", "ogg", "opus", "m4a",
+    "mp4", "mov", "webm", "m4v", "ogv",
 ];
+
+// Case-insensitive natural sort: "Track 2" < "Track 10".
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let a_lc = a.to_ascii_lowercase();
+    let b_lc = b.to_ascii_lowercase();
+    let mut ai: usize = 0;
+    let mut bi: usize = 0;
+    loop {
+        let a_done = ai >= a_lc.len();
+        let b_done = bi >= b_lc.len();
+        match (a_done, b_done) {
+            (true, true) => return std::cmp::Ordering::Equal,
+            (true, false) => return std::cmp::Ordering::Less,
+            (false, true) => return std::cmp::Ordering::Greater,
+            _ => {}
+        }
+        let a_ch = a_lc[ai..].chars().next().unwrap();
+        let b_ch = b_lc[bi..].chars().next().unwrap();
+        if a_ch.is_ascii_digit() && b_ch.is_ascii_digit() {
+            let a_end = ai + a_lc[ai..].find(|c: char| !c.is_ascii_digit()).unwrap_or(a_lc.len() - ai);
+            let b_end = bi + b_lc[bi..].find(|c: char| !c.is_ascii_digit()).unwrap_or(b_lc.len() - bi);
+            let a_num: u64 = a_lc[ai..a_end].parse().unwrap_or(0);
+            let b_num: u64 = b_lc[bi..b_end].parse().unwrap_or(0);
+            ai = a_end;
+            bi = b_end;
+            match a_num.cmp(&b_num) {
+                std::cmp::Ordering::Equal => {}
+                ord => return ord,
+            }
+        } else {
+            ai += a_ch.len_utf8();
+            bi += b_ch.len_utf8();
+            match a_ch.cmp(&b_ch) {
+                std::cmp::Ordering::Equal => {}
+                ord => return ord,
+            }
+        }
+    }
+}
 
 #[tauri::command]
 async fn list_local_folder(path: String) -> Result<String, String> {
@@ -284,18 +324,22 @@ async fn list_local_folder(path: String) -> Result<String, String> {
         let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
         let p = entry.path();
         if p.is_file() {
+            let filename = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            if filename.starts_with("._") {
+                continue;
+            }
             if let Some(ext) = p.extension() {
                 let ext_lower = ext.to_string_lossy().to_lowercase();
                 if MEDIA_EXTENSIONS.contains(&ext_lower.as_str()) {
                     entries.push(LocalFolderEntry {
                         path: p.to_string_lossy().to_string(),
-                        filename: p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                        filename,
                     });
                 }
             }
         }
     }
-    entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+    entries.sort_by(|a, b| natural_cmp(&a.filename, &b.filename));
     serde_json::to_string(&entries).map_err(|e| e.to_string())
 }
 
