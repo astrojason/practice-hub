@@ -161,7 +161,7 @@ function parseTimeInput(value: string, duration: number): number | null {
 
 function getMediaTypeFromPath(path: string): PlayerMediaType {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return ["mp4", "mov", "webm", "m4v", "ogv"].includes(ext) ? "video" : "audio";
+  return ["mp4", "mov", "webm", "m4v"].includes(ext) ? "video" : "audio";
 }
 
 function normalizeKey(key: string): string {
@@ -1589,7 +1589,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           <div className="media-player__canvas-status">Loading…</div>
         )}
         {!isVideo && audioState.status === "error" && (
-          <div className="media-player__canvas-status">Failed to load file</div>
+          <div className="media-player__canvas-status">
+            Failed to load file{audioState.errorMessage ? `: ${audioState.errorMessage}` : ""}
+          </div>
         )}
       </div>
 

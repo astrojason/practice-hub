@@ -7,6 +7,7 @@ export type AudioEngineStatus = "idle" | "loading" | "ready" | "error";
 
 export interface AudioEngineState {
   status: AudioEngineStatus;
+  errorMessage: string | null;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -167,6 +168,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   });
 
   const [status, setStatus] = useState<AudioEngineStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -306,6 +308,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     eng._pausedAt = 0;
 
     setStatus("loading");
+    setErrorMessage(null);
     setCurrentTime(0);
     setDuration(0);
     setWaveData([]);
@@ -358,7 +361,8 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       eng._pausedAt = startAt;
       startEngine();
     } catch (err) {
-      console.error("[useAudioEngine] loadFile failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg);
       setStatus("error");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -422,6 +426,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     eng.buffer = null;
     eng.shifter = null;
     setStatus("idle");
+    setErrorMessage(null);
     setCurrentTime(0);
     setDuration(0);
     setWaveData([]);
@@ -432,7 +437,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   // ── Assemble ────────────────────────────────────────────────────────────────
 
   const state: AudioEngineState = {
-    status, isPlaying, currentTime, duration, waveData,
+    status, errorMessage, isPlaying, currentTime, duration, waveData,
     speed, loopEnabled, loopStart, loopEnd,
     loopIncreaseEnabled, loopIncreaseBy, loopIncreaseAt,
     pitchSemitones, pitchCents, detectedBpm,

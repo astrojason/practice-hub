@@ -7,7 +7,7 @@ import type { Resource } from "../../api/types";
 // Infer media type from file extension so the player panel knows what to render.
 function mediaTypeFromPath(path: string): "audio" | "video" {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return ["mp4", "mov", "webm", "m4v", "ogv"].includes(ext) ? "video" : "audio";
+  return ["mp4", "mov", "webm", "m4v"].includes(ext) ? "video" : "audio";
 }
 
 interface FolderEntry {

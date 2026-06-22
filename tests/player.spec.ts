@@ -222,6 +222,28 @@ test.describe("local_folder study material", () => {
   });
 });
 
+test("shows actual error detail when file load fails", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+
+  // Override the file server mock to return a 404 for this test.
+  await page.route("**/127.0.0.1:17865/**", (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: "text/plain",
+      body: "not found",
+    })
+  );
+
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+
+  await page.locator(".modal-resource-link--local").click();
+  await expect(page.locator(".media-player")).toBeVisible();
+
+  // The player must show the specific HTTP error, not just a generic message.
+  await expect(page.locator(".media-player__canvas-status", { hasText: /HTTP 404/ })).toBeVisible();
+});
+
 test("opens standalone Metronome panel from header button", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
 

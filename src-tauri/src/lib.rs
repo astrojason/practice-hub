@@ -27,12 +27,10 @@ fn get_content_type(path: &std::path::Path) -> &'static str {
         "flac" => "audio/flac",
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
-        "ogg" | "opus" => "audio/ogg",
         "m4a" | "aac" => "audio/mp4",
         "mp4" | "m4v" => "video/mp4",
         "mov" => "video/quicktime",
         "webm" => "video/webm",
-        "ogv" => "video/ogg",
         _ => "application/octet-stream",
     }
 }
@@ -269,8 +267,8 @@ struct LocalFolderEntry {
 
 // Formats actually decodable by Web Audio API or HTML5 video in the webview.
 const MEDIA_EXTENSIONS: &[&str] = &[
-    "mp3", "wav", "flac", "aac", "ogg", "opus", "m4a",
-    "mp4", "mov", "webm", "m4v", "ogv",
+    "mp3", "wav", "flac", "aac", "m4a",
+    "mp4", "mov", "webm", "m4v",
 ];
 
 // Case-insensitive natural sort: "Track 2" < "Track 10".
