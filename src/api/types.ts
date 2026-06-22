@@ -581,6 +581,43 @@ export interface GpSeenEntry {
   dismissed: boolean;
 }
 
+// ─── GP tab viewer ────────────────────────────────────────────────────────────
+
+export interface GpViewNote {
+  string: number;        // 1-indexed: 1 = highest pitch string
+  fret: number;
+  techniques: string[];  // e.g. ["h"], ["p"], ["b"], ["pm"], ["x"], ["vib"], ["t"], ["harm"]
+}
+
+export interface GpViewBeat {
+  position: number;      // position within measure in beats (0 to beats_per_bar)
+  duration: number;      // duration in beats
+  is_rest: boolean;
+  notes: GpViewNote[];
+}
+
+export interface GpViewMeasure {
+  index: number;
+  time_sig: string;      // e.g. "4/4"
+  beats_per_bar: number;
+  beats: GpViewBeat[];
+}
+
+export interface GpViewTrack {
+  name: string;
+  instrument: string | null;
+  string_count: number;
+  bar_count: number;
+  measures: GpViewMeasure[];
+}
+
+export interface GpViewData {
+  title: string | null;
+  artist: string | null;
+  tempo_bpm: number;
+  tracks: GpViewTrack[];
+}
+
 // ─── Practice plan ────────────────────────────────────────────────────────────
 
 export interface PracticePlan {

@@ -971,6 +971,86 @@ def correct_weights(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tab viewer: structured note export
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _group_beats_into_measures(track: TrackData) -> list:
+    """Group a track's flat beat list into per-measure beat lists, merging voices."""
+    measures = []
+    measure_start = 0.0
+
+    for bar_idx, ts_text in enumerate(track.time_signatures):
+        beats_per_bar = _time_sig_to_beats(ts_text)
+        measure_end = measure_start + beats_per_bar
+
+        # Collect and merge beats in this measure range, keyed by position-within-measure.
+        # Multiple voices can produce beats at the same position — merge their notes.
+        pos_map: Dict[float, dict] = {}
+        for b in track.beats:
+            if b.beat_position < measure_start or b.beat_position >= measure_end:
+                continue
+            pos = round(b.beat_position - measure_start, 4)
+            if pos not in pos_map:
+                pos_map[pos] = {
+                    "position": pos,
+                    "duration": round(b.rhythm.duration_beats, 4),
+                    "is_rest": b.is_rest and not b.notes,
+                    "notes": [],
+                }
+            entry = pos_map[pos]
+            for n in b.notes:
+                tech: list = []
+                if n.hammer_on:      tech.append("h")
+                if n.pull_off:       tech.append("p")
+                if n.bend:           tech.append("b")
+                if n.vibrato:        tech.append("vib")
+                if n.palm_mute:      tech.append("pm")
+                if n.dead_note:      tech.append("x")
+                if n.is_tap:         tech.append("t")
+                if n.harmonic:       tech.append("harm")
+                entry["notes"].append({
+                    "string": n.string,
+                    "fret": n.fret,
+                    "techniques": tech,
+                })
+
+        merged = sorted(pos_map.values(), key=lambda x: x["position"])
+        measures.append({
+            "index": bar_idx,
+            "time_sig": ts_text,
+            "beats_per_bar": beats_per_bar,
+            "beats": merged,
+        })
+        measure_start = measure_end
+
+    return measures
+
+
+def view_song(path: Path) -> dict:
+    """Parse GP file and return structured note data for the tab viewer."""
+    song = parse_gpif_file(path)
+    tempo = song.tempo_bpm or 120.0
+
+    track_results = []
+    for track in song.tracks:
+        measures = _group_beats_into_measures(track)
+        track_results.append({
+            "name": track.name,
+            "instrument": track.instrument,
+            "string_count": track.string_count,
+            "bar_count": track.bar_count,
+            "measures": measures,
+        })
+
+    return {
+        "title": song.title,
+        "artist": song.artist,
+        "tempo_bpm": tempo,
+        "tracks": track_results,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1022,6 +1102,27 @@ def main():
             sys.exit(1)
 
     weights = load_weights(weights_path)
+
+    # --view mode: structured note export for the tab viewer
+    if args and args[0] == "--view":
+        if len(args) < 2:
+            print(json.dumps({"error": "Usage: analyze_gp.py --view <file.gp>"}), file=sys.stderr)
+            sys.exit(1)
+        path = Path(args[1])
+        if not path.exists():
+            print(json.dumps({"error": f"File not found: {path}"}), file=sys.stderr)
+            sys.exit(1)
+        suffix = path.suffix.lower()
+        if suffix not in GPIF_EXTENSIONS:
+            print(json.dumps({"error": f"Unsupported format: {suffix}. Only {GPIF_EXTENSIONS} are supported."}), file=sys.stderr)
+            sys.exit(1)
+        try:
+            result = view_song(path)
+        except GPIFParserError as exc:
+            print(json.dumps({"error": str(exc)}), file=sys.stderr)
+            sys.exit(1)
+        print(json.dumps(result))
+        return
 
     # --correct mode: pairwise ranking correction
     if args and args[0] == "--correct":

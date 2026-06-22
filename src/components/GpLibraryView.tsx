@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useGpScanner } from "../hooks/useGpScanner";
 import { pushDifficultyScore, registerGpResource } from "../api/client";
+import { GpViewer } from "./GpViewer";
 import type { GpMatch, GpUnmatched, DifficultyVector } from "../api/types";
 
 interface Props {
@@ -39,6 +40,7 @@ export function GpLibraryView({ token, onBack }: Props) {
   const [pathInput, setPathInput] = useState(rootPath);
   const [pushing, setPushing] = useState(false);
   const [pushStatus, setPushStatus] = useState("");
+  const [viewerPath, setViewerPath] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings().then(() => setPathInput(rootPath));
@@ -218,6 +220,7 @@ export function GpLibraryView({ token, onBack }: Props) {
                       key={m.file.path}
                       match={m}
                       onOpen={handleOpenFile}
+                      onView={(path) => setViewerPath(path)}
                       onScoreChange={(score) => updateMatchScore(m.file.filename, score)}
                     />
                   ))}
@@ -250,6 +253,7 @@ export function GpLibraryView({ token, onBack }: Props) {
                       entry={u}
                       onDismiss={() => dismissUnmatched(u.file.filename)}
                       onOpen={() => handleOpenFile(u.file.path)}
+                      onView={() => setViewerPath(u.file.path)}
                     />
                   ))}
                 </tbody>
@@ -280,6 +284,10 @@ export function GpLibraryView({ token, onBack }: Props) {
           )}
         </>
       )}
+
+      {viewerPath && (
+        <GpViewer filePath={viewerPath} onClose={() => setViewerPath(null)} />
+      )}
     </div>
   );
 }
@@ -289,10 +297,12 @@ export function GpLibraryView({ token, onBack }: Props) {
 function GpMatchRow({
   match,
   onOpen,
+  onView,
   onScoreChange,
 }: {
   match: GpMatch;
   onOpen: (path: string) => void;
+  onView: (path: string) => void;
   onScoreChange: (score: number | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -331,13 +341,20 @@ function GpMatchRow({
             </button>
           )}
         </td>
-        <td>
+        <td className="gp-file-cell">
           <button
             className="gp-filename-link"
             title="Open in Guitar Pro"
             onClick={() => onOpen(match.file.path)}
           >
             {match.file.filename}
+          </button>
+          <button
+            className="gp-view-btn"
+            title="View tab"
+            onClick={() => onView(match.file.path)}
+          >
+            ♩
           </button>
         </td>
         <td>{match.song_name}</td>
@@ -421,16 +438,21 @@ function GpUnmatchedRow({
   entry,
   onDismiss,
   onOpen,
+  onView,
 }: {
   entry: GpUnmatched;
   onDismiss: () => void;
   onOpen: () => void;
+  onView: () => void;
 }) {
   return (
     <tr className="gp-row-unmatched">
-      <td>
+      <td className="gp-file-cell">
         <button className="gp-filename-link" onClick={onOpen}>
           {entry.file.filename}
+        </button>
+        <button className="gp-view-btn" title="View tab" onClick={onView}>
+          ♩
         </button>
       </td>
       <td>{entry.file.parsed_artist}</td>

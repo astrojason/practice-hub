@@ -2553,6 +2553,144 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   text-align: right;
 }
 
+/* ─── GP file cell (filename + view button) ──────────────────────────────────── */
+.gp-file-cell { display: flex; align-items: center; gap: 6px; }
+
+.gp-view-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 2px 6px;
+  font-size: 13px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  line-height: 1;
+}
+.gp-view-btn:hover { background: var(--surface-3); color: var(--text); border-color: var(--accent); }
+
+/* ─── GP tab viewer modal ─────────────────────────────────────────────────────── */
+.gp-viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  z-index: 200;
+}
+
+.gp-viewer-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+}
+
+.gp-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.gp-viewer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.gp-viewer-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gp-viewer-artist {
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.gp-viewer-tempo {
+  font-size: 12px;
+  color: var(--accent-light);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.gp-viewer-loading { font-size: 13px; color: var(--text-dim); }
+
+.gp-viewer-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.gp-viewer-track-select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.gp-viewer-track-select:focus { outline: none; border-color: var(--accent); }
+
+.gp-viewer-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  line-height: 1;
+}
+.gp-viewer-close:hover { background: var(--surface-3); color: var(--text); }
+
+.gp-viewer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.gp-viewer-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+}
+
+.gp-viewer-error {
+  color: var(--red);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.gp-viewer-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.gp-viewer-track-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.gp-tab-system {
+  overflow: visible;
+}
+
 .error-modal-overlay {
   position: fixed;
   inset: 0;

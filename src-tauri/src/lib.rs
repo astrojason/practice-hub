@@ -176,6 +176,33 @@ fn spawn_file_server() {
 }
 
 // ─── GP file analysis ─────────────────────────────────────────────────────────
+// Invokes the bundled Python sidecar (analyze_gp.py --view) on a local .gp file
+// and returns structured note/measure data as a JSON string for the tab viewer.
+
+#[tauri::command]
+async fn parse_gp_file(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<String, String> {
+    let script = app
+        .path()
+        .resolve("sidecar/analyze_gp.py", BaseDirectory::Resource)
+        .map_err(|e| format!("Could not locate analyzer script: {e}"))?;
+
+    let output = std::process::Command::new("python3")
+        .arg(&script)
+        .arg("--view")
+        .arg(&file_path)
+        .output()
+        .map_err(|e| format!("Failed to launch python3: {e}"))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 // Invokes the bundled Python sidecar (analyze_gp.py) on a local .gp file and
 // returns the raw JSON output as a string.  The caller parses it.
 
@@ -427,6 +454,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_auth,
             analyze_gp_file,
+            parse_gp_file,
             scan_gp_directory,
             list_local_folder,
             open_with_default,
