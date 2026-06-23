@@ -55,7 +55,7 @@ interface Props {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, audioPath?: string) => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
   onEntityEdited?: (song: Song) => void;

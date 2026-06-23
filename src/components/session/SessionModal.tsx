@@ -71,13 +71,19 @@ function LocalFolderResource({ name, folderPath, onOpenFile, onGpView }: LocalFo
   );
 }
 
+function findAudioPath(resources: Resource[] | undefined): string | undefined {
+  return resources?.find((r) =>
+    (r.type === "local_file" || !r.type) && fileTypeFromPath(r.url) === "audio"
+  )?.url;
+}
+
 interface Props {
   title: string;
   subtitle?: string;
   resources?: Resource[];
   onClose: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, audioPath?: string) => void;
   children: React.ReactNode;
 }
 
@@ -126,7 +132,11 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                       key={r.url}
                       className="modal-resource-link modal-resource-link--local"
                       onClick={() => {
-                        if (ft === "guitar_pro") { onGpView?.(r.url); } else { onOpenFile?.(r.url, ft); }
+                        if (ft === "guitar_pro") {
+                          onGpView?.(r.url, findAudioPath(resources));
+                        } else {
+                          onOpenFile?.(r.url, ft);
+                        }
                         onClose();
                       }}
                     >
@@ -140,7 +150,7 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                     <button
                       key={r.url}
                       className="modal-resource-link modal-resource-link--local"
-                      onClick={() => { onGpView?.(r.url); onClose(); }}
+                      onClick={() => { onGpView?.(r.url, findAudioPath(resources)); onClose(); }}
                     >
                       <FolderOpenIcon style={{ width: 11, height: 11 }} />
                       {r.name}

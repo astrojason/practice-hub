@@ -18,7 +18,7 @@ import type { GpMatch, GpUnmatched, DifficultyVector } from "../api/types";
 interface Props {
   token: string;
   onBack: () => void;
-  onGpView: (path: string) => void;
+  onGpView: (path: string, audioPath?: string) => void;
 }
 
 export function GpLibraryView({ token, onBack, onGpView }: Props) {

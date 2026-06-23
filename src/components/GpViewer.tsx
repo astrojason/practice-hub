@@ -6,6 +6,7 @@ import { useAudioEngine } from "./player/useAudioEngine";
 interface Props {
   filePath: string;
   onClose: () => void;
+  initialAudioPath?: string;
 }
 
 interface PitchState {
@@ -72,7 +73,7 @@ function fmtTime(s: number): string {
 
 // ─── Main viewer component ────────────────────────────────────────────────────
 
-export function GpViewer({ filePath, onClose }: Props) {
+export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
@@ -97,12 +98,16 @@ export function GpViewer({ filePath, onClose }: Props) {
     savePitch(filePath, pitch);
   }, [filePath, pitch]);
 
-  // On mount: disable loop, auto-load stored audio file, destroy on unmount
+  // On mount: disable loop, load audio (prefer initialAudioPath from resources over stored), destroy on unmount
   useEffect(() => {
     audioActions.setLoopEnabled(false);
     const stored = loadPitch(filePath);
-    if (stored.audioFilePath) {
-      audioActions.loadFile(stored.audioFilePath);
+    const audioPath = initialAudioPath ?? stored.audioFilePath;
+    if (audioPath) {
+      if (audioPath !== stored.audioFilePath) {
+        setPitch((p) => ({ ...p, audioFilePath: audioPath }));
+      }
+      audioActions.loadFile(audioPath);
     }
     return () => { audioActions.destroy(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps

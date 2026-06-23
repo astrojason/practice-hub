@@ -213,7 +213,7 @@ interface Props {
   onSignOut: () => Promise<void>;
   onGpLibrary: () => void;
   onCalendar: () => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, audioPath?: string) => void;
 }
 
 export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onGpView }: Props) {

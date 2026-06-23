@@ -25,6 +25,17 @@ export function App() {
   const [slowLoad, setSlowLoad] = useState(false);
   const [view, setView] = useState<AppView>("session");
   const [gpViewerPath, setGpViewerPath] = useState<string | null>(null);
+  const [gpViewerAudioPath, setGpViewerAudioPath] = useState<string | undefined>(undefined);
+
+  function openGpViewer(path: string, audioPath?: string) {
+    setGpViewerPath(path);
+    setGpViewerAudioPath(audioPath);
+  }
+
+  function closeGpViewer() {
+    setGpViewerPath(null);
+    setGpViewerAudioPath(undefined);
+  }
 
   useEffect(() => {
     if (!isLoading) return;
@@ -55,9 +66,9 @@ export function App() {
   if (view === "gp-library") {
     return (
       <>
-        <GpLibraryView token={token} onBack={() => setView("session")} onGpView={setGpViewerPath} />
+        <GpLibraryView token={token} onBack={() => setView("session")} onGpView={openGpViewer} />
         {gpViewerPath && (
-          <GpViewer filePath={gpViewerPath} onClose={() => setGpViewerPath(null)} />
+          <GpViewer filePath={gpViewerPath} initialAudioPath={gpViewerAudioPath} onClose={closeGpViewer} />
         )}
       </>
     );
@@ -74,10 +85,10 @@ export function App() {
         onSignOut={signOut}
         onGpLibrary={() => setView("gp-library")}
         onCalendar={() => setView("calendar")}
-        onGpView={setGpViewerPath}
+        onGpView={openGpViewer}
       />
       {gpViewerPath && (
-        <GpViewer filePath={gpViewerPath} onClose={() => setGpViewerPath(null)} />
+        <GpViewer filePath={gpViewerPath} initialAudioPath={gpViewerAudioPath} onClose={closeGpViewer} />
       )}
     </>
   );

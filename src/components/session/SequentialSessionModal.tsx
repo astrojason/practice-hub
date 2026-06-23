@@ -45,7 +45,7 @@ interface Props {
   onFormClose: () => void;
   onCancelReturn: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, audioPath?: string) => void;
 }
 
 export function SequentialSessionModal({

@@ -50,7 +50,7 @@ interface CardProps {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, audioPath?: string) => void;
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
   onStartSequential?: () => void;
@@ -353,7 +353,7 @@ interface ExerciseCardProps {
   onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, audioPath?: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
   onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
