@@ -75,9 +75,9 @@ function fmtTime(s: number): string {
 
 export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
+  const currentTimeRef = useRef(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,14 +119,25 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pitch.audioSemitones, pitch.audioCents]);
 
-  // Scroll tab body to match audio playback position
+  // Keep a ref in sync so the rAF loop always reads the latest time without closure capture issues
   useEffect(() => {
-    const body = bodyRef.current;
-    if (!body || !audioState.isPlaying || audioState.duration <= 0) return;
-    const fraction = audioState.currentTime / audioState.duration;
-    const maxScroll = body.scrollHeight - body.clientHeight;
-    if (maxScroll > 0) body.scrollTop = fraction * maxScroll;
-  }, [audioState.currentTime, audioState.isPlaying]);
+    currentTimeRef.current = audioState.currentTime;
+  }, [audioState.currentTime]);
+
+  // Drive alphaTab cursor from audio engine position via a dedicated rAF loop
+  useEffect(() => {
+    if (!audioState.isPlaying) return;
+    let rafId: number;
+    const tick = () => {
+      const api = apiRef.current;
+      if (api && api.isReadyForPlayback) {
+        api.timePosition = currentTimeRef.current * 1000;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [audioState.isPlaying]);
 
   // Initialize alphaTab once per filePath
   useEffect(() => {
@@ -144,10 +155,17 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     const settings = new alphaTab.Settings();
     settings.core.useWorkers = false;
     settings.core.fontDirectory = "/font/";
-    settings.player.enablePlayer = false;
+    settings.player.enablePlayer = true;
+    settings.player.enableCursor = true;
+    settings.player.soundFont = "/soundfont/sonivox.sf2";
+    settings.player.scrollMode = alphaTab.ScrollMode.Continuous;
 
     const api = new alphaTab.AlphaTabApi(el, settings);
     apiRef.current = api;
+
+    // Mute MIDI audio immediately — cursor/scroll are what we want, not synthesis
+    api.masterVolume = 0;
+    api.soundFontLoaded.on(() => { api.masterVolume = 0; });
 
     api.scoreLoaded.on((score: alphaTab.model.Score) => {
       setTitle(score.title || null);
@@ -376,7 +394,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         </div>
 
         {/* Body */}
-        <div className="gp-viewer-body" ref={bodyRef}>
+        <div className="gp-viewer-body">
           {loading && !error && (
             <div className="gp-viewer-spinner">
               <div className="loading-spinner" />
