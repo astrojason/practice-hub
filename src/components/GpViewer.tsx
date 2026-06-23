@@ -89,6 +89,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
   const [audioState, audioActions] = useAudioEngine();
+  const [atPlayerReady, setAtPlayerReady] = useState(false);
 
   // Derived from stored path — no separate state needed
   const audioFilename = pitch.audioFilePath ? pitch.audioFilePath.split("/").pop() ?? pitch.audioFilePath : null;
@@ -124,20 +125,26 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     currentTimeRef.current = audioState.currentTime;
   }, [audioState.currentTime]);
 
-  // Drive alphaTab cursor from audio engine position via a dedicated rAF loop
+  // Drive alphaTab cursor: alphaTab must be in play state for the cursor to animate.
+  // We call api.play()/pause() in sync with our audio engine and override timePosition
+  // every frame so the cursor tracks external audio rather than MIDI timing.
   useEffect(() => {
+    const api = apiRef.current;
+    if (!api || !atPlayerReady) return;
     if (!audioState.isPlaying) return;
+
+    api.play();
     let rafId: number;
     const tick = () => {
-      const api = apiRef.current;
-      if (api && api.isReadyForPlayback) {
-        api.timePosition = currentTimeRef.current * 1000;
-      }
+      if (apiRef.current) apiRef.current.timePosition = currentTimeRef.current * 1000;
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [audioState.isPlaying]);
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (apiRef.current) apiRef.current.pause();
+    };
+  }, [audioState.isPlaying, atPlayerReady]);
 
   // Initialize alphaTab once per filePath
   useEffect(() => {
@@ -151,6 +158,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setArtist(null);
     setTempo(null);
     setSelectedTrack(0);
+    setAtPlayerReady(false);
 
     // Tell alphaTab its root is / so it finds alphaTab.worklet.min.mjs in public/
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -175,6 +183,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.playerReady.on(() => {
       api.masterVolume = 0;
       api.timePosition = 0;
+      setAtPlayerReady(true);
     });
 
     api.scoreLoaded.on((score: alphaTab.model.Score) => {
