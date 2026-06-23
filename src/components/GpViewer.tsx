@@ -107,7 +107,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
       if (audioPath !== stored.audioFilePath) {
         setPitch((p) => ({ ...p, audioFilePath: audioPath }));
       }
-      audioActions.loadFile(audioPath);
+      audioActions.loadFile(audioPath).then(() => { audioActions.pause(); });
     }
     return () => { audioActions.destroy(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,6 +255,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     const path = typeof selected === "string" ? selected : selected[0];
     setPitch((p) => ({ ...p, audioFilePath: path }));
     await audioActions.loadFile(path);
+    audioActions.pause();
   }
 
   function handleProgressClick(e: React.MouseEvent<HTMLDivElement>) {
