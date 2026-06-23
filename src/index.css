@@ -2886,6 +2886,31 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   position: relative; /* alphaTab cursor elements are absolutely positioned inside */
 }
 
+/* ── Debug console ── */
+.gp-debug-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px; background: #111; border-top: 1px solid #333;
+  flex-shrink: 0; font-size: 11px;
+}
+.gp-debug-toggle {
+  background: #222; color: #aaa; border: 1px solid #444; border-radius: 3px;
+  padding: 2px 8px; cursor: pointer; font-size: 11px;
+}
+.gp-debug-toggle:hover { background: #333; }
+.gp-debug-state { color: #666; font-family: monospace; }
+.gp-debug-clear {
+  margin-left: auto; background: #330; color: #f88; border: 1px solid #553;
+  border-radius: 3px; padding: 2px 6px; cursor: pointer; font-size: 11px;
+}
+.gp-debug-console {
+  height: 160px; overflow-y: auto; background: #0d0d0d;
+  border-top: 1px solid #222; padding: 6px 12px;
+  flex-shrink: 0; font-family: monospace; font-size: 11px;
+}
+.gp-debug-line { color: #ccc; white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+.gp-debug-line:has([ERR]), .gp-debug-line:nth-child(n) { }
+.gp-debug-empty { color: #444; font-style: italic; }
+
 
 .error-modal-overlay {
   position: fixed;

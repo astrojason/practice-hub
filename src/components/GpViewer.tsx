@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as alphaTab from "@coderline/alphatab";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useAudioEngine } from "./player/useAudioEngine";
@@ -90,6 +90,13 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
   const [audioState, audioActions] = useAudioEngine();
   const [atPlayerReady, setAtPlayerReady] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+
+  const addLog = useCallback((level: string, ...args: unknown[]) => {
+    const msg = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
+    setDebugLogs((prev) => [...prev.slice(-199), `[${level}] ${msg}`]);
+  }, []);
 
   // Derived from stored path — no separate state needed
   const audioFilename = pitch.audioFilePath ? pitch.audioFilePath.split("/").pop() ?? pitch.audioFilePath : null;
@@ -98,6 +105,24 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   useEffect(() => {
     savePitch(filePath, pitch);
   }, [filePath, pitch]);
+
+  // Intercept console.error/warn and unhandled errors so they appear in the debug panel
+  useEffect(() => {
+    const origError = console.error.bind(console);
+    const origWarn = console.warn.bind(console);
+    console.error = (...args: unknown[]) => { addLog("ERR", ...args); origError(...args); };
+    console.warn = (...args: unknown[]) => { addLog("WARN", ...args); origWarn(...args); };
+    const onError = (e: ErrorEvent) => addLog("WINDOW_ERR", e.message, e.filename, e.lineno);
+    const onUnhandled = (e: PromiseRejectionEvent) => addLog("UNHANDLED", String(e.reason));
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandled);
+    return () => {
+      console.error = origError;
+      console.warn = origWarn;
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandled);
+    };
+  }, [addLog]);
 
   // On mount: disable loop, load audio (prefer initialAudioPath from resources over stored), destroy on unmount
   useEffect(() => {
@@ -156,13 +181,24 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setSelectedTrack(0);
     setAtPlayerReady(false);
 
-    // Tell alphaTab its root is / so it finds alphaTab.worklet.min.mjs in public/
+    // alphaTab detects "BrowserModule" or "Vite bundled" from import.meta.url, then
+    // constructs the worklet URL relative to that — which resolves to the Vite chunk,
+    // not the worklet file. The @coderline/alphatab-vite plugin would fix this but
+    // requires Vite 7+. Instead: reset all three detection flags so alphaTab falls
+    // through to the simple addModule(scriptFile) path, then point scriptFile at our
+    // served worklet explicitly.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const atEnv = alphaTab.Environment as any;
+    atEnv.webPlatform = alphaTab.WebPlatform.Browser; // = 0, not BrowserModule
+    atEnv.isViteBundled = false;
+    atEnv.isWebPackBundled = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).ALPHATAB_ROOT = "/";
 
     const settings = new alphaTab.Settings();
     settings.core.useWorkers = false;
     settings.core.fontDirectory = "/font/";
+    settings.core.scriptFile = "/alphaTab.worklet.min.mjs";
     settings.player.enablePlayer = true;
     settings.player.enableCursor = true;
     settings.player.soundFont = "/soundfont/sonivox.sf2";
@@ -171,18 +207,22 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     const api = new alphaTab.AlphaTabApi(el, settings);
     apiRef.current = api;
 
+    addLog("INFO", `webPlatform=${(alphaTab.Environment as any).webPlatform} isViteBundled=${(alphaTab.Environment as any).isViteBundled} scriptFile=${settings.core.scriptFile}`);
+
     // Mute MIDI audio — cursor/scroll are what we want, not synthesis
     api.masterVolume = 0;
-    api.soundFontLoaded.on(() => { api.masterVolume = 0; });
+    api.soundFontLoaded.on(() => { addLog("INFO", "soundFontLoaded"); api.masterVolume = 0; });
 
     // Once player is ready, seek to position 0 so the cursor appears at beat 1
     api.playerReady.on(() => {
+      addLog("INFO", "playerReady");
       api.masterVolume = 0;
       api.timePosition = 0;
       setAtPlayerReady(true);
     });
 
     api.scoreLoaded.on((score: alphaTab.model.Score) => {
+      addLog("INFO", `scoreLoaded: ${score.title}`);
       setTitle(score.title || null);
       setArtist(score.artist || null);
       setTempo(score.tempo);
@@ -196,6 +236,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     });
 
     api.error.on((err: Error) => {
+      addLog("AT_ERR", err.message);
       setError(err.message);
       setLoading(false);
     });
@@ -426,6 +467,27 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           )}
           <div ref={containerRef} className="gp-alphatab-container" />
         </div>
+
+        {/* Debug console */}
+        <div className="gp-debug-bar">
+          <button className="gp-debug-toggle" onClick={() => setShowDebug((v) => !v)}>
+            {showDebug ? "▲ Debug" : "▼ Debug"} ({debugLogs.length})
+          </button>
+          <span className="gp-debug-state">
+            atReady:{atPlayerReady ? "✓" : "✗"} | audio:{audioState.status} | playing:{audioState.isPlaying ? "✓" : "✗"}
+          </span>
+          {showDebug && (
+            <button className="gp-debug-clear" onClick={() => setDebugLogs([])}>Clear</button>
+          )}
+        </div>
+        {showDebug && (
+          <div className="gp-debug-console">
+            {debugLogs.length === 0 && <span className="gp-debug-empty">No logs yet</span>}
+            {[...debugLogs].reverse().map((line, i) => (
+              <div key={i} className="gp-debug-line">{line}</div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
