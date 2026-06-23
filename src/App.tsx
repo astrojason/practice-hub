@@ -4,6 +4,7 @@ import { SignInScreen } from "./components/SignInScreen";
 import { SessionView } from "./components/SessionView";
 import { GpLibraryView } from "./components/GpLibraryView";
 import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
+import { GpViewer } from "./components/GpViewer";
 
 type AppView = "session" | "gp-library" | "calendar";
 
@@ -23,6 +24,7 @@ export function App() {
   const quoteRef = useRef(MUSIC_QUOTES[Math.floor(Math.random() * MUSIC_QUOTES.length)]);
   const [slowLoad, setSlowLoad] = useState(false);
   const [view, setView] = useState<AppView>("session");
+  const [gpViewerPath, setGpViewerPath] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -51,7 +53,14 @@ export function App() {
   }
 
   if (view === "gp-library") {
-    return <GpLibraryView token={token} onBack={() => setView("session")} />;
+    return (
+      <>
+        <GpLibraryView token={token} onBack={() => setView("session")} onGpView={setGpViewerPath} />
+        {gpViewerPath && (
+          <GpViewer filePath={gpViewerPath} onClose={() => setGpViewerPath(null)} />
+        )}
+      </>
+    );
   }
 
   if (view === "calendar") {
@@ -59,11 +68,17 @@ export function App() {
   }
 
   return (
-    <SessionView
-      token={token}
-      onSignOut={signOut}
-      onGpLibrary={() => setView("gp-library")}
-      onCalendar={() => setView("calendar")}
-    />
+    <>
+      <SessionView
+        token={token}
+        onSignOut={signOut}
+        onGpLibrary={() => setView("gp-library")}
+        onCalendar={() => setView("calendar")}
+        onGpView={setGpViewerPath}
+      />
+      {gpViewerPath && (
+        <GpViewer filePath={gpViewerPath} onClose={() => setGpViewerPath(null)} />
+      )}
+    </>
   );
 }

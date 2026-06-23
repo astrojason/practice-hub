@@ -13,15 +13,15 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useGpScanner } from "../hooks/useGpScanner";
 import { pushDifficultyScore, registerGpResource } from "../api/client";
-import { GpViewer } from "./GpViewer";
 import type { GpMatch, GpUnmatched, DifficultyVector } from "../api/types";
 
 interface Props {
   token: string;
   onBack: () => void;
+  onGpView: (path: string) => void;
 }
 
-export function GpLibraryView({ token, onBack }: Props) {
+export function GpLibraryView({ token, onBack, onGpView }: Props) {
   const {
     rootPath,
     setRootPath,
@@ -40,7 +40,6 @@ export function GpLibraryView({ token, onBack }: Props) {
   const [pathInput, setPathInput] = useState(rootPath);
   const [pushing, setPushing] = useState(false);
   const [pushStatus, setPushStatus] = useState("");
-  const [viewerPath, setViewerPath] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings().then(() => setPathInput(rootPath));
@@ -220,7 +219,7 @@ export function GpLibraryView({ token, onBack }: Props) {
                       key={m.file.path}
                       match={m}
                       onOpen={handleOpenFile}
-                      onView={(path) => setViewerPath(path)}
+                      onView={(path) => onGpView(path)}
                       onScoreChange={(score) => updateMatchScore(m.file.filename, score)}
                     />
                   ))}
@@ -253,7 +252,7 @@ export function GpLibraryView({ token, onBack }: Props) {
                       entry={u}
                       onDismiss={() => dismissUnmatched(u.file.filename)}
                       onOpen={() => handleOpenFile(u.file.path)}
-                      onView={() => setViewerPath(u.file.path)}
+                      onView={() => onGpView(u.file.path)}
                     />
                   ))}
                 </tbody>
@@ -285,9 +284,6 @@ export function GpLibraryView({ token, onBack }: Props) {
         </>
       )}
 
-      {viewerPath && (
-        <GpViewer filePath={viewerPath} onClose={() => setViewerPath(null)} />
-      )}
     </div>
   );
 }

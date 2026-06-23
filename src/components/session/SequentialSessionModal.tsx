@@ -45,6 +45,7 @@ interface Props {
   onFormClose: () => void;
   onCancelReturn: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onGpView?: (path: string) => void;
 }
 
 export function SequentialSessionModal({
@@ -64,6 +65,7 @@ export function SequentialSessionModal({
   onFormClose,
   onCancelReturn,
   onOpenFile,
+  onGpView,
 }: Props) {
   const [notes, setNotes] = useState("");
 
@@ -83,6 +85,7 @@ export function SequentialSessionModal({
       resources={current.resources}
       onClose={onCancelReturn}
       onOpenFile={onOpenFile}
+      onGpView={onGpView}
     >
       {isFormOpen ? (
         <div className="sequential-form-wrapper">

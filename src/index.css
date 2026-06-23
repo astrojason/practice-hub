@@ -2660,6 +2660,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   flex: 1;
   overflow: auto;
   padding: 16px;
+  background: #1e1e30;
 }
 
 .gp-viewer-spinner {
@@ -2690,6 +2691,200 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .gp-tab-system {
   overflow: visible;
 }
+
+/* ── Pitch controls bar ──────────────────────────────────────────────────── */
+
+.gp-pitch-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.gp-pitch-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gp-pitch-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 2px;
+}
+
+.gp-pitch-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.gp-pitch-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-right: 1px;
+}
+
+.gp-pitch-group button {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+}
+.gp-pitch-group button:hover { background: var(--surface); }
+
+.gp-pitch-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  min-width: 42px;
+  text-align: center;
+}
+
+.gp-pitch-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.gp-pitch-link-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+
+.gp-pitch-reset {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  margin-left: 4px;
+}
+.gp-pitch-reset:hover { color: var(--text); background: var(--surface-3); }
+
+/* ── Audio player bar ────────────────────────────────────────────────────── */
+
+.gp-audio-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  min-height: 34px;
+}
+
+.gp-audio-load {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gp-audio-load:hover { background: var(--surface-2); color: var(--text); }
+
+.gp-audio-play {
+  background: var(--accent);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.gp-audio-play:hover { background: var(--accent-light); }
+
+.gp-audio-progress {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  min-width: 60px;
+}
+.gp-audio-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.gp-audio-time {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.gp-audio-status {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.gp-audio-error {
+  font-size: 12px;
+  color: var(--red);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── alphaTab container ──────────────────────────────────────────────────── */
+
+.gp-alphatab-container {
+  width: 100%;
+  min-height: 200px;
+  background: #ffffff;
+  border-radius: var(--r-sm);
+}
+
 
 .error-modal-overlay {
   position: fixed;

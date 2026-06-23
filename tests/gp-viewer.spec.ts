@@ -32,55 +32,6 @@ const mockCatalogSongs = {
   total: 1, page: 1, limit: 100,
 };
 
-const mockScanEntry = {
-  path: "/Songs/TestArtist-Test Song-01-01-2024.gp",
-  filename: "TestArtist-Test Song-01-01-2024.gp",
-  modified_ms: 1704067200000,
-  size_bytes: 12345,
-};
-
-const mockAnalysis = JSON.stringify({
-  difficulty_score: 45.5,
-  vector: { speed: 50, fret_complexity: 40, pick_complexity: 45, rhythm_complexity: 35, technique_density: 50, stamina: 40, overall: 45.5 },
-  title: "Test Song", artist: "TestArtist", tempo_bpm: 120.0, tracks: [],
-});
-
-const mockViewData = JSON.stringify({
-  title: "Test Song",
-  artist: "TestArtist",
-  tempo_bpm: 120.0,
-  tracks: [
-    {
-      name: "Guitar 1",
-      instrument: "Electric Guitar",
-      string_count: 6,
-      bar_count: 2,
-      measures: [
-        {
-          index: 0, time_sig: "4/4", beats_per_bar: 4.0,
-          beats: [
-            { position: 0.0, duration: 1.0, is_rest: false, notes: [{ string: 1, fret: 5, techniques: [] }] },
-            { position: 1.0, duration: 1.0, is_rest: false, notes: [{ string: 2, fret: 7, techniques: ["h"] }] },
-          ],
-        },
-        {
-          index: 1, time_sig: "4/4", beats_per_bar: 4.0,
-          beats: [],
-        },
-      ],
-    },
-    {
-      name: "Bass",
-      instrument: "Electric Bass",
-      string_count: 4,
-      bar_count: 2,
-      measures: [
-        { index: 0, time_sig: "4/4", beats_per_bar: 4.0, beats: [] },
-      ],
-    },
-  ],
-});
-
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 test.beforeEach(async ({ page }) => {
@@ -98,26 +49,6 @@ test.beforeEach(async ({ page }) => {
       vector: { speed: 50, fret_complexity: 40, pick_complexity: 45, rhythm_complexity: 35, technique_density: 50, stamina: 40, overall: 45.5 },
       title: "Test Song", artist: "TestArtist", tempo_bpm: 120.0, tracks: [],
     });
-    const viewResult = JSON.stringify({
-      title: "Test Song",
-      artist: "TestArtist",
-      tempo_bpm: 120.0,
-      tracks: [
-        {
-          name: "Guitar 1", instrument: "Electric Guitar",
-          string_count: 6, bar_count: 2,
-          measures: [{
-            index: 0, time_sig: "4/4", beats_per_bar: 4.0,
-            beats: [{ position: 0.0, duration: 1.0, is_rest: false, notes: [{ string: 1, fret: 5, techniques: [] }] }],
-          }],
-        },
-        {
-          name: "Bass", instrument: "Electric Bass",
-          string_count: 4, bar_count: 2,
-          measures: [{ index: 0, time_sig: "4/4", beats_per_bar: 4.0, beats: [] }],
-        },
-      ],
-    });
 
     window.__TAURI_INTERNALS__ = {
       invoke: function(cmd) {
@@ -131,7 +62,6 @@ test.beforeEach(async ({ page }) => {
         if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
         if (cmd === "scan_gp_directory") return Promise.resolve(scanEntry);
         if (cmd === "analyze_gp_file") return Promise.resolve(analysisResult);
-        if (cmd === "parse_gp_file") return Promise.resolve(viewResult);
         return Promise.resolve(null);
       },
       transformCallback: function(fn, once) {
@@ -159,6 +89,10 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/127.0.0.1:8080/api/v2/song**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockCatalogSongs) })
   );
+  // Intercept the file server (not running in tests) to avoid unhandled errors
+  await page.route("**/127.0.0.1:17865/**", (route) =>
+    route.fulfill({ status: 404, body: "not found" })
+  );
 
   await page.goto("/");
 });
@@ -169,89 +103,130 @@ async function navigateToGpLibrary(page: import("@playwright/test").Page) {
   await expect(page.locator("h2", { hasText: "Guitar Pro Library" })).toBeVisible();
 }
 
+async function openViewer(page: import("@playwright/test").Page) {
+  await navigateToGpLibrary(page);
+  await page.fill("#gp-root-path", "/Songs");
+  await page.locator(".scan-button").click();
+  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 test("View button appears on GP file rows after scan", async ({ page }) => {
   await navigateToGpLibrary(page);
-
-  // Enter a path and scan
   await page.fill("#gp-root-path", "/Songs");
   await page.locator(".scan-button").click();
-
-  // Wait for scan to complete
   await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
-
-  // A "View" button should appear on the matched file row
   await expect(page.locator('button[title="View tab"]')).toBeVisible();
 });
 
-test("View button opens GP viewer modal with song info", async ({ page }) => {
-  await navigateToGpLibrary(page);
+test("GP viewer opens and shows pitch controls", async ({ page }) => {
+  await openViewer(page);
+  // Pitch controls are always visible regardless of file load state
+  await expect(page.locator(".gp-pitch-controls")).toBeVisible();
+  // Audio shift controls
+  await expect(page.locator(".gp-pitch-audio-semitones")).toBeVisible();
+  // Tab shift controls
+  await expect(page.locator(".gp-pitch-tab-semitones")).toBeVisible();
+  // Link checkbox
+  await expect(page.locator(".gp-pitch-link-check")).toBeVisible();
+  // Fine tune control
+  await expect(page.locator(".gp-pitch-cents")).toBeVisible();
+});
 
-  await page.fill("#gp-root-path", "/Songs");
-  await page.locator(".scan-button").click();
-  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+test("Audio semitone control increments and decrements", async ({ page }) => {
+  await openViewer(page);
+  const audioGroup = page.locator(".gp-pitch-audio-semitones");
+  const valueEl = audioGroup.locator(".gp-pitch-value");
+  await expect(valueEl).toContainText("0");
 
-  // Click the View button
+  await audioGroup.locator("button").nth(1).click(); // increment
+  await expect(valueEl).toContainText("+1");
+
+  await audioGroup.locator("button").nth(0).click(); // decrement
+  await audioGroup.locator("button").nth(0).click(); // decrement again
+  await expect(valueEl).toContainText("-1");
+});
+
+test("Tab semitone control increments and decrements", async ({ page }) => {
+  await openViewer(page);
+  const tabGroup = page.locator(".gp-pitch-tab-semitones");
+  const valueEl = tabGroup.locator(".gp-pitch-value");
+  await expect(valueEl).toContainText("0");
+
+  await tabGroup.locator("button").nth(1).click(); // increment
+  await expect(valueEl).toContainText("+1");
+});
+
+test("Linked mode syncs audio and tab semitones", async ({ page }) => {
+  await openViewer(page);
+  const linkCheck = page.locator(".gp-pitch-link-check");
+  await linkCheck.check();
+
+  const audioGroup = page.locator(".gp-pitch-audio-semitones");
+  await audioGroup.locator("button").nth(1).click(); // increment audio
+  // Tab should also increment
+  const tabGroup = page.locator(".gp-pitch-tab-semitones");
+  await expect(tabGroup.locator(".gp-pitch-value")).toContainText("+1");
+});
+
+test("Pitch settings persist to localStorage and reload on reopen", async ({ page }) => {
+  await openViewer(page);
+  const audioGroup = page.locator(".gp-pitch-audio-semitones");
+  await audioGroup.locator("button").nth(1).click(); // set +1
+  await audioGroup.locator("button").nth(1).click(); // set +2
+  await expect(audioGroup.locator(".gp-pitch-value")).toContainText("+2");
+
+  // Close and reopen
+  await page.locator(".gp-viewer-close").click();
+  await expect(page.locator(".gp-viewer")).not.toBeVisible();
+
   await page.locator('button[title="View tab"]').first().click();
-
-  // GP viewer modal should appear
   await expect(page.locator(".gp-viewer")).toBeVisible();
-
-  // Song info should be shown
-  await expect(page.locator(".gp-viewer")).toContainText("Test Song");
-  await expect(page.locator(".gp-viewer")).toContainText("120");
-});
-
-test("GP viewer shows track selector for multi-track files", async ({ page }) => {
-  await navigateToGpLibrary(page);
-
-  await page.fill("#gp-root-path", "/Songs");
-  await page.locator(".scan-button").click();
-  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
-  await page.locator('button[title="View tab"]').first().click();
-
-  // Track selector should be visible (2 tracks: Guitar 1, Bass)
-  await expect(page.locator(".gp-viewer-track-select")).toBeVisible();
-  await expect(page.locator(".gp-viewer-track-select option")).toHaveCount(2);
-});
-
-test("GP viewer renders tab content for selected track", async ({ page }) => {
-  await navigateToGpLibrary(page);
-
-  await page.fill("#gp-root-path", "/Songs");
-  await page.locator(".scan-button").click();
-  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
-  await page.locator('button[title="View tab"]').first().click();
-
-  // Tab SVG content should be rendered
-  await expect(page.locator(".gp-tab-system")).toBeVisible();
+  const audioGroup2 = page.locator(".gp-pitch-audio-semitones");
+  await expect(audioGroup2.locator(".gp-pitch-value")).toContainText("+2");
 });
 
 test("GP viewer closes when close button is clicked", async ({ page }) => {
-  await navigateToGpLibrary(page);
-
-  await page.fill("#gp-root-path", "/Songs");
-  await page.locator(".scan-button").click();
-  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
-  await page.locator('button[title="View tab"]').first().click();
-
-  await expect(page.locator(".gp-viewer")).toBeVisible();
-
+  await openViewer(page);
   await page.locator(".gp-viewer-close").click();
   await expect(page.locator(".gp-viewer")).not.toBeVisible();
 });
 
 test("GP viewer closes when Escape key is pressed", async ({ page }) => {
-  await navigateToGpLibrary(page);
-
-  await page.fill("#gp-root-path", "/Songs");
-  await page.locator(".scan-button").click();
-  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
-  await page.locator('button[title="View tab"]').first().click();
-
-  await expect(page.locator(".gp-viewer")).toBeVisible();
-
+  await openViewer(page);
   await page.keyboard.press("Escape");
   await expect(page.locator(".gp-viewer")).not.toBeVisible();
+});
+
+test("Audio player section is visible with load button", async ({ page }) => {
+  await openViewer(page);
+  await expect(page.locator(".gp-audio-player")).toBeVisible();
+  await expect(page.locator(".gp-audio-load")).toBeVisible();
+});
+
+test("Cancelled file dialog keeps audio player in idle state", async ({ page }) => {
+  await openViewer(page);
+  // Default mock returns null for plugin:dialog|open (cancelled)
+  await page.locator(".gp-audio-load").click();
+  // Player should still show load button (not loading/error state)
+  await expect(page.locator(".gp-audio-load")).toBeVisible();
+  await expect(page.locator(".gp-audio-error")).not.toBeVisible();
+});
+
+test("Audio player shows error when file server returns 404", async ({ page }) => {
+  await openViewer(page);
+  // Override dialog to return a file path
+  await page.evaluate(() => {
+    const orig = (window as { __TAURI_INTERNALS__: { invoke: (cmd: string, ...a: unknown[]) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke;
+    (window as { __TAURI_INTERNALS__: { invoke: (cmd: string, ...a: unknown[]) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke = function(cmd, ...args) {
+      if (cmd === "plugin:dialog|open") return Promise.resolve("/Songs/test.mp3");
+      return orig(cmd, ...args);
+    };
+  });
+  await page.locator(".gp-audio-load").click();
+  // File server is mocked to 404, so load should fail and show error
+  await expect(page.locator(".gp-audio-error")).toBeVisible({ timeout: 5000 });
 });

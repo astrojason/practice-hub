@@ -71,10 +71,11 @@ interface Props {
   resources?: Resource[];
   onClose: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onGpView?: (path: string) => void;
   children: React.ReactNode;
 }
 
-export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, children }: Props) {
+export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, onGpView, children }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -123,7 +124,19 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                     </button>
                   );
                 }
-                // All other types (url, youtube, guitar_pro, unknown) → system browser
+                if (r.type === "guitar_pro") {
+                  return (
+                    <button
+                      key={r.url}
+                      className="modal-resource-link modal-resource-link--local"
+                      onClick={() => { onGpView?.(r.url); onClose(); }}
+                    >
+                      <FolderOpenIcon style={{ width: 11, height: 11 }} />
+                      {r.name}
+                    </button>
+                  );
+                }
+                // All other types (url, youtube, unknown) → system browser
                 return (
                   <button
                     key={r.url}

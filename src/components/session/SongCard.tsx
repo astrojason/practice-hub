@@ -55,6 +55,7 @@ interface Props {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onGpView?: (path: string) => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
   onEntityEdited?: (song: Song) => void;
@@ -79,6 +80,7 @@ export function SongCard({
   onSessionSubmit,
   onSkip,
   onOpenFile,
+  onGpView,
   onOpenChat,
   isMediaActive,
   onEntityEdited,
@@ -206,6 +208,7 @@ export function SongCard({
           resources={resources}
           onClose={handleClose}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
+          onGpView={onGpView}
         >
           {isFormOpen ? (
             <SongSessionForm

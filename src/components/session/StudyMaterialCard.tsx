@@ -58,6 +58,7 @@ interface SingleCardProps {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onGpView?: (path: string) => void;
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
   onStartSequential?: () => void;
@@ -87,6 +88,7 @@ function StudyMaterialSingleCard({
   onSessionSubmit,
   onSkip,
   onOpenFile,
+  onGpView,
   isChild,
   onStartSequential,
   onOpenChat,
@@ -234,6 +236,7 @@ function StudyMaterialSingleCard({
           resources={resources}
           onClose={handleClose}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
+          onGpView={onGpView}
         >
           {isFormOpen ? (
             <StudyMaterialSessionForm
@@ -341,6 +344,7 @@ export interface StudyMaterialCardProps {
   onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onGpView?: (path: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
   onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
@@ -360,6 +364,7 @@ export function StudyMaterialCard({
   onSkip,
   onStartSequential,
   onOpenFile,
+  onGpView,
   onOpenChat,
   isMediaActive,
   onEntityEdited,
@@ -389,6 +394,7 @@ export function StudyMaterialCard({
         onSkip={() => onSkip(material.id)}
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(material.id) : undefined}
         onOpenFile={onOpenFile}
+        onGpView={onGpView}
         onOpenChat={onOpenChat ? () => onOpenChat(material.id) : undefined}
         isMediaActive={isMediaActive}
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
@@ -417,6 +423,7 @@ export function StudyMaterialCard({
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
             onSkip={() => onSkip(child.id)}
             onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, `studymaterial-${child.id}`) : undefined}
+            onGpView={onGpView}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}
             isChild

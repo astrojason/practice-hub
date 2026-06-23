@@ -213,9 +213,10 @@ interface Props {
   onSignOut: () => Promise<void>;
   onGpLibrary: () => void;
   onCalendar: () => void;
+  onGpView?: (path: string) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -1070,6 +1071,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
             onFormClose={() => setOpenForm(null)}
             onCancelReturn={handleCancelSequential}
             onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, children[currentIndex].name, itemKey ?? childKey)}
+            onGpView={onGpView}
           />
         );
       })()}
@@ -1126,6 +1128,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
               }}
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
+              onGpView={onGpView}
               onOpenChat={(id) => openChatForExercise(id)}
               isMediaActive={playerState !== null}
               onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
@@ -1169,6 +1172,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
               }}
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
+              onGpView={onGpView}
               onOpenChat={(id) => openChatForStudyMaterial(id)}
               isMediaActive={playerState !== null}
               onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
@@ -1210,6 +1214,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
               }
               onSkip={() => handleSkipItems([`song-${song.id}`])}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+              onGpView={onGpView}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
               onEntityEdited={handleSongEdited}
@@ -1251,6 +1256,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
               }
               onSkip={() => handleSkipItems([`song-${song.id}`])}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+              onGpView={onGpView}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
               onEntityEdited={handleSongEdited}
@@ -1289,6 +1295,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
                 }
                 onSkip={() => handleSkipItems([`song-${song.id}`])}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+                onGpView={onGpView}
                 onOpenChat={() => openChatForSong(song.id)}
                 onEntityEdited={handleSongEdited}
               />
@@ -1318,6 +1325,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
                 }}
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
+                onGpView={onGpView}
                 onOpenChat={(id) => openChatForExercise(id)}
                 isMediaActive={playerState !== null}
                 onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
@@ -1348,6 +1356,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar }: Props
                 }}
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
+                onGpView={onGpView}
                 onOpenChat={(id) => openChatForStudyMaterial(id)}
                 isMediaActive={playerState !== null}
                 onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}

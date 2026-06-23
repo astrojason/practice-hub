@@ -1,246 +1,180 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { GpViewData, GpViewTrack, GpViewMeasure } from "../api/types";
+import * as alphaTab from "@coderline/alphatab";
+import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
+import { useAudioEngine } from "./player/useAudioEngine";
 
 interface Props {
   filePath: string;
   onClose: () => void;
 }
 
-// ─── Tab layout constants ────────────────────────────────────────────────────
-
-const LABEL_W = 22;     // px for string letter labels on left of each row
-const BEAT_W = 44;      // px per beat unit (quarter note = 1 beat)
-const STRING_H = 20;    // px between string lines
-const SYS_PAD = 10;     // top/bottom padding within each SVG row
-const BAR_LABEL_H = 14; // px above each row for measure number labels
-const MEASURES_PER_ROW = 4;
-
-// Standard tuning labels by string count (string 1 = highest pitch = top row).
-const STRING_LABELS: Record<number, string[]> = {
-  4: ["G", "D", "A", "E"],
-  5: ["B", "G", "D", "A", "E"],
-  6: ["e", "B", "G", "D", "A", "E"],
-  7: ["e", "B", "G", "D", "A", "E", "B"],
-};
-
-function getLabels(stringCount: number): string[] {
-  return STRING_LABELS[stringCount] ?? Array.from({ length: stringCount }, (_, i) => String(i + 1));
+interface PitchState {
+  audioSemitones: number;
+  audioCents: number;
+  tabSemitones: number;
+  linked: boolean;
 }
 
-// Technique indicator color and symbol (displayed as a superscript after fret).
-const TECH_COLOR: Record<string, string> = {
-  h: "#9b8dff", p: "#9b8dff", b: "#f59e0b",
-  vib: "#34d399", pm: "#a8a8c0", x: "#f87171",
-  t: "#60a5fa", harm: "#34d399",
-};
+const FILE_SERVER = "http://127.0.0.1:17865";
 
-function techniqueLabel(techniques: string[]): string {
-  if (techniques.includes("h")) return "h";
-  if (techniques.includes("p")) return "p";
-  if (techniques.includes("b")) return "b";
-  if (techniques.includes("x")) return "x";
-  if (techniques.includes("t")) return "t";
-  if (techniques.includes("harm")) return "◇";
-  if (techniques.includes("pm")) return "·";
-  if (techniques.includes("vib")) return "~";
-  return "";
+function pitchKey(filePath: string) {
+  return `gp-viewer-shifts:${filePath}`;
 }
 
-// ─── Tab row SVG renderer ────────────────────────────────────────────────────
+function loadPitch(filePath: string): PitchState {
+  try {
+    const raw = localStorage.getItem(pitchKey(filePath));
+    if (raw) return JSON.parse(raw) as PitchState;
+  } catch { /* non-critical */ }
+  return { audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: false };
+}
 
-function TabRow({ measures, track }: { measures: GpViewMeasure[]; track: GpViewTrack }) {
-  const labels = getLabels(track.string_count);
-  const systemH = BAR_LABEL_H + SYS_PAD + (track.string_count - 1) * STRING_H + SYS_PAD;
+function savePitch(filePath: string, state: PitchState) {
+  try {
+    localStorage.setItem(pitchKey(filePath), JSON.stringify(state));
+  } catch { /* non-critical */ }
+}
 
-  // Compute measure widths and x positions
-  let x = LABEL_W;
-  const measureLayouts = measures.map((m) => {
-    const width = m.beats_per_bar * BEAT_W;
-    const layout = { x, width, measure: m };
-    x += width + 1; // +1 for bar separator gap
-    return layout;
-  });
-  const totalWidth = x;
+// ─── Pitch control spinner ────────────────────────────────────────────────────
 
+function PitchSpinner({
+  value,
+  unit,
+  label,
+  step = 1,
+  className,
+  onChange,
+}: {
+  value: number;
+  unit: string;
+  label: string;
+  step?: number;
+  className: string;
+  onChange: (n: number) => void;
+}) {
+  const display = value === 0 ? `0 ${unit}` : value > 0 ? `+${value} ${unit}` : `${value} ${unit}`;
   return (
-    <svg
-      width={totalWidth}
-      height={systemH}
-      className="gp-tab-system"
-      style={{ display: "block", overflow: "visible" }}
-    >
-      {/* String labels */}
-      {labels.map((label, sIdx) => (
-        <text
-          key={sIdx}
-          x={LABEL_W - 4}
-          y={BAR_LABEL_H + SYS_PAD + sIdx * STRING_H + 5}
-          textAnchor="end"
-          fontSize={10}
-          fontFamily="monospace"
-          fill="#686880"
-        >
-          {label}
-        </text>
-      ))}
-
-      {/* Measures */}
-      {measureLayouts.map(({ x: mx, width, measure }) => (
-        <g key={measure.index} transform={`translate(${mx}, ${BAR_LABEL_H})`}>
-          {/* Measure number */}
-          <text
-            x={0}
-            y={-2}
-            fontSize={9}
-            fontFamily="monospace"
-            fill="#686880"
-          >
-            {measure.index + 1}
-          </text>
-
-          {/* Opening bar line */}
-          <line
-            x1={0} y1={SYS_PAD}
-            x2={0} y2={SYS_PAD + (track.string_count - 1) * STRING_H}
-            stroke="#32324a" strokeWidth={1}
-          />
-
-          {/* String lines */}
-          {Array.from({ length: track.string_count }, (_, sIdx) => (
-            <line
-              key={sIdx}
-              x1={0} y1={SYS_PAD + sIdx * STRING_H}
-              x2={width} y2={SYS_PAD + sIdx * STRING_H}
-              stroke="#32324a" strokeWidth={0.8}
-            />
-          ))}
-
-          {/* Notes */}
-          {measure.beats.flatMap((beat) =>
-            beat.notes.map((note, nIdx) => {
-              const beatX = (beat.position / measure.beats_per_bar) * width;
-              const noteY = SYS_PAD + (note.string - 1) * STRING_H;
-              const isDead = note.techniques.includes("x");
-              const fretStr = isDead ? "x" : String(note.fret);
-              const techLabel = techniqueLabel(note.techniques);
-              const techColor = note.techniques.length > 0
-                ? (TECH_COLOR[note.techniques[0]] ?? "#eaeaf2")
-                : "#eaeaf2";
-              const charW = fretStr.length === 1 ? 8 : fretStr.length === 2 ? 14 : 20;
-              const bgW = charW + 3;
-
-              return (
-                <g key={`${beat.position}-${nIdx}`}>
-                  {/* Clear string line behind fret number */}
-                  <rect
-                    x={beatX - bgW / 2} y={noteY - 7}
-                    width={bgW} height={13}
-                    fill="var(--bg)"
-                  />
-                  <text
-                    x={beatX} y={noteY + 4}
-                    textAnchor="middle"
-                    fontSize={11}
-                    fontFamily="monospace"
-                    fill={techColor}
-                  >
-                    {fretStr}
-                  </text>
-                  {techLabel && (
-                    <text
-                      x={beatX + bgW / 2 + 1} y={noteY + 2}
-                      fontSize={8}
-                      fontFamily="monospace"
-                      fill={techColor}
-                    >
-                      {techLabel}
-                    </text>
-                  )}
-                </g>
-              );
-            })
-          )}
-
-          {/* Closing bar line (only on last measure in row) */}
-        </g>
-      ))}
-
-      {/* Final closing bar line */}
-      {measureLayouts.length > 0 && (() => {
-        const last = measureLayouts[measureLayouts.length - 1];
-        return (
-          <line
-            x1={last.x + last.width} y1={BAR_LABEL_H + SYS_PAD}
-            x2={last.x + last.width} y2={BAR_LABEL_H + SYS_PAD + (track.string_count - 1) * STRING_H}
-            stroke="#32324a" strokeWidth={1}
-          />
-        );
-      })()}
-    </svg>
-  );
-}
-
-// ─── Track renderer ───────────────────────────────────────────────────────────
-
-function TrackView({ track }: { track: GpViewTrack }) {
-  // Group measures into rows
-  const rows: GpViewMeasure[][] = [];
-  for (let i = 0; i < track.measures.length; i += MEASURES_PER_ROW) {
-    rows.push(track.measures.slice(i, i + MEASURES_PER_ROW));
-  }
-
-  if (rows.length === 0) {
-    return <p className="gp-viewer-empty">No note data available for this track.</p>;
-  }
-
-  return (
-    <div className="gp-viewer-track-content">
-      {rows.map((rowMeasures, rowIdx) => (
-        <TabRow key={rowIdx} measures={rowMeasures} track={track} />
-      ))}
+    <div className={`gp-pitch-group ${className}`}>
+      <span className="gp-pitch-label">{label}</span>
+      <button onClick={() => onChange(value - step)} title={`Decrease ${label}`}>−</button>
+      <span className="gp-pitch-value">{display}</span>
+      <button onClick={() => onChange(value + step)} title={`Increase ${label}`}>+</button>
     </div>
   );
+}
+
+function fmtTime(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
 // ─── Main viewer component ────────────────────────────────────────────────────
 
 export function GpViewer({ filePath, onClose }: Props) {
-  const [data, setData] = useState<GpViewData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedTrack, setSelectedTrack] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
 
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [trackNames, setTrackNames] = useState<string[]>([]);
+  const [selectedTrack, setSelectedTrack] = useState(0);
+  const [title, setTitle] = useState<string | null>(null);
+  const [artist, setArtist] = useState<string | null>(null);
+  const [tempo, setTempo] = useState<number | null>(null);
+
+  const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
+  const [audioState, audioActions] = useAudioEngine();
+  const [audioFilename, setAudioFilename] = useState<string | null>(null);
+
+  // Persist pitch state on every change
   useEffect(() => {
-    let cancelled = false;
+    savePitch(filePath, pitch);
+  }, [filePath, pitch]);
+
+  // Disable loop on mount; destroy engine on unmount
+  useEffect(() => {
+    audioActions.setLoopEnabled(false);
+    return () => { audioActions.destroy(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync audio pitch controls to the audio engine whenever they change
+  useEffect(() => {
+    audioActions.setPitch(pitch.audioSemitones, pitch.audioCents);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pitch.audioSemitones, pitch.audioCents]);
+
+  // Initialize alphaTab once per filePath
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
     setLoading(true);
-    setData(null);
     setError(null);
+    setTrackNames([]);
+    setTitle(null);
+    setArtist(null);
+    setTempo(null);
+    setSelectedTrack(0);
 
-    invoke<string>("parse_gp_file", { filePath })
-      .then((raw) => {
-        if (cancelled) return;
-        const parsed = JSON.parse(raw) as GpViewData;
-        setData(parsed);
-        setSelectedTrack(0);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const settings = new alphaTab.Settings();
+    settings.core.useWorkers = false;
+    settings.core.fontDirectory = "/font/";
+    settings.player.enablePlayer = false;
 
-    return () => { cancelled = true; };
+    const api = new alphaTab.AlphaTabApi(el, settings);
+    apiRef.current = api;
+
+    api.scoreLoaded.on((score: alphaTab.model.Score) => {
+      setTitle(score.title || null);
+      setArtist(score.artist || null);
+      setTempo(score.tempo);
+      setTrackNames(score.tracks.map((t: alphaTab.model.Track) => t.name));
+      // Apply stored tab transposition
+      const stored = loadPitch(filePath);
+      if (stored.tabSemitones !== 0) {
+        api.settings.notation.transpositionPitches = Array(score.tracks.length).fill(stored.tabSemitones);
+        api.updateSettings();
+      }
+      setLoading(false);
+    });
+
+    api.error.on((err: Error) => {
+      setError(err.message);
+      setLoading(false);
+    });
+
+    const url = `${FILE_SERVER}/asset?path=${encodeURIComponent(filePath)}`;
+    api.load(url);
+
+    return () => {
+      api.destroy();
+      apiRef.current = null;
+    };
   }, [filePath]);
 
-  // Close on Escape
+  // Apply tab transposition when tabSemitones changes (after initial load)
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
+    const api = apiRef.current;
+    if (!api || loading || !api.score) return;
+    const count = api.score.tracks.length;
+    api.settings.notation.transpositionPitches = Array(count).fill(pitch.tabSemitones);
+    api.updateSettings();
+  }, [pitch.tabSemitones, loading]);
+
+  // Switch displayed track
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api || loading || !api.score) return;
+    const track = api.score.tracks[selectedTrack];
+    if (track) api.renderTracks([track]);
+  }, [selectedTrack, loading]);
+
+  // Escape key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -249,8 +183,39 @@ export function GpViewer({ filePath, onClose }: Props) {
     if (e.target === backdropRef.current) onClose();
   }
 
+  function setAudioSemitones(n: number) {
+    setPitch((p) => ({ ...p, audioSemitones: n, ...(p.linked ? { tabSemitones: n } : {}) }));
+  }
+
+  function setTabSemitones(n: number) {
+    setPitch((p) => ({ ...p, tabSemitones: n, ...(p.linked ? { audioSemitones: n } : {}) }));
+  }
+
+  async function handleLoadAudio() {
+    let selected: string | string[] | null;
+    try {
+      selected = await openFilePicker({
+        multiple: false,
+        filters: [{ name: "Audio", extensions: ["mp3", "wav", "flac", "m4a", "ogg", "aac"] }],
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (!selected) return;
+    const path = typeof selected === "string" ? selected : selected[0];
+    setAudioFilename(path.split("/").pop() ?? path);
+    await audioActions.loadFile(path);
+  }
+
+  function handleProgressClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (audioState.duration <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audioActions.seek(ratio * audioState.duration);
+  }
+
   const filename = filePath.split("/").pop() ?? filePath;
-  const track = data?.tracks[selectedTrack] ?? null;
 
   return (
     <div className="gp-viewer" ref={backdropRef} onClick={handleBackdropClick}>
@@ -258,34 +223,27 @@ export function GpViewer({ filePath, onClose }: Props) {
         {/* Header */}
         <div className="gp-viewer-header">
           <div className="gp-viewer-meta">
-            {loading ? (
+            {loading && !error ? (
               <span className="gp-viewer-loading">Loading…</span>
-            ) : data ? (
-              <>
-                <span className="gp-viewer-title">
-                  {data.title ?? filename}
-                </span>
-                {data.artist && (
-                  <span className="gp-viewer-artist">{data.artist}</span>
-                )}
-                <span className="gp-viewer-tempo">{Math.round(data.tempo_bpm)} BPM</span>
-              </>
             ) : (
-              <span className="gp-viewer-title">{filename}</span>
+              <>
+                <span className="gp-viewer-title">{title ?? filename}</span>
+                {artist && <span className="gp-viewer-artist">{artist}</span>}
+                {tempo !== null && (
+                  <span className="gp-viewer-tempo">{Math.round(tempo)} BPM</span>
+                )}
+              </>
             )}
           </div>
-
           <div className="gp-viewer-controls">
-            {data && data.tracks.length > 1 && (
+            {trackNames.length > 1 && (
               <select
                 className="gp-viewer-track-select"
                 value={selectedTrack}
                 onChange={(e) => setSelectedTrack(Number(e.target.value))}
               >
-                {data.tracks.map((t, i) => (
-                  <option key={i} value={i}>
-                    {t.name}{t.instrument ? ` (${t.instrument})` : ""}
-                  </option>
+                {trackNames.map((name, i) => (
+                  <option key={i} value={i}>{name}</option>
                 ))}
               </select>
             )}
@@ -295,24 +253,119 @@ export function GpViewer({ filePath, onClose }: Props) {
           </div>
         </div>
 
+        {/* Pitch controls — always visible */}
+        <div className="gp-pitch-controls">
+          <div className="gp-pitch-section">
+            <span className="gp-pitch-section-label">Audio</span>
+            <PitchSpinner
+              value={pitch.audioSemitones}
+              unit="st"
+              label="Semitones"
+              className="gp-pitch-audio-semitones"
+              onChange={setAudioSemitones}
+            />
+            <div className="gp-pitch-group gp-pitch-cents">
+              <span className="gp-pitch-label">Fine</span>
+              <button onClick={() => setPitch((p) => ({ ...p, audioCents: p.audioCents - 10 }))} title="Decrease fine tune">−</button>
+              <span className="gp-pitch-value">
+                {pitch.audioCents === 0 ? "0 ¢" : pitch.audioCents > 0 ? `+${pitch.audioCents} ¢` : `${pitch.audioCents} ¢`}
+              </span>
+              <button onClick={() => setPitch((p) => ({ ...p, audioCents: p.audioCents + 10 }))} title="Increase fine tune">+</button>
+            </div>
+          </div>
+
+          <div className="gp-pitch-divider" />
+
+          <label className="gp-pitch-link-label">
+            <input
+              type="checkbox"
+              className="gp-pitch-link-check"
+              checked={pitch.linked}
+              onChange={(e) => setPitch((p) => ({ ...p, linked: e.target.checked }))}
+            />
+            Link
+          </label>
+
+          <div className="gp-pitch-divider" />
+
+          <div className="gp-pitch-section">
+            <span className="gp-pitch-section-label">Tab</span>
+            <PitchSpinner
+              value={pitch.tabSemitones}
+              unit="st"
+              label="Semitones"
+              className="gp-pitch-tab-semitones"
+              onChange={setTabSemitones}
+            />
+          </div>
+
+          {(pitch.audioSemitones !== 0 || pitch.audioCents !== 0 || pitch.tabSemitones !== 0) && (
+            <button
+              className="gp-pitch-reset"
+              onClick={() => setPitch({ audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: pitch.linked })}
+              title="Reset all pitch shifts to zero"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+
+        {/* Audio player bar */}
+        <div className="gp-audio-player">
+          <button
+            className="gp-audio-load"
+            onClick={handleLoadAudio}
+            title={audioState.status === "ready" ? "Load different audio file" : "Load audio file"}
+          >
+            ♪ {audioState.status === "ready" ? audioFilename ?? "audio" : "Load audio"}
+          </button>
+          {audioState.status === "loading" && (
+            <span className="gp-audio-status">Loading…</span>
+          )}
+          {audioState.status === "error" && (
+            <span className="gp-audio-error">{audioState.errorMessage}</span>
+          )}
+          {audioState.status === "ready" && (
+            <>
+              <button
+                className="gp-audio-play"
+                onClick={audioState.isPlaying ? audioActions.pause : audioActions.play}
+                title={audioState.isPlaying ? "Pause" : "Play"}
+              >
+                {audioState.isPlaying ? "⏸" : "▶"}
+              </button>
+              <div
+                className="gp-audio-progress"
+                onClick={handleProgressClick}
+                title="Click to seek"
+              >
+                <div
+                  className="gp-audio-progress-fill"
+                  style={{
+                    width: `${audioState.duration > 0 ? (audioState.currentTime / audioState.duration) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+              <span className="gp-audio-time">
+                {fmtTime(audioState.currentTime)} / {fmtTime(audioState.duration)}
+              </span>
+            </>
+          )}
+        </div>
+
         {/* Body */}
         <div className="gp-viewer-body">
-          {loading && (
+          {loading && !error && (
             <div className="gp-viewer-spinner">
               <div className="loading-spinner" />
             </div>
           )}
-
           {!loading && error && (
             <p className="gp-viewer-error">Failed to load: {error}</p>
           )}
-
-          {!loading && data && track && (
-            <TrackView track={track} />
-          )}
+          <div ref={containerRef} className="gp-alphatab-container" />
         </div>
       </div>
-
     </div>
   );
 }
