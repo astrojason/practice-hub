@@ -152,6 +152,10 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setTempo(null);
     setSelectedTrack(0);
 
+    // Tell alphaTab its root is / so it finds alphaTab.worklet.min.mjs in public/
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).ALPHATAB_ROOT = "/";
+
     const settings = new alphaTab.Settings();
     settings.core.useWorkers = false;
     settings.core.fontDirectory = "/font/";
@@ -163,9 +167,15 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     const api = new alphaTab.AlphaTabApi(el, settings);
     apiRef.current = api;
 
-    // Mute MIDI audio immediately — cursor/scroll are what we want, not synthesis
+    // Mute MIDI audio — cursor/scroll are what we want, not synthesis
     api.masterVolume = 0;
     api.soundFontLoaded.on(() => { api.masterVolume = 0; });
+
+    // Once player is ready, seek to position 0 so the cursor appears at beat 1
+    api.playerReady.on(() => {
+      api.masterVolume = 0;
+      api.timePosition = 0;
+    });
 
     api.scoreLoaded.on((score: alphaTab.model.Score) => {
       setTitle(score.title || null);
