@@ -125,25 +125,21 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     currentTimeRef.current = audioState.currentTime;
   }, [audioState.currentTime]);
 
-  // Drive alphaTab cursor: alphaTab must be in play state for the cursor to animate.
-  // We call api.play()/pause() in sync with our audio engine and override timePosition
-  // every frame so the cursor tracks external audio rather than MIDI timing.
+  // Drive alphaTab cursor position from the audio engine.
+  // Per alphaTab docs: when the player is not playing, setting timePosition
+  // "just updates the cursor" without triggering MIDI synthesis. We stay in
+  // paused state so there's no fighting between alphaTab's internal timer
+  // and our external rAF assignments.
   useEffect(() => {
-    const api = apiRef.current;
-    if (!api || !atPlayerReady) return;
-    if (!audioState.isPlaying) return;
-
-    api.play();
+    if (!atPlayerReady || !audioState.isPlaying) return;
     let rafId: number;
     const tick = () => {
-      if (apiRef.current) apiRef.current.timePosition = currentTimeRef.current * 1000;
+      const api = apiRef.current;
+      if (api) api.timePosition = currentTimeRef.current * 1000;
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(rafId);
-      if (apiRef.current) apiRef.current.pause();
-    };
+    return () => cancelAnimationFrame(rafId);
   }, [audioState.isPlaying, atPlayerReady]);
 
   // Initialize alphaTab once per filePath
@@ -213,13 +209,15 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     };
   }, [filePath]);
 
-  // Apply tab transposition when tabSemitones changes (after initial load)
+  // Apply tab transposition when tabSemitones changes (after initial load).
+  // updateSettings() alone doesn't re-render; render() is required.
   useEffect(() => {
     const api = apiRef.current;
     if (!api || loading || !api.score) return;
     const count = api.score.tracks.length;
     api.settings.notation.transpositionPitches = Array(count).fill(pitch.tabSemitones);
     api.updateSettings();
+    api.render();
   }, [pitch.tabSemitones, loading]);
 
   // Switch displayed track
@@ -379,6 +377,9 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           >
             ♪ {audioLoadLabel}
           </button>
+          {!atPlayerReady && !loading && (
+            <span className="gp-audio-status" title="alphaTab player initializing (soundfont loading)">Tab: loading…</span>
+          )}
           {audioState.status === "loading" && (
             <span className="gp-audio-status">Loading…</span>
           )}

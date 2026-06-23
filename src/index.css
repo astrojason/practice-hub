@@ -2883,6 +2883,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   min-height: 200px;
   background: #ffffff;
   border-radius: var(--r-sm);
+  position: relative; /* alphaTab cursor elements are absolutely positioned inside */
 }
 
 
