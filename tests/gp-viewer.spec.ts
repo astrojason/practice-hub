@@ -230,3 +230,27 @@ test("Audio player shows error when file server returns 404", async ({ page }) =
   // File server is mocked to 404, so load should fail and show error
   await expect(page.locator(".gp-audio-error")).toBeVisible({ timeout: 5000 });
 });
+
+test("Audio file path persists to localStorage and restores on reopen", async ({ page }) => {
+  await openViewer(page);
+  // Override dialog to return a file path and load (will fail with 404)
+  await page.evaluate(() => {
+    const orig = (window as { __TAURI_INTERNALS__: { invoke: (cmd: string, ...a: unknown[]) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke;
+    (window as { __TAURI_INTERNALS__: { invoke: (cmd: string, ...a: unknown[]) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke = function(cmd, ...args) {
+      if (cmd === "plugin:dialog|open") return Promise.resolve("/Songs/mysong.mp3");
+      return orig(cmd, ...args);
+    };
+  });
+  await page.locator(".gp-audio-load").click();
+  await expect(page.locator(".gp-audio-error")).toBeVisible({ timeout: 5000 });
+  // Filename should appear in the load button
+  await expect(page.locator(".gp-audio-load")).toContainText("mysong.mp3");
+
+  // Close and reopen
+  await page.locator(".gp-viewer-close").click();
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+
+  // Filename should be restored from localStorage in the button
+  await expect(page.locator(".gp-audio-load")).toContainText("mysong.mp3");
+});

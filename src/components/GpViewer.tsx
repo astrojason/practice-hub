@@ -13,6 +13,7 @@ interface PitchState {
   audioCents: number;
   tabSemitones: number;
   linked: boolean;
+  audioFilePath: string | null;
 }
 
 const FILE_SERVER = "http://127.0.0.1:17865";
@@ -26,7 +27,7 @@ function loadPitch(filePath: string): PitchState {
     const raw = localStorage.getItem(pitchKey(filePath));
     if (raw) return JSON.parse(raw) as PitchState;
   } catch { /* non-critical */ }
-  return { audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: false };
+  return { audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: false, audioFilePath: null };
 }
 
 function savePitch(filePath: string, state: PitchState) {
@@ -73,6 +74,7 @@ function fmtTime(s: number): string {
 
 export function GpViewer({ filePath, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
 
@@ -86,25 +88,40 @@ export function GpViewer({ filePath, onClose }: Props) {
 
   const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
   const [audioState, audioActions] = useAudioEngine();
-  const [audioFilename, setAudioFilename] = useState<string | null>(null);
 
-  // Persist pitch state on every change
+  // Derived from stored path — no separate state needed
+  const audioFilename = pitch.audioFilePath ? pitch.audioFilePath.split("/").pop() ?? pitch.audioFilePath : null;
+
+  // Persist pitch state (including audioFilePath) on every change
   useEffect(() => {
     savePitch(filePath, pitch);
   }, [filePath, pitch]);
 
-  // Disable loop on mount; destroy engine on unmount
+  // On mount: disable loop, auto-load stored audio file, destroy on unmount
   useEffect(() => {
     audioActions.setLoopEnabled(false);
+    const stored = loadPitch(filePath);
+    if (stored.audioFilePath) {
+      audioActions.loadFile(stored.audioFilePath);
+    }
     return () => { audioActions.destroy(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync audio pitch controls to the audio engine whenever they change
+  // Sync pitch controls → audio engine
   useEffect(() => {
     audioActions.setPitch(pitch.audioSemitones, pitch.audioCents);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pitch.audioSemitones, pitch.audioCents]);
+
+  // Scroll tab body to match audio playback position
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !audioState.isPlaying || audioState.duration <= 0) return;
+    const fraction = audioState.currentTime / audioState.duration;
+    const maxScroll = body.scrollHeight - body.clientHeight;
+    if (maxScroll > 0) body.scrollTop = fraction * maxScroll;
+  }, [audioState.currentTime, audioState.isPlaying]);
 
   // Initialize alphaTab once per filePath
   useEffect(() => {
@@ -132,7 +149,6 @@ export function GpViewer({ filePath, onClose }: Props) {
       setArtist(score.artist || null);
       setTempo(score.tempo);
       setTrackNames(score.tracks.map((t: alphaTab.model.Track) => t.name));
-      // Apply stored tab transposition
       const stored = loadPitch(filePath);
       if (stored.tabSemitones !== 0) {
         api.settings.notation.transpositionPitches = Array(score.tracks.length).fill(stored.tabSemitones);
@@ -204,7 +220,7 @@ export function GpViewer({ filePath, onClose }: Props) {
     }
     if (!selected) return;
     const path = typeof selected === "string" ? selected : selected[0];
-    setAudioFilename(path.split("/").pop() ?? path);
+    setPitch((p) => ({ ...p, audioFilePath: path }));
     await audioActions.loadFile(path);
   }
 
@@ -216,6 +232,7 @@ export function GpViewer({ filePath, onClose }: Props) {
   }
 
   const filename = filePath.split("/").pop() ?? filePath;
+  const audioLoadLabel = audioFilename ?? "Load audio";
 
   return (
     <div className="gp-viewer" ref={backdropRef} onClick={handleBackdropClick}>
@@ -302,7 +319,7 @@ export function GpViewer({ filePath, onClose }: Props) {
           {(pitch.audioSemitones !== 0 || pitch.audioCents !== 0 || pitch.tabSemitones !== 0) && (
             <button
               className="gp-pitch-reset"
-              onClick={() => setPitch({ audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: pitch.linked })}
+              onClick={() => setPitch((p) => ({ ...p, audioSemitones: 0, audioCents: 0, tabSemitones: 0 }))}
               title="Reset all pitch shifts to zero"
             >
               Reset
@@ -315,9 +332,9 @@ export function GpViewer({ filePath, onClose }: Props) {
           <button
             className="gp-audio-load"
             onClick={handleLoadAudio}
-            title={audioState.status === "ready" ? "Load different audio file" : "Load audio file"}
+            title={audioFilename ? `${audioFilename} — click to load different file` : "Load audio file"}
           >
-            ♪ {audioState.status === "ready" ? audioFilename ?? "audio" : "Load audio"}
+            ♪ {audioLoadLabel}
           </button>
           {audioState.status === "loading" && (
             <span className="gp-audio-status">Loading…</span>
@@ -354,7 +371,7 @@ export function GpViewer({ filePath, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="gp-viewer-body">
+        <div className="gp-viewer-body" ref={bodyRef}>
           {loading && !error && (
             <div className="gp-viewer-spinner">
               <div className="loading-spinner" />
