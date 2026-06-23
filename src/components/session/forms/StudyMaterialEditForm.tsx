@@ -71,11 +71,12 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
           <option value="youtube">YouTube</option>
           <option value="local_file">File</option>
           <option value="local_folder">Folder</option>
+          <option value="guitar_pro">Guitar Pro</option>
         </select>
       </div>
       <div className="edit-form-row">
         <label htmlFor="sm-ef-url">
-          {type === "local_file" ? "File path" : type === "local_folder" ? "Folder path" : "URL"}
+          {type === "local_file" || type === "guitar_pro" ? "File path" : type === "local_folder" ? "Folder path" : "URL"}
         </label>
         <div className="edit-url-row">
           <input
@@ -83,15 +84,21 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={type === "local_file" ? "/path/to/file" : type === "local_folder" ? "/path/to/folder" : "https://..."}
+            placeholder={type === "local_file" || type === "guitar_pro" ? "/path/to/file" : type === "local_folder" ? "/path/to/folder" : "https://..."}
           />
-          {(type === "local_file" || type === "local_folder") && (
+          {(type === "local_file" || type === "local_folder" || type === "guitar_pro") && (
             <button
               type="button"
               className="edit-resource-browse"
               title={type === "local_folder" ? "Browse for folder" : "Browse for file"}
               onClick={async () => {
-                const path = await openFilePicker({ multiple: false, directory: type === "local_folder" });
+                const path = await openFilePicker({
+                  multiple: false,
+                  directory: type === "local_folder",
+                  filters: type === "guitar_pro"
+                    ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
+                    : undefined,
+                });
                 if (typeof path === "string") setUrl(path);
               }}
             >

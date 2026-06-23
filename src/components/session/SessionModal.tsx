@@ -4,10 +4,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Resource } from "../../api/types";
 
-// Infer media type from file extension so the player panel knows what to render.
-function mediaTypeFromPath(path: string): "audio" | "video" {
+// Infer file type from extension — GP files open in the GP viewer, others in the media player.
+function fileTypeFromPath(path: string): "audio" | "video" | "guitar_pro" {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return ["mp4", "mov", "webm", "m4v"].includes(ext) ? "video" : "audio";
+  if (["gp", "gp3", "gp4", "gp5", "gpx"].includes(ext)) return "guitar_pro";
+  if (["mp4", "mov", "webm", "m4v"].includes(ext)) return "video";
+  return "audio";
 }
 
 interface FolderEntry {
@@ -19,9 +21,10 @@ interface LocalFolderResourceProps {
   name: string;
   folderPath: string;
   onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
+  onGpView?: (path: string) => void;
 }
 
-function LocalFolderResource({ name, folderPath, onOpenFile }: LocalFolderResourceProps) {
+function LocalFolderResource({ name, folderPath, onOpenFile, onGpView }: LocalFolderResourceProps) {
   const [files, setFiles] = useState<FolderEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -50,15 +53,18 @@ function LocalFolderResource({ name, folderPath, onOpenFile }: LocalFolderResour
           {!error && files !== null && files.length === 0 && (
             <span className="modal-resource-folder-empty">No media files found</span>
           )}
-          {!error && files !== null && files.map((f) => (
-            <button
-              key={f.path}
-              className="modal-resource-link modal-resource-link--local modal-resource-folder-file"
-              onClick={() => onOpenFile?.(f.path, mediaTypeFromPath(f.path))}
-            >
-              {f.filename}
-            </button>
-          ))}
+          {!error && files !== null && files.map((f) => {
+            const ft = fileTypeFromPath(f.path);
+            return (
+              <button
+                key={f.path}
+                className="modal-resource-link modal-resource-link--local modal-resource-folder-file"
+                onClick={() => ft === "guitar_pro" ? onGpView?.(f.path) : onOpenFile?.(f.path, ft)}
+              >
+                {f.filename}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -109,15 +115,20 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                       name={r.name}
                       folderPath={r.url}
                       onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt); onClose(); } : undefined}
+                      onGpView={onGpView ? (path) => { onGpView(path); onClose(); } : undefined}
                     />
                   );
                 }
                 if (r.type === "local_file") {
+                  const ft = fileTypeFromPath(r.url);
                   return (
                     <button
                       key={r.url}
                       className="modal-resource-link modal-resource-link--local"
-                      onClick={() => { onOpenFile?.(r.url, mediaTypeFromPath(r.url)); onClose(); }}
+                      onClick={() => {
+                        if (ft === "guitar_pro") { onGpView?.(r.url); } else { onOpenFile?.(r.url, ft); }
+                        onClose();
+                      }}
                     >
                       <FolderOpenIcon style={{ width: 11, height: 11 }} />
                       {r.name}
