@@ -44,6 +44,7 @@ export interface AudioEngineActions {
   setBreakCountIn: (fn: (() => Promise<void>) | null) => void;
   destroy: () => void;
   getContext: () => AudioContext | null;
+  getCurrentTime: () => number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -434,6 +435,12 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
 
   const getContext = useCallback((): AudioContext | null => e.current.ctx, []);
 
+  const getCurrentTime = useCallback((): number => {
+    const eng = e.current;
+    if (!eng.shifter || !eng.duration) return eng._pausedAt;
+    return (eng.shifter.percentagePlayed / 100) * eng.duration;
+  }, []);
+
   // ── Assemble ────────────────────────────────────────────────────────────────
 
   const state: AudioEngineState = {
@@ -449,7 +456,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
     setPitch, setCountIn,
     setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
-    destroy, getContext,
+    destroy, getContext, getCurrentTime,
   };
 
   return [state, actions];
