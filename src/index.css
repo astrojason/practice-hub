@@ -2977,16 +2977,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   position: relative;
 }
 
-.gp-cursor {
-  position: absolute;
-  width: 2px;
-  background: rgba(0, 110, 255, 0.70);
-  pointer-events: none;
-  z-index: 10;
-  top: 0;
-  left: 0;
-}
-
 /* ── alphaTab native player cursors ─────────────────────────────────────── */
 
 /* Bar highlight — the whole-bar background block */

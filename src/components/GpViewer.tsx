@@ -29,12 +29,6 @@ interface PitchState {
   audioFilePath: string | null;
 }
 
-interface BeatEntry {
-  startMs: number;
-  onNotesX: number;
-  systemY: number;
-  systemH: number;
-}
 
 const FILE_SERVER = "http://127.0.0.1:17865";
 
@@ -96,9 +90,8 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
-  const cursorRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const beatMapRef = useRef<BeatEntry[]>([]);
+  const updateTimerRef = useRef<number>(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +104,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
   const [audioState, audioActions] = useAudioEngine();
   const audioActionsRef = useRef(audioActions);
+  const audioStateRef = useRef(audioState);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
 
@@ -172,60 +166,20 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pitch.audioSemitones, pitch.audioCents]);
 
-  // Keep audioActionsRef in sync so the rAF tick can call getCurrentTime() stably
+  // Keep refs in sync so handler callbacks always read fresh values without closure capture
   useEffect(() => {
     audioActionsRef.current = audioActions;
+    audioStateRef.current = audioState;
   });
 
-  // rAF cursor: runs while audio is playing.
-  // Reads beatMapRef.current fresh each tick (handles late postRenderFinished),
-  // and reads live playback position via getCurrentTime() to avoid React-state lag.
+  // Sync atEndTime from audio duration so the progress bar shows correct length before play
   useEffect(() => {
-    if (!audioState.isPlaying) return;
+    if (audioState.duration > 0) setAtEndTime(audioState.duration * 1000);
+  }, [audioState.duration]);
 
-    let rafId: number;
-    const cursor = cursorRef.current;
-    const body = bodyRef.current;
-
-    const tick = () => {
-      const map = beatMapRef.current;
-      if (map.length > 0) {
-        const currentMs = audioActionsRef.current.getCurrentTime() * 1000;
-
-        // Binary search: last beat whose startMs <= currentMs
-        let lo = 0, hi = map.length - 1, idx = 0;
-        while (lo <= hi) {
-          const mid = (lo + hi) >> 1;
-          if (map[mid].startMs <= currentMs) { idx = mid; lo = mid + 1; }
-          else hi = mid - 1;
-        }
-
-        const entry = map[idx];
-
-        if (cursor) {
-          cursor.style.left = `${entry.onNotesX - 1}px`;
-          cursor.style.top = `${entry.systemY}px`;
-          cursor.style.height = `${entry.systemH}px`;
-          cursor.style.display = "block";
-        }
-
-        if (body) {
-          const viewTop = body.scrollTop;
-          const viewBottom = viewTop + body.clientHeight;
-          if (entry.systemY < viewTop || entry.systemY + entry.systemH > viewBottom) {
-            body.scrollTop = Math.max(0, entry.systemY - body.clientHeight * 0.25);
-          }
-        }
-      }
-
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(rafId);
-      if (cursor) cursor.style.display = "none";
-    };
+  // If the audio engine stops externally, clear the position update interval
+  useEffect(() => {
+    if (!audioState.isPlaying) window.clearInterval(updateTimerRef.current);
   }, [audioState.isPlaying]);
 
   // Initialize alphaTab once per filePath
@@ -240,88 +194,63 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setArtist(null);
     setTempo(null);
     setSelectedTrack(0);
-    beatMapRef.current = [];
     setAtReady(false);
     setAtPlaying(false);
     setAtCurrentTime(0);
     setAtEndTime(0);
+    window.clearInterval(updateTimerRef.current);
 
     const settings = new alphaTab.Settings();
     settings.core.useWorkers = false;
     settings.core.fontDirectory = "/font/";
-    // In Browser (non-module) mode alphaTab uses importScripts() to load the worker,
-    // so it needs a classic UMD script — not an .mjs ES module. Point it at the copy
-    // of alphaTab.min.js in public/ which self-detects when running as a worker and
-    // calls Environment.initializeWorker().
     settings.core.scriptFile = `${window.location.origin}/alphaTab.min.js`;
-    settings.player.enablePlayer = true;
-    settings.player.soundFont = "/soundfont/sonivox.sf2";
+    // Use our audio engine as the audio source; alphaTab only drives the cursor
+    settings.player.playerMode = alphaTab.PlayerMode.EnabledExternalMedia;
     if (bodyRef.current) settings.player.scrollElement = bodyRef.current;
 
     const api = new alphaTab.AlphaTabApi(el, settings);
     apiRef.current = api;
 
-    // Diagnostic: log player config immediately after creation
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const playerInstance = (api as any)._player?.instance;
-    addLog("INFO", `AT init: playerMode=${api.settings.player.playerMode} enablePlayer=${api.settings.player.enablePlayer} scriptFile=${api.settings.core.scriptFile} playerInstance=${!!playerInstance}`);
+    addLog("INFO", `AT init: playerMode=${api.settings.player.playerMode} scriptFile=${api.settings.core.scriptFile}`);
 
-    // Rebuild the beat-position map after each render (initial load, track switch,
-    // transposition re-render). The custom cursor reads this map via rAF.
-    api.postRenderFinished.on(() => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const lookup = (api as any).boundsLookup;
-        if (!lookup || !api.score) {
-          addLog("WARN", `postRenderFinished: no lookup (lookup=${!!lookup} score=${!!api.score})`);
-          return;
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const systems = lookup.staffSystems as any[];
-        if (!systems?.length) {
-          addLog("WARN", `postRenderFinished: staffSystems empty or missing`);
-          return;
-        }
-
-        const msPerTick = 60000 / (api.score.tempo * 960);
-        const map: BeatEntry[] = [];
-
-        for (const system of systems) {
-          const sysY: number = system.realBounds.y;
-          const sysH: number = system.realBounds.h;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          for (const masterBar of (system.bars as any[])) {
-            // Use beats from the first rendered staff per bar to avoid duplicates
-            const firstBar = masterBar.bars?.[0];
-            if (!firstBar) continue;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            for (const bb of (firstBar.beats as any[])) {
-              map.push({
-                startMs: bb.beat.start * msPerTick,
-                onNotesX: bb.onNotesX,
-                systemY: sysY,
-                systemH: sysH,
-              });
-            }
-          }
-        }
-
-        map.sort((a, b) => a.startMs - b.startMs);
-        beatMapRef.current = map;
-        addLog("INFO", `beatMap: ${map.length} beats, first=${map[0]?.startMs.toFixed(0)}ms x=${map[0]?.onNotesX.toFixed(0)}`);
-      } catch (err) {
-        addLog("ERR", `beatMap build failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    });
+    // Wire audio engine as the external media source
+    const output = api.player?.output as alphaTab.synth.IExternalMediaSynthOutput | undefined;
+    if (output) {
+      output.handler = {
+        get backingTrackDuration() {
+          return audioStateRef.current.duration * 1000;
+        },
+        get playbackRate() {
+          return audioStateRef.current.speed;
+        },
+        set playbackRate(v: number) {
+          audioActionsRef.current.setSpeed(v);
+        },
+        get masterVolume() { return 1; },
+        set masterVolume(_v: number) {},
+        seekTo(ms: number) {
+          audioActionsRef.current.seek(ms / 1000);
+        },
+        play() {
+          audioActionsRef.current.play();
+          window.clearInterval(updateTimerRef.current);
+          updateTimerRef.current = window.setInterval(() => {
+            const ms = audioActionsRef.current.getCurrentTime() * 1000;
+            output.updatePosition(ms);
+          }, 50);
+        },
+        pause() {
+          audioActionsRef.current.pause();
+          window.clearInterval(updateTimerRef.current);
+        },
+      };
+      addLog("INFO", "AT external media handler installed");
+    } else {
+      addLog("WARN", "AT player output not available — external media handler not installed");
+    }
 
     api.scoreLoaded.on((score: alphaTab.model.Score) => {
       addLog("INFO", `scoreLoaded: ${score.title}`);
-      // Diagnostic: check player state 2s after score loads
-      setTimeout(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const p = (api as any)._player;
-        addLog("INFO", `AT player check: instance=${!!p?.instance} isReadyForPlayback=${api.isReadyForPlayback} playerState=${api.playerState}`);
-      }, 2000);
       setTitle(score.title || null);
       setArtist(score.artist || null);
       setTempo(score.tempo);
@@ -342,33 +271,20 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
     api.playerReady.on(() => {
       setAtReady(true);
-      api.tickPosition = 0; // position cursor on first bar
       addLog("INFO", "AT player ready");
     });
 
-    api.soundFontLoaded.on(() => {
-      addLog("INFO", "AT soundFont loaded");
-    });
-
-    api.soundFontLoad.on((e: alphaTab.ProgressEventArgs) => {
-      addLog("INFO", `AT soundFont progress: ${e.loaded}/${e.total}`);
-    });
-
     api.midiLoaded.on(() => {
+      // midiLoaded fires even in external media mode — alphaTab still generates MIDI for cursor timing
+      setAtReady(true);
       addLog("INFO", "AT MIDI loaded");
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (api as any).soundFontLoadFailed?.on?.((err: Error) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      addLog("ERR", `AT soundFont load failed: ${msg}`);
-      setError(`SoundFont load failed: ${msg}`);
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (api as any).midiLoadFailed?.on?.((err: Error) => {
       const msg = err instanceof Error ? err.message : String(err);
       addLog("ERR", `AT MIDI load failed: ${msg}`);
+      setError(`MIDI load failed: ${msg}`);
     });
 
     api.playerStateChanged.on((args: alphaTab.synth.PlayerStateChangedEventArgs) => {
@@ -385,6 +301,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.playerFinished.on(() => {
       setAtPlaying(false);
       setAtCurrentTime(0);
+      window.clearInterval(updateTimerRef.current);
       addLog("INFO", "AT player finished");
     });
 
@@ -392,6 +309,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.load(url);
 
     return () => {
+      window.clearInterval(updateTimerRef.current);
       api.destroy();
       apiRef.current = null;
     };
@@ -453,19 +371,15 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     audioActions.pause();
   }
 
-  function handleProgressClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (audioState.duration <= 0) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    audioActions.seek(ratio * audioState.duration);
-  }
-
   function handleAtProgressClick(e: React.MouseEvent<HTMLDivElement>) {
     if (atEndTime <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const api = apiRef.current;
-    if (api) api.timePosition = ratio * atEndTime;
+    const seekMs = ratio * atEndTime;
+    audioActionsRef.current.seek(seekMs / 1000);
+    // Update alphaTab cursor immediately to the new position
+    const o = apiRef.current?.player?.output as alphaTab.synth.IExternalMediaSynthOutput | undefined;
+    o?.updatePosition(seekMs);
   }
 
   const filename = filePath.split("/").pop() ?? filePath;
@@ -564,23 +478,25 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           )}
         </div>
 
-        {/* alphaTab MIDI player bar */}
+        {/* Unified player bar — audio engine drives playback; alphaTab tracks cursor */}
         <div className="gp-at-player">
-          <span className="gp-at-label">MIDI</span>
+          <span className="gp-at-label">Play</span>
           {!atReady ? (
-            <span className="gp-at-loading">Loading sounds…</span>
+            <span className="gp-at-loading">Initializing…</span>
+          ) : audioState.status !== "ready" ? (
+            <span className="gp-at-loading">Load audio file to enable playback</span>
           ) : (
             <>
               <button
                 className="gp-at-play"
                 onClick={() => apiRef.current?.playPause()}
-                title={atPlaying ? "Pause" : "Play tab"}
+                title={atPlaying ? "Pause" : "Play"}
               >
                 {atPlaying ? "⏸" : "▶"}
               </button>
               <button
                 className="gp-at-stop"
-                onClick={() => apiRef.current?.stop()}
+                onClick={() => { apiRef.current?.stop(); audioActions.pause(); audioActionsRef.current.seek(0); }}
                 title="Stop"
               >
                 ⏹
@@ -602,7 +518,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           )}
         </div>
 
-        {/* Audio player bar */}
+        {/* Audio file loader bar */}
         <div className="gp-audio-player">
           <button
             className="gp-audio-load"
@@ -617,32 +533,6 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           {audioState.status === "error" && (
             <span className="gp-audio-error">{audioState.errorMessage}</span>
           )}
-          {audioState.status === "ready" && (
-            <>
-              <button
-                className="gp-audio-play"
-                onClick={audioState.isPlaying ? audioActions.pause : audioActions.play}
-                title={audioState.isPlaying ? "Pause" : "Play"}
-              >
-                {audioState.isPlaying ? "⏸" : "▶"}
-              </button>
-              <div
-                className="gp-audio-progress"
-                onClick={handleProgressClick}
-                title="Click to seek"
-              >
-                <div
-                  className="gp-audio-progress-fill"
-                  style={{
-                    width: `${audioState.duration > 0 ? (audioState.currentTime / audioState.duration) * 100 : 0}%`,
-                  }}
-                />
-              </div>
-              <span className="gp-audio-time">
-                {fmtTime(audioState.currentTime)} / {fmtTime(audioState.duration)}
-              </span>
-            </>
-          )}
         </div>
 
         {/* Body */}
@@ -655,9 +545,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           {!loading && error && (
             <p className="gp-viewer-error">Failed to load: {error}</p>
           )}
-          <div ref={containerRef} className="gp-alphatab-container">
-            <div ref={cursorRef} className="gp-cursor" style={{ display: "none" }} />
-          </div>
+          <div ref={containerRef} className="gp-alphatab-container" />
         </div>
 
         {/* Debug console */}
@@ -666,7 +554,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
             {showDebug ? "▲ Debug" : "▼ Debug"} ({debugLogs.length})
           </button>
           <span className="gp-debug-state">
-            beats:{beatMapRef.current.length} | audio:{audioState.status} | playing:{audioState.isPlaying ? "✓" : "✗"} | midi:{atReady ? (atPlaying ? "▶" : "⏸") : "…"}
+            audio:{audioState.status} | playing:{audioState.isPlaying ? "✓" : "✗"} | at:{atReady ? (atPlaying ? "▶" : "⏸") : "…"}
           </span>
           {showDebug && (
             <button className="gp-debug-clear" onClick={() => setDebugLogs([])}>Clear</button>
