@@ -23,3 +23,4 @@
 ## Enhancements
 
 - [x] GP viewer tempo control: interactive BPM control synced to audio engine speed, persisted per file in localStorage
+- [x] GP viewer loop control: loop in/out points set from playhead, loop enable toggle, persisted per file in localStorage; loop region overlay on progress bar

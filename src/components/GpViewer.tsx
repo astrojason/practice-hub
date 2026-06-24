@@ -39,6 +39,9 @@ function pitchKey(filePath: string) {
 interface ViewState {
   selectedTrack: number;
   targetTempo: number | null;
+  loopEnabled: boolean;
+  loopStart: number | null;
+  loopEnd: number | null;
 }
 
 function viewKey(filePath: string) {
@@ -48,9 +51,9 @@ function viewKey(filePath: string) {
 function loadView(filePath: string): ViewState {
   try {
     const raw = localStorage.getItem(viewKey(filePath));
-    if (raw) return { selectedTrack: 0, targetTempo: null, ...(JSON.parse(raw) as Partial<ViewState>) };
+    if (raw) return { selectedTrack: 0, targetTempo: null, loopEnabled: false, loopStart: null, loopEnd: null, ...(JSON.parse(raw) as Partial<ViewState>) };
   } catch { /* non-critical */ }
-  return { selectedTrack: 0, targetTempo: null };
+  return { selectedTrack: 0, targetTempo: null, loopEnabled: false, loopStart: null, loopEnd: null };
 }
 
 function saveView(filePath: string, state: ViewState) {
@@ -124,6 +127,9 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const [artist, setArtist] = useState<string | null>(null);
   const [tempo, setTempo] = useState<number | null>(null);
   const [targetTempo, setTargetTempo] = useState<number | null>(() => loadView(filePath).targetTempo);
+  const [loopEnabled, setLoopEnabledLocal] = useState<boolean>(() => loadView(filePath).loopEnabled ?? false);
+  const [loopStart, setLoopStart] = useState<number | null>(() => loadView(filePath).loopStart ?? null);
+  const [loopEnd, setLoopEnd] = useState<number | null>(() => loadView(filePath).loopEnd ?? null);
 
   const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
   const [audioState, audioActions] = useAudioEngine();
@@ -169,9 +175,8 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     };
   }, [addLog]);
 
-  // On mount: disable loop, load audio (prefer initialAudioPath from resources over stored), destroy on unmount
+  // On mount: load audio (prefer initialAudioPath from resources over stored), destroy on unmount
   useEffect(() => {
-    audioActions.setLoopEnabled(false);
     const stored = loadPitch(filePath);
     const audioPath = initialAudioPath ?? stored.audioFilePath;
     if (audioPath) {
@@ -352,10 +357,18 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.render();
   }, [pitch.tabSemitones, loading]);
 
-  // Persist selectedTrack and targetTempo changes per file
+  // Persist view state (track, tempo, loop) per file
   useEffect(() => {
-    saveView(filePath, { selectedTrack, targetTempo });
-  }, [filePath, selectedTrack, targetTempo]);
+    saveView(filePath, { selectedTrack, targetTempo, loopEnabled, loopStart, loopEnd });
+  }, [filePath, selectedTrack, targetTempo, loopEnabled, loopStart, loopEnd]);
+
+  // Sync loop state → audio engine
+  useEffect(() => {
+    audioActions.setLoopEnabled(loopEnabled);
+    audioActions.setLoopStart(loopStart);
+    audioActions.setLoopEnd(loopEnd);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loopEnabled, loopStart, loopEnd]);
 
   // Sync tempo changes to audio engine speed
   useEffect(() => {
@@ -582,11 +595,95 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
                   className="gp-at-progress-fill"
                   style={{ width: `${atEndTime > 0 ? (atCurrentTime / atEndTime) * 100 : 0}%` }}
                 />
+                {loopStart !== null && loopEnd !== null && atEndTime > 0 && (
+                  <div
+                    className="gp-at-loop-region"
+                    style={{
+                      left: `${Math.min(100, (loopStart * 1000 / atEndTime) * 100)}%`,
+                      width: `${Math.min(100, ((loopEnd - loopStart) * 1000 / atEndTime) * 100)}%`,
+                    }}
+                  />
+                )}
+                {loopStart !== null && atEndTime > 0 && (
+                  <div
+                    className="gp-at-loop-marker gp-at-loop-marker--in"
+                    style={{ left: `${Math.min(100, (loopStart * 1000 / atEndTime) * 100)}%` }}
+                  />
+                )}
+                {loopEnd !== null && atEndTime > 0 && (
+                  <div
+                    className="gp-at-loop-marker gp-at-loop-marker--out"
+                    style={{ left: `${Math.min(100, (loopEnd * 1000 / atEndTime) * 100)}%` }}
+                  />
+                )}
               </div>
               <span className="gp-at-time">
                 {fmtTime(atCurrentTime / 1000)} / {fmtTime(atEndTime / 1000)}
               </span>
             </>
+          )}
+        </div>
+
+        {/* Loop controls bar */}
+        <div className="gp-loop-bar">
+          <span className="gp-at-label">Loop</span>
+          <label className="gp-loop-toggle-label">
+            <input
+              type="checkbox"
+              className="gp-loop-toggle"
+              checked={loopEnabled}
+              onChange={(e) => {
+                setLoopEnabledLocal(e.target.checked);
+                audioActions.setLoopEnabled(e.target.checked);
+              }}
+            />
+            {loopEnabled ? "On" : "Off"}
+          </label>
+          <span className="gp-loop-bound-label">In</span>
+          <span className="gp-loop-in-time gp-loop-time">
+            {loopStart !== null ? fmtTime(loopStart) : "—"}
+          </span>
+          <button
+            className="gp-loop-set-btn"
+            onClick={() => {
+              const t = audioState.currentTime;
+              setLoopStart(t);
+              audioActions.setLoopStart(t);
+            }}
+            disabled={audioState.status !== "ready"}
+            title="Set loop in from playhead"
+          >
+            Set
+          </button>
+          <span className="gp-loop-bound-label">Out</span>
+          <span className="gp-loop-out-time gp-loop-time">
+            {loopEnd !== null ? fmtTime(loopEnd) : "—"}
+          </span>
+          <button
+            className="gp-loop-set-btn"
+            onClick={() => {
+              const t = audioState.currentTime;
+              setLoopEnd(t);
+              audioActions.setLoopEnd(t);
+            }}
+            disabled={audioState.status !== "ready"}
+            title="Set loop out from playhead"
+          >
+            Set
+          </button>
+          {(loopStart !== null || loopEnd !== null) && (
+            <button
+              className="gp-loop-clear-btn"
+              onClick={() => {
+                setLoopStart(null);
+                setLoopEnd(null);
+                audioActions.setLoopStart(null);
+                audioActions.setLoopEnd(null);
+              }}
+              title="Clear loop points"
+            >
+              Clear
+            </button>
           )}
         </div>
 

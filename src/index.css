@@ -2971,6 +2971,88 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   white-space: nowrap;
 }
 
+/* ── Loop bar ────────────────────────────────────────────────────────────── */
+
+.gp-loop-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  min-height: 34px;
+  flex-wrap: wrap;
+}
+
+.gp-loop-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.gp-loop-bound-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  margin-left: 4px;
+}
+
+.gp-loop-time {
+  font-size: 11px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+}
+
+.gp-loop-set-btn {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.gp-loop-set-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.gp-loop-set-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.gp-loop-clear-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  margin-left: 4px;
+}
+.gp-loop-clear-btn:hover { border-color: var(--red); color: var(--red); }
+
+/* Loop region overlay on progress bar */
+
+.gp-at-loop-region {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(124, 93, 255, 0.3);
+  pointer-events: none;
+}
+
+.gp-at-loop-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: #7c5dff;
+  pointer-events: none;
+}
+
 /* ── alphaTab container ──────────────────────────────────────────────────── */
 
 .gp-alphatab-container {

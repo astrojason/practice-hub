@@ -316,6 +316,59 @@ test("Tempo does not decrement below 1 BPM", async ({ page }) => {
   await expect(page.locator(".gp-tempo-value")).toContainText("1");
 });
 
+// ─── Loop control tests ───────────────────────────────────────────────────────
+
+test("Loop controls bar is visible in GP viewer", async ({ page }) => {
+  await openViewer(page);
+  await expect(page.locator(".gp-loop-bar")).toBeVisible();
+  await expect(page.locator(".gp-loop-toggle")).toBeVisible();
+  await expect(page.locator("button[title='Set loop in from playhead']")).toBeVisible();
+  await expect(page.locator("button[title='Set loop out from playhead']")).toBeVisible();
+});
+
+test("Loop toggle checkbox enables and disables loop", async ({ page }) => {
+  await openViewer(page);
+  const toggle = page.locator(".gp-loop-toggle");
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await expect(toggle).not.toBeChecked();
+});
+
+test("Set In and Set Out buttons are disabled when no audio is loaded", async ({ page }) => {
+  await openViewer(page);
+  await expect(page.locator("button[title='Set loop in from playhead']")).toBeDisabled();
+  await expect(page.locator("button[title='Set loop out from playhead']")).toBeDisabled();
+});
+
+test("Loop state persists to localStorage and reloads on reopen", async ({ page }) => {
+  await navigateToGpLibrary(page);
+  await page.fill("#gp-root-path", "/Songs");
+  await page.locator(".scan-button").click();
+  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+  // Pre-seed loop state into localStorage
+  await page.evaluate(([key]) => {
+    localStorage.setItem(key as string, JSON.stringify({
+      selectedTrack: 0, targetTempo: null,
+      loopEnabled: true, loopStart: 10, loopEnd: 30,
+    }));
+  }, [GP_VIEW_KEY]);
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+  // Loop should be enabled with the seeded times displayed
+  await expect(page.locator(".gp-loop-toggle")).toBeChecked();
+  await expect(page.locator(".gp-loop-in-time")).toContainText("0:10");
+  await expect(page.locator(".gp-loop-out-time")).toContainText("0:30");
+  // Close and reopen — state should persist
+  await page.locator(".gp-viewer-close").click();
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+  await expect(page.locator(".gp-loop-toggle")).toBeChecked();
+  await expect(page.locator(".gp-loop-in-time")).toContainText("0:10");
+  await expect(page.locator(".gp-loop-out-time")).toContainText("0:30");
+});
+
 test("Tempo persists to localStorage and reloads on reopen", async ({ page }) => {
   await navigateToGpLibrary(page);
   await page.fill("#gp-root-path", "/Songs");
