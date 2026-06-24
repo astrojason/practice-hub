@@ -208,7 +208,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   // If the audio engine stops externally, clear the position update interval
   useEffect(() => {
-    if (!audioState.isPlaying) window.clearInterval(updateTimerRef.current);
+    if (!audioState.isPlaying) cancelAnimationFrame(updateTimerRef.current);
   }, [audioState.isPlaying]);
 
   // Initialize alphaTab once per filePath
@@ -227,7 +227,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setAtPlaying(false);
     setAtCurrentTime(0);
     setAtEndTime(0);
-    window.clearInterval(updateTimerRef.current);
+    cancelAnimationFrame(updateTimerRef.current);
 
     const settings = new alphaTab.Settings();
     settings.core.useWorkers = false;
@@ -262,15 +262,17 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         },
         play() {
           audioActionsRef.current.play();
-          window.clearInterval(updateTimerRef.current);
-          updateTimerRef.current = window.setInterval(() => {
+          cancelAnimationFrame(updateTimerRef.current);
+          const rafTick = () => {
             const ms = audioActionsRef.current.getCurrentTime() * 1000;
             output.updatePosition(ms);
-          }, 50);
+            updateTimerRef.current = requestAnimationFrame(rafTick);
+          };
+          updateTimerRef.current = requestAnimationFrame(rafTick);
         },
         pause() {
           audioActionsRef.current.pause();
-          window.clearInterval(updateTimerRef.current);
+          cancelAnimationFrame(updateTimerRef.current);
         },
       };
       addLog("INFO", "AT external media handler installed");
@@ -332,7 +334,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.playerFinished.on(() => {
       setAtPlaying(false);
       setAtCurrentTime(0);
-      window.clearInterval(updateTimerRef.current);
+      cancelAnimationFrame(updateTimerRef.current);
       addLog("INFO", "AT player finished");
     });
 
@@ -340,7 +342,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.load(url);
 
     return () => {
-      window.clearInterval(updateTimerRef.current);
+      cancelAnimationFrame(updateTimerRef.current);
       api.destroy();
       apiRef.current = null;
     };

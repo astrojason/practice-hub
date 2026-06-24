@@ -119,6 +119,8 @@ interface EngineRef {
   duration: number;
   pendingSrc: string | null;
   _pausedAt: number;
+  playStartCtxTime: number;
+  playStartPosition: number;
   // Control values mirrored here for rAF access
   speed: number;
   loopEnabled: boolean;
@@ -151,6 +153,8 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     duration: 0,
     pendingSrc: null,
     _pausedAt: 0,
+    playStartCtxTime: 0,
+    playStartPosition: 0,
     speed: 1.0,
     loopEnabled: true,
     loopStart: null,
@@ -232,6 +236,8 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     }
 
     eng.ctx.resume();
+    eng.playStartCtxTime = eng.ctx.currentTime;
+    eng.playStartPosition = eng._pausedAt;
     setIsPlaying(true);
     setCurrentTime(eng._pausedAt);
 
@@ -437,8 +443,9 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
 
   const getCurrentTime = useCallback((): number => {
     const eng = e.current;
-    if (!eng.shifter || !eng.duration) return eng._pausedAt;
-    return (eng.shifter.percentagePlayed / 100) * eng.duration;
+    if (!eng.ctx || eng.raf === null || !eng.duration) return eng._pausedAt;
+    const elapsed = eng.ctx.currentTime - eng.playStartCtxTime;
+    return Math.min(eng.duration, eng.playStartPosition + elapsed * eng.speed);
   }, []);
 
   // ── Assemble ────────────────────────────────────────────────────────────────
