@@ -36,6 +36,28 @@ function pitchKey(filePath: string) {
   return `gp-viewer-shifts:${filePath}`;
 }
 
+interface ViewState {
+  selectedTrack: number;
+}
+
+function viewKey(filePath: string) {
+  return `gp-viewer-view:${filePath}`;
+}
+
+function loadView(filePath: string): ViewState {
+  try {
+    const raw = localStorage.getItem(viewKey(filePath));
+    if (raw) return { selectedTrack: 0, ...(JSON.parse(raw) as Partial<ViewState>) };
+  } catch { /* non-critical */ }
+  return { selectedTrack: 0 };
+}
+
+function saveView(filePath: string, state: ViewState) {
+  try {
+    localStorage.setItem(viewKey(filePath), JSON.stringify(state));
+  } catch { /* non-critical */ }
+}
+
 function loadPitch(filePath: string): PitchState {
   try {
     const raw = localStorage.getItem(pitchKey(filePath));
@@ -193,7 +215,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setTitle(null);
     setArtist(null);
     setTempo(null);
-    setSelectedTrack(0);
+    setSelectedTrack(loadView(filePath).selectedTrack);
     setAtReady(false);
     setAtPlaying(false);
     setAtCurrentTime(0);
@@ -325,6 +347,11 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.updateSettings();
     api.render();
   }, [pitch.tabSemitones, loading]);
+
+  // Persist selectedTrack changes per file
+  useEffect(() => {
+    saveView(filePath, { selectedTrack });
+  }, [filePath, selectedTrack]);
 
   // Switch displayed track
   useEffect(() => {
