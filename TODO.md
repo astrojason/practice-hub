@@ -21,3 +21,5 @@
   - [x] Audio player with SoundTouch pitch shift (load audio file, play/pause/seek, audioSemitones+audioCents applied live)
 
 ## Enhancements
+
+- [x] GP viewer tempo control: interactive BPM control synced to audio engine speed, persisted per file in localStorage

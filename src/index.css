@@ -2789,6 +2789,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 }
 .gp-pitch-reset:hover { color: var(--text); background: var(--surface-3); }
 
+.gp-tempo-controls { gap: 2px; }
+.gp-tempo-value { min-width: 72px; text-align: center; }
+.gp-tempo-reset { font-size: 11px; }
+
 /* ── Audio player bar ────────────────────────────────────────────────────── */
 
 /* ── alphaTab MIDI player bar ────────────────────────────────────────────── */

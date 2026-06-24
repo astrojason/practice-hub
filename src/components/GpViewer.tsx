@@ -38,6 +38,7 @@ function pitchKey(filePath: string) {
 
 interface ViewState {
   selectedTrack: number;
+  targetTempo: number | null;
 }
 
 function viewKey(filePath: string) {
@@ -47,9 +48,9 @@ function viewKey(filePath: string) {
 function loadView(filePath: string): ViewState {
   try {
     const raw = localStorage.getItem(viewKey(filePath));
-    if (raw) return { selectedTrack: 0, ...(JSON.parse(raw) as Partial<ViewState>) };
+    if (raw) return { selectedTrack: 0, targetTempo: null, ...(JSON.parse(raw) as Partial<ViewState>) };
   } catch { /* non-critical */ }
-  return { selectedTrack: 0 };
+  return { selectedTrack: 0, targetTempo: null };
 }
 
 function saveView(filePath: string, state: ViewState) {
@@ -122,6 +123,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const [title, setTitle] = useState<string | null>(null);
   const [artist, setArtist] = useState<string | null>(null);
   const [tempo, setTempo] = useState<number | null>(null);
+  const [targetTempo, setTargetTempo] = useState<number | null>(() => loadView(filePath).targetTempo);
 
   const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
   const [audioState, audioActions] = useAudioEngine();
@@ -275,7 +277,9 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
       addLog("INFO", `scoreLoaded: ${score.title}`);
       setTitle(score.title || null);
       setArtist(score.artist || null);
-      setTempo(score.tempo);
+      const roundedTempo = Math.round(score.tempo);
+      setTempo(roundedTempo);
+      setTargetTempo((prev) => prev ?? roundedTempo);
       setTrackNames(score.tracks.map((t: alphaTab.model.Track) => t.name));
       const stored = loadPitch(filePath);
       if (stored.tabSemitones !== 0) {
@@ -348,10 +352,17 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     api.render();
   }, [pitch.tabSemitones, loading]);
 
-  // Persist selectedTrack changes per file
+  // Persist selectedTrack and targetTempo changes per file
   useEffect(() => {
-    saveView(filePath, { selectedTrack });
-  }, [filePath, selectedTrack]);
+    saveView(filePath, { selectedTrack, targetTempo });
+  }, [filePath, selectedTrack, targetTempo]);
+
+  // Sync tempo changes to audio engine speed
+  useEffect(() => {
+    if (targetTempo === null || tempo === null || tempo <= 0) return;
+    audioActions.setSpeed(targetTempo / tempo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetTempo, tempo]);
 
   // Switch displayed track
   useEffect(() => {
@@ -425,7 +436,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
                 <span className="gp-viewer-title">{title ?? filename}</span>
                 {artist && <span className="gp-viewer-artist">{artist}</span>}
                 {tempo !== null && (
-                  <span className="gp-viewer-tempo">{Math.round(tempo)} BPM</span>
+                  <span className="gp-viewer-tempo">{tempo} BPM</span>
                 )}
               </>
             )}
@@ -503,6 +514,40 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
               Reset
             </button>
           )}
+
+          <div className="gp-pitch-divider" />
+
+          <div className="gp-pitch-section">
+            <span className="gp-pitch-section-label">Tempo</span>
+            {targetTempo !== null ? (
+              <div className="gp-pitch-group gp-tempo-controls">
+                <button
+                  onClick={() => setTargetTempo((t) => t !== null ? Math.max(1, t - 1) : null)}
+                  title="Decrease tempo"
+                >
+                  −
+                </button>
+                <span className="gp-pitch-value gp-tempo-value">{targetTempo} BPM</span>
+                <button
+                  onClick={() => setTargetTempo((t) => t !== null ? t + 1 : null)}
+                  title="Increase tempo"
+                >
+                  +
+                </button>
+              </div>
+            ) : (
+              <span className="gp-pitch-value">— BPM</span>
+            )}
+            {tempo !== null && targetTempo !== null && targetTempo !== tempo && (
+              <button
+                className="gp-pitch-reset gp-tempo-reset"
+                onClick={() => setTargetTempo(tempo)}
+                title={`Reset to score tempo (${tempo} BPM)`}
+              >
+                ↩ {tempo}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Unified player bar — audio engine drives playback; alphaTab tracks cursor */}

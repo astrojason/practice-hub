@@ -254,3 +254,86 @@ test("Audio file path persists to localStorage and restores on reopen", async ({
   // Filename should be restored from localStorage in the button
   await expect(page.locator(".gp-audio-load")).toContainText("mysong.mp3");
 });
+
+// ─── Tempo control tests ──────────────────────────────────────────────────────
+
+const GP_VIEW_KEY = "gp-viewer-view:/Songs/TestArtist-Test Song-01-01-2024.gp";
+
+async function seedTempo(page: import("@playwright/test").Page, bpm: number) {
+  await page.evaluate(
+    ([key, bpm]) => {
+      localStorage.setItem(key as string, JSON.stringify({ selectedTrack: 0, targetTempo: bpm }));
+    },
+    [GP_VIEW_KEY, bpm],
+  );
+}
+
+test("Tempo controls are visible when targetTempo is seeded in localStorage", async ({ page }) => {
+  await navigateToGpLibrary(page);
+  await page.fill("#gp-root-path", "/Songs");
+  await page.locator(".scan-button").click();
+  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+  await seedTempo(page, 120);
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+  await expect(page.locator(".gp-tempo-controls")).toBeVisible();
+  await expect(page.locator(".gp-tempo-value")).toContainText("120");
+});
+
+test("Tempo increment button increases displayed BPM", async ({ page }) => {
+  await navigateToGpLibrary(page);
+  await page.fill("#gp-root-path", "/Songs");
+  await page.locator(".scan-button").click();
+  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+  await seedTempo(page, 120);
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+  await page.locator(".gp-tempo-controls button[title='Increase tempo']").click();
+  await expect(page.locator(".gp-tempo-value")).toContainText("121");
+});
+
+test("Tempo decrement button decreases displayed BPM", async ({ page }) => {
+  await navigateToGpLibrary(page);
+  await page.fill("#gp-root-path", "/Songs");
+  await page.locator(".scan-button").click();
+  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+  await seedTempo(page, 120);
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+  await page.locator(".gp-tempo-controls button[title='Decrease tempo']").click();
+  await expect(page.locator(".gp-tempo-value")).toContainText("119");
+});
+
+test("Tempo does not decrement below 1 BPM", async ({ page }) => {
+  await navigateToGpLibrary(page);
+  await page.fill("#gp-root-path", "/Songs");
+  await page.locator(".scan-button").click();
+  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+  await seedTempo(page, 1);
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+  await page.locator(".gp-tempo-controls button[title='Decrease tempo']").click();
+  await expect(page.locator(".gp-tempo-value")).toContainText("1");
+});
+
+test("Tempo persists to localStorage and reloads on reopen", async ({ page }) => {
+  await navigateToGpLibrary(page);
+  await page.fill("#gp-root-path", "/Songs");
+  await page.locator(".scan-button").click();
+  await expect(page.locator(".gp-status-message", { hasText: "Done" })).toBeVisible({ timeout: 10000 });
+  await seedTempo(page, 120);
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+
+  // Change to 95 BPM
+  for (let i = 0; i < 25; i++) {
+    await page.locator(".gp-tempo-controls button[title='Decrease tempo']").click();
+  }
+  await expect(page.locator(".gp-tempo-value")).toContainText("95");
+
+  // Close and reopen
+  await page.locator(".gp-viewer-close").click();
+  await page.locator('button[title="View tab"]').first().click();
+  await expect(page.locator(".gp-viewer")).toBeVisible();
+  await expect(page.locator(".gp-tempo-value")).toContainText("95");
+});
