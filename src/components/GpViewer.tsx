@@ -27,6 +27,7 @@ interface PitchState {
   tabSemitones: number;
   linked: boolean;
   audioFilePath: string | null;
+  audioOffsetMs: number; // positive = advance cursor ahead of audio (fixes "cursor behind"); negative = delay cursor
 }
 
 
@@ -67,7 +68,7 @@ function loadPitch(filePath: string): PitchState {
     const raw = localStorage.getItem(pitchKey(filePath));
     if (raw) return JSON.parse(raw) as PitchState;
   } catch { /* non-critical */ }
-  return { audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: false, audioFilePath: null };
+  return { audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: false, audioFilePath: null, audioOffsetMs: 0 };
 }
 
 function savePitch(filePath: string, state: PitchState) {
@@ -132,6 +133,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const [loopEnd, setLoopEnd] = useState<number | null>(() => loadView(filePath).loopEnd ?? null);
 
   const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
+  const audioOffsetMsRef = useRef(pitch.audioOffsetMs ?? 0);
   const [audioState, audioActions] = useAudioEngine();
   const audioActionsRef = useRef(audioActions);
   const audioStateRef = useRef(audioState);
@@ -199,6 +201,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   useEffect(() => {
     audioActionsRef.current = audioActions;
     audioStateRef.current = audioState;
+    audioOffsetMsRef.current = pitch.audioOffsetMs ?? 0;
   });
 
   // Sync atEndTime from audio duration so the progress bar shows correct length before play
@@ -247,7 +250,10 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     if (output) {
       output.handler = {
         get backingTrackDuration() {
-          return audioStateRef.current.duration * 1000;
+          const offsetMs = audioOffsetMsRef.current;
+          // offsetMs > 0 means cursor is shown ahead of the raw audio position,
+          // so the effective tab duration = audio duration + offsetMs
+          return Math.max(0, audioStateRef.current.duration * 1000 + offsetMs);
         },
         get playbackRate() {
           return audioStateRef.current.speed;
@@ -258,14 +264,18 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         get masterVolume() { return 1; },
         set masterVolume(_v: number) {},
         seekTo(ms: number) {
-          audioActionsRef.current.seek(ms / 1000);
+          const offsetMs = audioOffsetMsRef.current;
+          // tab position ms → audio position ms - offsetMs (clamp to 0)
+          audioActionsRef.current.seek(Math.max(0, ms - offsetMs) / 1000);
         },
         play() {
           audioActionsRef.current.play();
           cancelAnimationFrame(updateTimerRef.current);
           const rafTick = () => {
-            const ms = audioActionsRef.current.getCurrentTime() * 1000;
-            output.updatePosition(ms);
+            const offsetMs = audioOffsetMsRef.current;
+            // positive offsetMs advances cursor ahead of audio position
+            const ms = audioActionsRef.current.getCurrentTime() * 1000 + offsetMs;
+            output.updatePosition(Math.max(0, ms));
             updateTimerRef.current = requestAnimationFrame(rafTick);
           };
           updateTimerRef.current = requestAnimationFrame(rafTick);
@@ -703,6 +713,16 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           )}
           {audioState.status === "error" && (
             <span className="gp-audio-error">{audioState.errorMessage}</span>
+          )}
+          {pitch.audioFilePath && (
+            <PitchSpinner
+              value={pitch.audioOffsetMs ?? 0}
+              unit="ms"
+              label="Offset"
+              step={50}
+              className="gp-audio-offset"
+              onChange={(n) => setPitch((p) => ({ ...p, audioOffsetMs: n }))}
+            />
           )}
         </div>
 

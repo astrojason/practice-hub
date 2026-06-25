@@ -120,6 +120,7 @@ interface EngineRef {
   pendingSrc: string | null;
   _pausedAt: number;
   playStartCtxTime: number;
+  playStartWallTime: number;
   playStartPosition: number;
   // Control values mirrored here for rAF access
   speed: number;
@@ -154,6 +155,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     pendingSrc: null,
     _pausedAt: 0,
     playStartCtxTime: 0,
+    playStartWallTime: 0,
     playStartPosition: 0,
     speed: 1.0,
     loopEnabled: true,
@@ -237,6 +239,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
 
     eng.ctx.resume();
     eng.playStartCtxTime = eng.ctx.currentTime;
+    eng.playStartWallTime = performance.now() / 1000;
     eng.playStartPosition = eng._pausedAt;
     setIsPlaying(true);
     setCurrentTime(eng._pausedAt);
@@ -444,8 +447,12 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   const getCurrentTime = useCallback((): number => {
     const eng = e.current;
     if (!eng.ctx || eng.raf === null || !eng.duration) return eng._pausedAt;
-    const elapsed = eng.ctx.currentTime - eng.playStartCtxTime;
-    return Math.min(eng.duration, eng.playStartPosition + elapsed * eng.speed);
+    // Use performance.now() rather than ctx.currentTime: the audio context only
+    // updates currentTime once per ScriptProcessor buffer (~93ms at 4096 samples),
+    // causing up to half-buffer lag (~46ms) when sampled from the main thread.
+    // performance.now() is sub-millisecond and always current.
+    const wallElapsed = performance.now() / 1000 - eng.playStartWallTime;
+    return Math.min(eng.duration, eng.playStartPosition + Math.max(0, wallElapsed) * eng.speed);
   }, []);
 
   // ── Assemble ────────────────────────────────────────────────────────────────
