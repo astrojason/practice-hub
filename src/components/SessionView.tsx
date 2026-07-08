@@ -18,39 +18,7 @@ import { ChatPanel } from "./chat/ChatPanel";
 import type { ChatEntity } from "./chat/ChatPanel";
 import { ErrorModal } from "./ErrorModal";
 import { PracticeTimeReport } from "./reports/PracticeTimeReport";
-
-// ─── Catalog → dashboard shape converters ─────────────────────────────────────
-
-function catalogExerciseToDashboard(ex: CatalogExercise): DashboardExercise {
-  return {
-    id: ex.id,
-    name: ex.name,
-    order: ex.order,
-    resources: ex.resources,
-    session_type: "exercise",
-    parent_exercise_id: ex.parent_exercise_id,
-    created_timestamp: 0,
-    updated_timestamp: 0,
-    child_exercises: ex.child_exercises.map(catalogExerciseToDashboard),
-    meta: { user_exercise: null, sessions: [] },
-  };
-}
-
-function catalogStudyMaterialToDashboard(sm: CatalogStudyMaterial): DashboardStudyMaterial {
-  return {
-    id: sm.id,
-    name: sm.name,
-    url: sm.url,
-    type: sm.type,
-    instrument: sm.instrument,
-    parent_study_material_id: sm.parent_study_material_id,
-    session_type: "study_material",
-    created_timestamp: 0,
-    updated_timestamp: 0,
-    child_study_materials: (sm.child_study_materials ?? []).map(catalogStudyMaterialToDashboard),
-    meta: { user_study_material: null, sessions: [] },
-  };
-}
+import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { SessionHeader } from "./session/SessionHeader";
 import { ItemGroup } from "./session/ItemGroup";
 import { ExerciseCard } from "./session/ExerciseCard";
@@ -213,10 +181,11 @@ interface Props {
   onSignOut: () => Promise<void>;
   onGpLibrary: () => void;
   onCalendar: () => void;
+  onBrowse: () => void;
   onGpView?: (path: string, audioPath?: string) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onGpView }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -983,6 +952,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onGpVie
         onReports={() => setReportOpen(true)}
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
+        onBrowse={onBrowse}
       />
 
       {openSessionModalOpen && (

@@ -8,6 +8,8 @@ import type {
   UpdateExercisePayload,
   UpdateSongPayload,
   UpdateStudyMaterialPayload,
+  CreateExercisePayload,
+  CreateStudyMaterialPayload,
   UserProfile,
   UserSettings,
   UpdateUserSettingsPayload,
@@ -326,6 +328,30 @@ export async function updateStudyMaterial(
 ): Promise<DashboardStudyMaterial> {
   const response = await fetch(`${API_BASE_URL}/study-material/${studyMaterialId}`, {
     method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<DashboardStudyMaterial>(response);
+}
+
+export async function createExercise(
+  token: string,
+  payload: CreateExercisePayload
+): Promise<DashboardExercise> {
+  const response = await fetch(`${API_BASE_URL}/exercise/`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<DashboardExercise>(response);
+}
+
+export async function createStudyMaterial(
+  token: string,
+  payload: CreateStudyMaterialPayload
+): Promise<DashboardStudyMaterial> {
+  const response = await fetch(`${API_BASE_URL}/study-material/`, {
+    method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
   });

@@ -6,6 +6,7 @@ import {
   MagnifyingGlassPlusIcon,
   MusicalNoteIcon,
   PlusIcon,
+  RectangleStackIcon,
 } from "@heroicons/react/16/solid";
 
 interface Props {
@@ -25,6 +26,7 @@ interface Props {
   onReports: () => void;
   onGpLibrary: () => void;
   onCalendar: () => void;
+  onBrowse: () => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -52,6 +54,7 @@ export function SessionHeader({
   onReports,
   onGpLibrary,
   onCalendar,
+  onBrowse,
 }: Props) {
   const progressPct = Math.min(
     100,
@@ -89,6 +92,9 @@ export function SessionHeader({
           </button>
           <button onClick={onCalendar} className="btn-ghost" title="Practice calendar">
             Calendar
+          </button>
+          <button onClick={onBrowse} className="btn-ghost" title="Browse catalog">
+            <RectangleStackIcon className="icon-sm" /> Browse
           </button>
           <button onClick={onMetronome} className="btn-ghost" title="Open metronome">
             ♩ Metronome

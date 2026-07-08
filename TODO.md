@@ -11,6 +11,14 @@
   - [x] Practice plan API client functions (`getPracticePlans`, `getTodaysPracticePlan`, etc.)
   - [x] Playwright tests for calendar view (nav button, tabs, empty state)
 
+- [x] Browse view: page/search full catalog of songs, exercises, study materials; edit any item in place; add child exercises/study materials to an existing parent
+  - [x] `BrowseView` with Songs / Study Materials / Exercises tabs, debounced search, "load more" pagination (reuses `getCatalogSongs`/`getCatalogExercises`/`getCatalogStudyMaterials`)
+  - [x] Browse nav button in session header (`onBrowse`)
+  - [x] Row components reuse existing `SongEditForm`/`ExerciseEditForm`/`StudyMaterialEditForm` for edits
+  - [x] `createExercise`/`createStudyMaterial` API client functions + `AddChildExerciseForm`/`AddChildStudyMaterialForm` for adding child items, with optimistic local append and 409-conflict surfaced via `ErrorModal`
+  - [x] Shared `catalogExerciseToDashboard`/`catalogStudyMaterialToDashboard` converters extracted to `src/api/catalogConvert.ts`
+  - [x] Playwright tests for browse/list, expand/collapse children, edit, add-child (exercise + study material), and 409 conflict handling
+
 - [x] GP file viewer with alphaTab rendering + pitch controls
   - [x] alphaTab integration (no Vite plugin needed; useWorkers=false, font served from public/font/)
   - [x] Pitch controls: audio semitones, audio cents (fine tune), tab semitones, linked toggle

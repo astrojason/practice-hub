@@ -36,6 +36,19 @@ export interface UpdateStudyMaterialPayload {
   parent_study_material_id: number | null;
 }
 
+export interface CreateExercisePayload {
+  name: string;
+  parent_exercise_id: number | null;
+  resources: { name: string; url: string; type: string }[];
+}
+
+export interface CreateStudyMaterialPayload {
+  name: string;
+  url: string;
+  type: string;
+  parent_study_material_id: number | null;
+}
+
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
 export type StudyRating = "Awful" | "Bad" | "Neutral" | "Good" | "Great";
