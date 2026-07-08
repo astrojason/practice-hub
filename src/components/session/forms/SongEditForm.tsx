@@ -67,9 +67,25 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
     getTunings(token).then(({ tunings }) => setTunings(tunings)).catch((err) => setError(err instanceof Error ? err.message : "Failed to load tunings"));
   }, [token]);
 
+  function findResourceNameError(): string | null {
+    const named = resources.filter((r) => r.url).map((r) => r.name.trim());
+    if (named.some((n) => !n)) return "Every resource needs a name.";
+    const seen = new Set<string>();
+    for (const n of named) {
+      if (seen.has(n.toLowerCase())) return `Resource name "${n}" is used more than once.`;
+      seen.add(n.toLowerCase());
+    }
+    return null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !artistId || !tuningId) return;
+    const resourceNameError = findResourceNameError();
+    if (resourceNameError) {
+      setError(resourceNameError);
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload: UpdateSongPayload = {
@@ -80,7 +96,7 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
       bpm: bpm !== "" ? Number(bpm) : null,
       resources: resources
         .filter((r) => r.url)
-        .map((r) => ({ name: r.name, url: r.url, type: r.type })),
+        .map((r) => ({ name: r.name.trim(), url: r.url, type: r.type })),
       song_lists: [
         ...new Set([
           ...(song.meta.song_lists ?? []).map((l) => l.id),
