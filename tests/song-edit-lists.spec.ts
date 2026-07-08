@@ -118,7 +118,8 @@ test("song edit preserves the project list in song_lists payload", async ({ page
     }
   });
 
-  // Open the edit form for Mr. Crowley
+  // Expand the collapsed Project group, then open the edit form for Mr. Crowley
+  await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
   const songCard = page.locator(".item-card", { hasText: "Mr. Crowley" });
   await expect(songCard).toBeVisible();
   await songCard.locator('button[title="Edit"]').click();
@@ -178,6 +179,7 @@ test("song edit for review song preserves the review list in song_lists payload"
   await page.goto("/");
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
 
+  await page.locator(".item-group", { hasText: "Repertoire Review" }).locator(".item-group-header").click();
   const songCard = page.locator(".item-card", { hasText: "Mr. Crowley" });
   await expect(songCard).toBeVisible();
   await songCard.locator('button[title="Edit"]').click();

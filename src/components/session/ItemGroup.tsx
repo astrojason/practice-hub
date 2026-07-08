@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function ItemGroup({ title, completedCount, totalCount, children }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const allDone = totalCount > 0 && completedCount === totalCount;
 
   return (

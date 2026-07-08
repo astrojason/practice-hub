@@ -108,7 +108,8 @@ test("opens MediaPlayer when a local_file resource is clicked", async ({ page })
   // Wait for the session view to appear (header title is always rendered).
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
 
-  // Click the log (plus) button on the exercise card to open the session modal.
+  // Expand the collapsed Exercises group, then click the log (plus) button to open the session modal.
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
   const card = page.locator(".item-card").first();
   await expect(card).toBeVisible();
   await card.locator('button[title="Log session"]').click();
@@ -128,6 +129,7 @@ test("opens MediaPlayer when a local_file resource is clicked", async ({ page })
 test("closes MediaPlayer when the close button is clicked", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
 
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
   const card = page.locator(".item-card").first();
   await card.locator('button[title="Log session"]').click();
 
@@ -213,6 +215,7 @@ test.describe("local_folder study material", () => {
   test("shows folder picker UI instead of opening player directly", async ({ page }) => {
     await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
 
+    await page.locator(".item-group", { hasText: "Study Materials" }).locator(".item-group-header").click();
     const card = page.locator(".item-card").first();
     await card.locator('button[title="Log session"]').click();
 
@@ -234,6 +237,7 @@ test("shows actual error detail when file load fails", async ({ page }) => {
     })
   );
 
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
   const card = page.locator(".item-card").first();
   await card.locator('button[title="Log session"]').click();
 

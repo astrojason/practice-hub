@@ -379,7 +379,7 @@ export function ExerciseCard({
   onEntityEdited,
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
-  const [childrenCollapsed, setChildrenCollapsed] = useState(false);
+  const [childrenCollapsed, setChildrenCollapsed] = useState(true);
   const state = getState(exercise.id);
   return (
     <div className="exercise-group">

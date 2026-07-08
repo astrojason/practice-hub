@@ -21,7 +21,7 @@ export function QuickAddPanel({
   onAddSong,
   onClose,
 }: Props) {
-  const [overdueCollapsed, setOverdueCollapsed] = useState(false);
+  const [overdueCollapsed, setOverdueCollapsed] = useState(true);
   const [addedSongIds, setAddedSongIds] = useState<Set<number>>(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterTuning, setFilterTuning] = useState<string | null>(null);

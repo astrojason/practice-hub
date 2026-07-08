@@ -109,6 +109,7 @@ test("song edit blocks save when two resources share a blank name, instead of se
     }
   });
 
+  await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
   const songCard = page.locator(".item-card", { hasText: "Nightrain" });
   await expect(songCard).toBeVisible();
   await songCard.locator('button[title="Edit"]').click();
@@ -142,6 +143,7 @@ test("song edit blocks save when two resources share the same non-empty name", a
     }
   });
 
+  await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
   const songCard = page.locator(".item-card", { hasText: "Nightrain" });
   await expect(songCard).toBeVisible();
   await songCard.locator('button[title="Edit"]').click();
@@ -177,6 +179,7 @@ test("song edit allows save when resource names are unique and non-empty", async
     }
   });
 
+  await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
   const songCard = page.locator(".item-card", { hasText: "Nightrain" });
   await expect(songCard).toBeVisible();
   await songCard.locator('button[title="Edit"]').click();

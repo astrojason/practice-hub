@@ -370,7 +370,7 @@ export function StudyMaterialCard({
   onEntityEdited,
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
-  const [childrenCollapsed, setChildrenCollapsed] = useState(false);
+  const [childrenCollapsed, setChildrenCollapsed] = useState(true);
   const state = getState(material.id);
 
   return (
