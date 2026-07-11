@@ -56,6 +56,7 @@ interface CardProps {
   onStartSequential?: () => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
+  isGpViewerActive?: boolean;
   /** Collapse toggle for parent cards with children */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
@@ -85,6 +86,7 @@ function ExerciseSingleCard({
   onStartSequential,
   onOpenChat,
   isMediaActive,
+  isGpViewerActive,
   childrenCollapsed,
   onToggleChildren,
   onEntityEdited,
@@ -107,15 +109,20 @@ function ExerciseSingleCard({
   }, [isFormOpen]);
 
   useEffect(() => {
-    if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {
+    if (!(isMediaActive ?? false) && !(isGpViewerActive ?? false) && mediaWasOpenedRef.current) {
       setModalOpen(true);
       mediaWasOpenedRef.current = false;
     }
-  }, [isMediaActive]);
+  }, [isMediaActive, isGpViewerActive]);
 
   function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
     mediaWasOpenedRef.current = true;
     onOpenFile!(path, mediaType, itemKey);
+  }
+
+  function handleGpView(path: string, audioPath?: string) {
+    mediaWasOpenedRef.current = true;
+    onGpView!(path, audioPath);
   }
 
   function handleStart() {
@@ -237,7 +244,7 @@ function ExerciseSingleCard({
           resources={resources}
           onClose={handleClose}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
-          onGpView={onGpView}
+          onGpView={onGpView ? handleGpView : undefined}
         >
           {isFormOpen ? (
             <ExerciseSessionForm
@@ -356,6 +363,7 @@ interface ExerciseCardProps {
   onGpView?: (path: string, audioPath?: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
+  isGpViewerActive?: boolean;
   onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
 }
 
@@ -376,6 +384,7 @@ export function ExerciseCard({
   onGpView,
   onOpenChat,
   isMediaActive,
+  isGpViewerActive,
   onEntityEdited,
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
@@ -405,6 +414,7 @@ export function ExerciseCard({
         onGpView={onGpView}
         onOpenChat={onOpenChat ? () => onOpenChat(exercise.id) : undefined}
         isMediaActive={isMediaActive}
+        isGpViewerActive={isGpViewerActive}
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
         onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
         onEntityEdited={onEntityEdited}
@@ -434,6 +444,7 @@ export function ExerciseCard({
             onGpView={onGpView}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}
+        isGpViewerActive={isGpViewerActive}
             isChild
             onEntityEdited={onEntityEdited}
           />

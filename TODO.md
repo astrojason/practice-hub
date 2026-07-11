@@ -1,5 +1,9 @@
 ## Bugs
 - [ ] Guitar Pro files scanning has to be re-run on every app launch, even if the files haven't changed (gp-library.ts)
+- [x] Opening a media resource (audio/video/GP) during a session closed the session modal for good and, in the sequential-session flow, cancelled the whole session and discarded the running timer.
+  - [x] Sequential sessions: `SessionModal`'s auto-close-on-open-media was wired to `onCancelReturn`. Fixed by adding a distinct `onMediaOpen` callback that hides the sequential modal and restores it (with the timer intact) once the media closes.
+  - [x] Normal (single-item) sessions: the existing `isMediaActive`/`mediaWasOpenedRef` auto-reopen mechanism only tracked the audio/video player, not the GP viewer, so opening a GP tab left the modal closed with no way back (timer kept running in the background, just invisible). Fixed by threading `isGpViewerActive` from `App.tsx` down through `SessionView` to `ExerciseCard`/`StudyMaterialCard`/`SongCard`, and marking `onGpView` opens the same way as `onOpenFile`.
+  - [x] Quick-Added songs specifically: the `SongCard` rendered for `additionalSongs` (the "Additional" group populated via Quick Add) was missing the `isMediaActive`/`isGpViewerActive` props entirely, so opening *any* media (audio/video/GP) from a quick-added song's modal closed it for good — it never reopened, making the running timer look stopped even though it kept counting in the background. Fixed by passing both props on that card instance in `SessionView.tsx`.
 
 ## Features
 

@@ -183,9 +183,10 @@ interface Props {
   onCalendar: () => void;
   onBrowse: () => void;
   onGpView?: (path: string, audioPath?: string) => void;
+  isGpViewerActive?: boolean;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onGpView }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onGpView, isGpViewerActive }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -222,6 +223,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     children: SequentialChild[];
     currentIndex: number;
   } | null>(null);
+  // Temporarily hides the sequential modal while media (audio/video/GP) opened
+  // from within it is playing, without cancelling the underlying session/timer.
+  const [sequentialModalHidden, setSequentialModalHidden] = useState(false);
+  const sequentialMediaWasOpenedRef = useRef(false);
 
   // ── Chat / Reports ────────────────────────────────────────────────────────────
   const [chatEntity, setChatEntity] = useState<ChatEntity | null>(null);
@@ -354,6 +359,15 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // ── Re-show the sequential session modal once media opened from it closes ───
+  useEffect(() => {
+    const mediaActive = playerState !== null || (isGpViewerActive ?? false);
+    if (!mediaActive && sequentialMediaWasOpenedRef.current) {
+      setSequentialModalHidden(false);
+      sequentialMediaWasOpenedRef.current = false;
+    }
+  }, [playerState, isGpViewerActive]);
 
   // ── Derived values ────────────────────────────────────────────────────────────
   // Running timers: base (from prior pauses) + current run elapsed
@@ -653,6 +667,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     }
 
     setSequentialSession({ type, parentId, parentName, children, currentIndex: 0 });
+    setSequentialModalHidden(false);
+    sequentialMediaWasOpenedRef.current = false;
     const firstKey = type === "exercise"
       ? `exercise-${children[0].id}`
       : `studymaterial-${children[0].id}`;
@@ -1017,12 +1033,16 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       )}
 
       {/* Sequential session overlay */}
-      {sequentialSession && (() => {
+      {sequentialSession && !sequentialModalHidden && (() => {
         const { type, parentName, children, currentIndex } = sequentialSession;
         const childId = children[currentIndex].id;
         const childKey = type === "exercise"
           ? `exercise-${childId}`
           : `studymaterial-${childId}`;
+        function hideForMedia() {
+          sequentialMediaWasOpenedRef.current = true;
+          setSequentialModalHidden(true);
+        }
         return (
           <SequentialSessionModal
             token={token}
@@ -1042,6 +1062,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             onCancelReturn={handleCancelSequential}
             onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, children[currentIndex].name, itemKey ?? childKey)}
             onGpView={onGpView}
+            onMediaOpen={hideForMedia}
           />
         );
       })()}
@@ -1101,6 +1122,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onGpView={onGpView}
               onOpenChat={(id) => openChatForExercise(id)}
               isMediaActive={playerState !== null}
+              isGpViewerActive={isGpViewerActive}
               onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
             />
           ))}
@@ -1145,6 +1167,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onGpView={onGpView}
               onOpenChat={(id) => openChatForStudyMaterial(id)}
               isMediaActive={playerState !== null}
+              isGpViewerActive={isGpViewerActive}
               onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
             />
           ))}
@@ -1187,6 +1210,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onGpView={onGpView}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
+              isGpViewerActive={isGpViewerActive}
               onEntityEdited={handleSongEdited}
             />
           ))}
@@ -1229,6 +1253,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onGpView={onGpView}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
+              isGpViewerActive={isGpViewerActive}
               onEntityEdited={handleSongEdited}
             />
           ))}
@@ -1267,6 +1292,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
                 onGpView={onGpView}
                 onOpenChat={() => openChatForSong(song.id)}
+                isMediaActive={playerState !== null}
+                isGpViewerActive={isGpViewerActive}
                 onEntityEdited={handleSongEdited}
               />
             ))}
@@ -1298,6 +1325,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onGpView={onGpView}
                 onOpenChat={(id) => openChatForExercise(id)}
                 isMediaActive={playerState !== null}
+                isGpViewerActive={isGpViewerActive}
                 onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
               />
             ))}
@@ -1329,6 +1357,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onGpView={onGpView}
                 onOpenChat={(id) => openChatForStudyMaterial(id)}
                 isMediaActive={playerState !== null}
+                isGpViewerActive={isGpViewerActive}
                 onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
               />
             ))}

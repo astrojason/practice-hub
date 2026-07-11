@@ -58,6 +58,7 @@ interface Props {
   onGpView?: (path: string, audioPath?: string) => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
+  isGpViewerActive?: boolean;
   onEntityEdited?: (song: Song) => void;
 }
 
@@ -83,6 +84,7 @@ export function SongCard({
   onGpView,
   onOpenChat,
   isMediaActive,
+  isGpViewerActive,
   onEntityEdited,
 }: Props) {
   const inSession = isTimerActive || isTimerPaused;
@@ -98,15 +100,20 @@ export function SongCard({
   }, [isFormOpen]);
 
   useEffect(() => {
-    if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {
+    if (!(isMediaActive ?? false) && !(isGpViewerActive ?? false) && mediaWasOpenedRef.current) {
       setModalOpen(true);
       mediaWasOpenedRef.current = false;
     }
-  }, [isMediaActive]);
+  }, [isMediaActive, isGpViewerActive]);
 
   function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
     mediaWasOpenedRef.current = true;
     onOpenFile!(path, mediaType, itemKey);
+  }
+
+  function handleGpView(path: string, audioPath?: string) {
+    mediaWasOpenedRef.current = true;
+    onGpView!(path, audioPath);
   }
 
   function handleStart() {
@@ -208,7 +215,7 @@ export function SongCard({
           resources={resources}
           onClose={handleClose}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
-          onGpView={onGpView}
+          onGpView={onGpView ? handleGpView : undefined}
         >
           {isFormOpen ? (
             <SongSessionForm

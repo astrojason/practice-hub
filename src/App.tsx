@@ -92,6 +92,7 @@ export function App() {
         onCalendar={() => setView("calendar")}
         onBrowse={() => setView("browse")}
         onGpView={openGpViewer}
+        isGpViewerActive={gpViewerPath !== null}
       />
       {gpViewerPath && (
         <GpViewer filePath={gpViewerPath} initialAudioPath={gpViewerAudioPath} onClose={closeGpViewer} />

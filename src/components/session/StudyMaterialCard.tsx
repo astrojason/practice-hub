@@ -64,6 +64,7 @@ interface SingleCardProps {
   onStartSequential?: () => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
+  isGpViewerActive?: boolean;
   /** Collapse toggle for parent cards with children */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
@@ -93,6 +94,7 @@ function StudyMaterialSingleCard({
   onStartSequential,
   onOpenChat,
   isMediaActive,
+  isGpViewerActive,
   childrenCollapsed,
   onToggleChildren,
   onEntityEdited,
@@ -109,15 +111,20 @@ function StudyMaterialSingleCard({
   }, [isFormOpen]);
 
   useEffect(() => {
-    if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {
+    if (!(isMediaActive ?? false) && !(isGpViewerActive ?? false) && mediaWasOpenedRef.current) {
       setModalOpen(true);
       mediaWasOpenedRef.current = false;
     }
-  }, [isMediaActive]);
+  }, [isMediaActive, isGpViewerActive]);
 
   function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
     mediaWasOpenedRef.current = true;
     onOpenFile!(path, mediaType, itemKey);
+  }
+
+  function handleGpView(path: string, audioPath?: string) {
+    mediaWasOpenedRef.current = true;
+    onGpView!(path, audioPath);
   }
 
   function handleStart() {
@@ -236,7 +243,7 @@ function StudyMaterialSingleCard({
           resources={resources}
           onClose={handleClose}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
-          onGpView={onGpView}
+          onGpView={onGpView ? handleGpView : undefined}
         >
           {isFormOpen ? (
             <StudyMaterialSessionForm
@@ -347,6 +354,7 @@ export interface StudyMaterialCardProps {
   onGpView?: (path: string, audioPath?: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
+  isGpViewerActive?: boolean;
   onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
 }
 
@@ -367,6 +375,7 @@ export function StudyMaterialCard({
   onGpView,
   onOpenChat,
   isMediaActive,
+  isGpViewerActive,
   onEntityEdited,
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
@@ -397,6 +406,7 @@ export function StudyMaterialCard({
         onGpView={onGpView}
         onOpenChat={onOpenChat ? () => onOpenChat(material.id) : undefined}
         isMediaActive={isMediaActive}
+        isGpViewerActive={isGpViewerActive}
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
         onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
         onEntityEdited={onEntityEdited}
@@ -426,6 +436,7 @@ export function StudyMaterialCard({
             onGpView={onGpView}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}
+        isGpViewerActive={isGpViewerActive}
             isChild
             onEntityEdited={onEntityEdited}
           />

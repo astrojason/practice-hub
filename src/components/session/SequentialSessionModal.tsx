@@ -46,6 +46,8 @@ interface Props {
   onCancelReturn: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onGpView?: (path: string, audioPath?: string) => void;
+  /** Called instead of cancelling when media is opened from within the modal, so it can be hidden and restored without losing the session/timer. */
+  onMediaOpen?: () => void;
 }
 
 export function SequentialSessionModal({
@@ -66,6 +68,7 @@ export function SequentialSessionModal({
   onCancelReturn,
   onOpenFile,
   onGpView,
+  onMediaOpen,
 }: Props) {
   const [notes, setNotes] = useState("");
 
@@ -86,6 +89,7 @@ export function SequentialSessionModal({
       onClose={onCancelReturn}
       onOpenFile={onOpenFile}
       onGpView={onGpView}
+      onMediaOpen={onMediaOpen}
     >
       {isFormOpen ? (
         <div className="sequential-form-wrapper">

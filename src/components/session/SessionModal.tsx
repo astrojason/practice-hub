@@ -84,10 +84,13 @@ interface Props {
   onClose: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
   onGpView?: (path: string, audioPath?: string) => void;
+  /** Called instead of onClose when a resource opens media, so callers can distinguish "hide while media plays" from an explicit close/cancel. Defaults to onClose. */
+  onMediaOpen?: () => void;
   children: React.ReactNode;
 }
 
-export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, onGpView, children }: Props) {
+export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, onGpView, onMediaOpen, children }: Props) {
+  const closeForMedia = onMediaOpen ?? onClose;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -120,8 +123,8 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                       key={r.url}
                       name={r.name}
                       folderPath={r.url}
-                      onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt); onClose(); } : undefined}
-                      onGpView={onGpView ? (path) => { onGpView(path); onClose(); } : undefined}
+                      onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt); closeForMedia(); } : undefined}
+                      onGpView={onGpView ? (path) => { onGpView(path); closeForMedia(); } : undefined}
                     />
                   );
                 }
@@ -137,7 +140,7 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                         } else {
                           onOpenFile?.(r.url, ft);
                         }
-                        onClose();
+                        closeForMedia();
                       }}
                     >
                       <FolderOpenIcon style={{ width: 11, height: 11 }} />
@@ -150,7 +153,7 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                     <button
                       key={r.url}
                       className="modal-resource-link modal-resource-link--local"
-                      onClick={() => { onGpView?.(r.url, findAudioPath(resources)); onClose(); }}
+                      onClick={() => { onGpView?.(r.url, findAudioPath(resources)); closeForMedia(); }}
                     >
                       <FolderOpenIcon style={{ width: 11, height: 11 }} />
                       {r.name}
