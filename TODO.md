@@ -1,4 +1,7 @@
 ## Bugs
+- [x] GP viewer playhead drifts further behind the audio the longer a track plays (`useAudioEngine.ts`)
+  - [x] `getCurrentTime()` extrapolated purely from `performance.now()` since playback start, so any rate mismatch between the JS timer and the real audio hardware clock (`ctx.currentTime`) compounded over the whole track instead of self-correcting. Fixed by extracting `resolvePlaybackPosition()`, which anchors elapsed time to `ctx.currentTime` and only uses `performance.now()` to interpolate within the current buffer period (~93ms), resyncing every time the audio clock ticks forward.
+  - [x] Playwright tests in `tests/gp-audio-clock.spec.ts` call the pure resolver directly to prove drift immunity and buffer-period interpolation without needing a real audio pipeline.
 - [ ] Guitar Pro files scanning has to be re-run on every app launch, even if the files haven't changed (gp-library.ts)
 - [x] Opening a media resource (audio/video/GP) during a session closed the session modal for good and, in the sequential-session flow, cancelled the whole session and discarded the running timer.
   - [x] Sequential sessions: `SessionModal`'s auto-close-on-open-media was wired to `onCancelReturn`. Fixed by adding a distinct `onMediaOpen` callback that hides the sequential modal and restores it (with the timer intact) once the media closes.

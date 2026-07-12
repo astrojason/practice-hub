@@ -106,6 +106,61 @@ function pitchRatio(semitones: number, cents: number): number {
   return 2 ** (semitones / 12) * 2 ** (cents / 1200);
 }
 
+// ─── Playback clock ────────────────────────────────────────────────────────────
+//
+// getCurrentTime() needs to report a smooth, sub-frame-accurate position, but
+// performance.now() and the audio hardware clock (AudioContext.currentTime)
+// don't advance at exactly the same rate — real hardware clocks commonly
+// drift from the system timer by tens to hundreds of ppm. Extrapolating
+// purely from performance.now() since playback start (as before) lets that
+// mismatch compound for the entire track, so the reported position — and the
+// alphaTab cursor driven by it — drifts further from the actual audio the
+// longer a piece plays.
+//
+// The fix: treat ctx.currentTime as the source of truth for elapsed time,
+// and only use performance.now() to interpolate within the current buffer
+// period (ctx.currentTime only ticks once per ScriptProcessor callback,
+// ~93ms at 4096 samples). Every time ctx.currentTime advances, resync the
+// wall-clock anchor to it, so any rate mismatch between the two clocks can
+// only ever accumulate for one buffer period before self-correcting instead
+// of compounding for the whole track.
+
+export interface PlaybackClockState {
+  playStartCtxTime: number;
+  playStartWallTime: number;
+  playStartPosition: number;
+  lastCtxSample: number;
+  lastCtxSampleWall: number;
+}
+
+export interface PlaybackClockResult {
+  position: number;
+  lastCtxSample: number;
+  lastCtxSampleWall: number;
+}
+
+export function resolvePlaybackPosition(
+  state: PlaybackClockState,
+  nowCtx: number,
+  nowWall: number,
+  speed: number,
+  duration: number,
+): PlaybackClockResult {
+  let lastCtxSample = state.lastCtxSample;
+  let lastCtxSampleWall = state.lastCtxSampleWall;
+  if (nowCtx > lastCtxSample) {
+    lastCtxSample = nowCtx;
+    lastCtxSampleWall = nowWall;
+  }
+
+  const audioClockElapsed = lastCtxSample - state.playStartCtxTime;
+  const interpolation = Math.max(0, nowWall - lastCtxSampleWall);
+  const elapsed = audioClockElapsed + interpolation;
+
+  const position = Math.min(duration, Math.max(0, state.playStartPosition + elapsed * speed));
+  return { position, lastCtxSample, lastCtxSampleWall };
+}
+
 // ─── Engine state stored in a single ref ─────────────────────────────────────
 
 interface EngineRef {
@@ -122,6 +177,8 @@ interface EngineRef {
   playStartCtxTime: number;
   playStartWallTime: number;
   playStartPosition: number;
+  lastCtxSample: number;
+  lastCtxSampleWall: number;
   // Control values mirrored here for rAF access
   speed: number;
   loopEnabled: boolean;
@@ -157,6 +214,8 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     playStartCtxTime: 0,
     playStartWallTime: 0,
     playStartPosition: 0,
+    lastCtxSample: 0,
+    lastCtxSampleWall: 0,
     speed: 1.0,
     loopEnabled: true,
     loopStart: null,
@@ -241,6 +300,8 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     eng.playStartCtxTime = eng.ctx.currentTime;
     eng.playStartWallTime = performance.now() / 1000;
     eng.playStartPosition = eng._pausedAt;
+    eng.lastCtxSample = eng.playStartCtxTime;
+    eng.lastCtxSampleWall = eng.playStartWallTime;
     setIsPlaying(true);
     setCurrentTime(eng._pausedAt);
 
@@ -447,12 +508,16 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   const getCurrentTime = useCallback((): number => {
     const eng = e.current;
     if (!eng.ctx || eng.raf === null || !eng.duration) return eng._pausedAt;
-    // Use performance.now() rather than ctx.currentTime: the audio context only
-    // updates currentTime once per ScriptProcessor buffer (~93ms at 4096 samples),
-    // causing up to half-buffer lag (~46ms) when sampled from the main thread.
-    // performance.now() is sub-millisecond and always current.
-    const wallElapsed = performance.now() / 1000 - eng.playStartWallTime;
-    return Math.min(eng.duration, eng.playStartPosition + Math.max(0, wallElapsed) * eng.speed);
+    const result = resolvePlaybackPosition(
+      eng,
+      eng.ctx.currentTime,
+      performance.now() / 1000,
+      eng.speed,
+      eng.duration,
+    );
+    eng.lastCtxSample = result.lastCtxSample;
+    eng.lastCtxSampleWall = result.lastCtxSampleWall;
+    return result.position;
   }, []);
 
   // ── Assemble ────────────────────────────────────────────────────────────────
