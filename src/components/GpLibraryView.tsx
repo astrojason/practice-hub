@@ -31,6 +31,7 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
     statusMessage,
     progress,
     scan,
+    loadCachedScan,
     persistSeenEntries,
     dismissUnmatched,
     clearSeenCache,
@@ -43,6 +44,7 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
 
   useEffect(() => {
     loadSettings().then(() => setPathInput(rootPath));
+    loadCachedScan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -69,9 +71,15 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
     await invoke("open_with_default", { path });
   }
 
+  function readyToPush(matches: GpMatch[]): GpMatch[] {
+    // Exclude files that are already pushed and unchanged since — otherwise
+    // every scan would re-offer (and re-push) the same unchanged score.
+    return matches.filter((m) => m.difficulty_score !== null && (!m.pushed || m.is_newer_version));
+  }
+
   async function handleConfirm() {
     if (!scanResult) return;
-    const newMatches = scanResult.matches.filter((m) => m.difficulty_score !== null);
+    const newMatches = readyToPush(scanResult.matches);
 
     setPushing(true);
     setPushStatus("Pushing to Instrumenta…");
@@ -104,7 +112,7 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
   }
 
   const isScanning = status === "scanning" || status === "analyzing";
-  const newMatches = scanResult?.matches.filter((m) => m.difficulty_score !== null) ?? [];
+  const newMatches = scanResult ? readyToPush(scanResult.matches) : [];
   const hasNewResults = newMatches.length > 0;
 
   function stepState(step: "scan" | "match" | "analyze") {
@@ -274,13 +282,16 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
               >
                 {pushing ? "Pushing…" : `Push to Instrumenta (${newMatches.length})`}
               </button>
-              {pushStatus && <p className="gp-push-status">{pushStatus}</p>}
             </div>
           )}
 
           {!hasNewResults && status === "done" && (
             <p className="gp-hint">Nothing new to push — all files are up to date.</p>
           )}
+
+          {/* Kept outside the hasNewResults block so the confirmation stays
+              visible even after a successful push clears the ready-to-push list. */}
+          {pushStatus && <p className="gp-push-status">{pushStatus}</p>}
         </>
       )}
 

@@ -567,6 +567,8 @@ export interface GpMatch {
   manual_score: number | null;
   /** Whether this version supersedes a previously scanned version. */
   is_newer_version: boolean;
+  /** Whether this file's score/resource has already been pushed to Instrumenta. */
+  pushed: boolean;
 }
 
 /** A GP file that could not be matched to any Instrumenta song. */
@@ -582,6 +584,11 @@ export interface GpScanResult {
   skipped_count: number; // unchanged files skipped by incremental logic
 }
 
+/** Full snapshot of the last scan, persisted so the view can hydrate instantly on mount. */
+export interface GpLastScan extends GpScanResult {
+  timestamp: number;
+}
+
 /** Persisted per-file scan state (stored in tauri-plugin-store). */
 export interface GpSeenEntry {
   modified_ms: number;
@@ -592,6 +599,8 @@ export interface GpSeenEntry {
   manual_score: number | null;
   resource_path: string;
   dismissed: boolean;
+  /** Whether this file's score/resource has been pushed to Instrumenta. */
+  pushed: boolean;
 }
 
 // ─── GP tab viewer ────────────────────────────────────────────────────────────

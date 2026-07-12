@@ -19,6 +19,7 @@ import type {
   GpMatch,
   GpUnmatched,
   GpScanResult,
+  GpLastScan,
   GpSeenEntry,
   DifficultyVector,
 } from "../api/types";
@@ -34,13 +35,20 @@ const DEFAULT_ROOT = "/Users/jasonsylvester/Documents/Sheet Music";
 // the second-to-last as the title (may itself contain hyphens), and
 // everything before that as the artist.
 
-function parseFilename(filename: string): {
+export function parseFilename(filename: string): {
   artist: string;
   title: string;
   date: string;
   date_ms: number;
 } | null {
   const stem = filename.replace(/\.[^.]+$/, ""); // strip extension
+
+  // A separate versioning script copies the latest dated file to a
+  // non-dated "current" alias, sometimes leaving ISO-suffixed backup
+  // copies behind (Artist-Title-YYYY-MM-DD.gp). These are not the
+  // canonical MM-DD-YYYY working files and must be ignored outright.
+  if (/-\d{4}-\d{2}-\d{2}$/.test(stem)) return null;
+
   const parts = stem.split("-");
   // Need at least 3 parts: artist, title, date (date = MM-DD-YYYY = 3 parts)
   // Date occupies the last 3 dash-separated parts: MM, DD, YYYY
@@ -72,6 +80,37 @@ function parseFilename(filename: string): {
 
 function normKey(s: string): string {
   return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// ── Undated "current" alias resolution ────────────────────────────────────────
+// A separate versioning script (cleanup_duplicates.py) copies the newest
+// dated file to an undated "current" alias in the same folder, then trashes
+// older dated duplicates once a newer version arrives. A resource path
+// pinned to a specific dated filename will eventually 404 once that happens
+// — the undated alias is the only long-term-stable path. When it exists
+// alongside the dated file we just parsed, prefer it as the resource
+// (path/filename/modified_ms/size_bytes), while keeping the parsed
+// artist/title/date (from the dated file) for version tracking.
+export function resolveUndatedResource(file: GpFileParsed, rawEntries: GpFileEntry[]): GpFileParsed {
+  const ext = file.filename.match(/\.[^.]+$/)?.[0] ?? "";
+  const dateSuffix = `-${file.parsed_date}`;
+  const stem = file.filename.slice(0, file.filename.length - ext.length);
+  if (!stem.endsWith(dateSuffix)) return file;
+
+  const undatedFilename = stem.slice(0, stem.length - dateSuffix.length) + ext;
+  const dirPath = file.path.slice(0, file.path.length - file.filename.length);
+  const undatedPath = dirPath + undatedFilename;
+
+  const alias = rawEntries.find((e) => e.path === undatedPath);
+  if (!alias) return file; // alias doesn't exist yet — fall back to the dated file itself
+
+  return {
+    ...file,
+    path: alias.path,
+    filename: alias.filename,
+    modified_ms: alias.modified_ms,
+    size_bytes: alias.size_bytes,
+  };
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -152,7 +191,7 @@ export function useGpScanner(token: string) {
           versionMap.set(key, file);
         }
       }
-      const deduped = Array.from(versionMap.values());
+      const deduped = Array.from(versionMap.values()).map((f) => resolveUndatedResource(f, rawEntries));
 
       // 4. Fetch song catalog for matching
       setStatusMessage("Fetching song catalog…");
@@ -216,6 +255,22 @@ export function useGpScanner(token: string) {
         const isNewerVersion =
           !!prevEntry && prevEntry.modified_ms !== file.modified_ms;
 
+        // Cache the analysis result immediately — regardless of whether the
+        // user ends up confirming/pushing it — so a later scan never
+        // re-invokes the analyzer sidecar for an unchanged file. A version
+        // bump resets `pushed` since the new version hasn't been pushed yet.
+        seen[file.filename] = {
+          modified_ms: file.modified_ms,
+          song_id: song?.id ?? null,
+          difficulty_score: difficultyScore,
+          difficulty_vector: difficultyVector,
+          tempo_bpm: tempoBpm,
+          manual_score: null,
+          resource_path: file.path,
+          dismissed: false,
+          pushed: isNewerVersion ? false : (prevEntry?.pushed ?? false),
+        };
+
         if (song) {
           matches.push({
             file,
@@ -227,6 +282,7 @@ export function useGpScanner(token: string) {
             tempo_bpm: tempoBpm,
             manual_score: null,
             is_newer_version: isNewerVersion,
+            pushed: seen[file.filename].pushed,
           });
         } else {
           // Check if a previously dismissed/assigned version exists
@@ -237,6 +293,8 @@ export function useGpScanner(token: string) {
           });
         }
       }
+
+      await saveSeenMap(seen);
 
       // Also include previously matched files that were skipped (for display)
       for (const file of deduped) {
@@ -255,23 +313,46 @@ export function useGpScanner(token: string) {
             tempo_bpm: prev.tempo_bpm ?? null,
             manual_score: prev.manual_score ?? null,
             is_newer_version: false,
+            pushed: prev.pushed,
           });
         }
       }
 
-      setScanResult({ matches, unmatched, skipped_count: skippedCount });
+      const result: GpScanResult = { matches, unmatched, skipped_count: skippedCount };
+      setScanResult(result);
       setStatus("done");
       setStatusMessage(`Done — ${matches.length} matched, ${unmatched.length} unmatched, ${skippedCount} skipped.`);
+
+      const store = await load(STORE_KEY);
+      const lastScan: GpLastScan = { ...result, timestamp: Date.now() };
+      await store.set("lastScan", lastScan);
+      await store.save();
     } catch (err) {
       setStatus("error");
       setStatusMessage(String(err));
     }
   }, [rootPath, token]);
 
+  // ── Load cached scan results without re-scanning ────────────────────────────
+
+  const loadCachedScan = useCallback(async () => {
+    const store = await load(STORE_KEY);
+    const cached = await store.get<GpLastScan>("lastScan");
+    if (cached) {
+      setScanResult(cached);
+      setStatus("done");
+      setStatusMessage(
+        `Loaded cached scan from ${new Date(cached.timestamp).toLocaleString()} — ${cached.matches.length} matched, ${cached.unmatched.length} unmatched.`
+      );
+    }
+  }, []);
+
   // ── Persist scan results after user confirms ────────────────────────────────
 
   const persistSeenEntries = useCallback(
     async (confirmedMatches: GpMatch[]) => {
+      const pushedFilenames = new Set(confirmedMatches.map((m) => m.file.filename));
+
       const seen = await getSeenMap();
       for (const match of confirmedMatches) {
         seen[match.file.filename] = {
@@ -283,9 +364,25 @@ export function useGpScanner(token: string) {
           manual_score: match.manual_score,
           resource_path: match.file.path,
           dismissed: false,
+          pushed: true,
         };
       }
       await saveSeenMap(seen);
+
+      // Reflect the push in the in-memory + cached snapshot immediately, so
+      // the "ready to push" list updates without requiring a rescan.
+      const markPushed = (matches: GpMatch[]) =>
+        matches.map((m) => (pushedFilenames.has(m.file.filename) ? { ...m, pushed: true } : m));
+
+      setScanResult((prev) => (prev ? { ...prev, matches: markPushed(prev.matches) } : prev));
+
+      const store = await load(STORE_KEY);
+      const cached = await store.get<GpLastScan>("lastScan");
+      if (cached) {
+        const lastScan: GpLastScan = { ...cached, matches: markPushed(cached.matches) };
+        await store.set("lastScan", lastScan);
+        await store.save();
+      }
     },
     []
   );
@@ -323,6 +420,7 @@ export function useGpScanner(token: string) {
         manual_score: null,
         resource_path: "",
         dismissed: true,
+        pushed: false,
       };
     }
     await saveSeenMap(seen);
@@ -345,6 +443,7 @@ export function useGpScanner(token: string) {
     statusMessage,
     progress,
     scan,
+    loadCachedScan,
     persistSeenEntries,
     dismissUnmatched,
     clearSeenCache,
