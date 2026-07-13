@@ -2408,6 +2408,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   border-bottom: 1px solid var(--border-dim);
   vertical-align: middle;
 }
+.gp-table th.gp-sortable { cursor: pointer; user-select: none; }
+.gp-table th.gp-sortable:hover { color: var(--text); }
+.gp-sort-arrow { margin-left: 4px; font-size: 9px; }
 .gp-table tr:last-child td { border-bottom: none; }
 .gp-table tbody tr:nth-child(even) { background: var(--surface-2); }
 .gp-row-updated { background: rgba(124, 106, 247, 0.07) !important; }

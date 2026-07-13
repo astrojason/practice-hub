@@ -15,6 +15,9 @@ import { useGpScanner } from "../hooks/useGpScanner";
 import { pushDifficultyScore, registerGpResource } from "../api/client";
 import type { GpMatch, GpUnmatched, DifficultyVector } from "../api/types";
 
+type SortKey = "title" | "artist" | "date" | "difficulty";
+type SortDir = "asc" | "desc";
+
 interface Props {
   token: string;
   onBack: () => void;
@@ -41,6 +44,8 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
   const [pathInput, setPathInput] = useState(rootPath);
   const [pushing, setPushing] = useState(false);
   const [pushStatus, setPushStatus] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
     loadSettings().then(() => setPathInput(rootPath));
@@ -69,6 +74,43 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
 
   async function handleOpenFile(path: string) {
     await invoke("open_with_default", { path });
+  }
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function sortIndicator(key: SortKey) {
+    if (sortKey !== key) return null;
+    return <span className="gp-sort-arrow">{sortDir === "asc" ? "▲" : "▼"}</span>;
+  }
+
+  function sortMatches(matches: GpMatch[]): GpMatch[] {
+    if (!sortKey) return matches;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...matches].sort((a, b) => {
+      switch (sortKey) {
+        case "title":
+          return dir * a.song_name.localeCompare(b.song_name);
+        case "artist":
+          return dir * a.artist_name.localeCompare(b.artist_name);
+        case "date":
+          return dir * (a.file.date_ms - b.file.date_ms);
+        case "difficulty": {
+          const av = a.manual_score ?? a.difficulty_score;
+          const bv = b.manual_score ?? b.difficulty_score;
+          if (av === null && bv === null) return 0;
+          if (av === null) return 1; // nulls always sort last
+          if (bv === null) return -1;
+          return dir * (av - bv);
+        }
+      }
+    });
   }
 
   function readyToPush(matches: GpMatch[]): GpMatch[] {
@@ -213,16 +255,24 @@ export function GpLibraryView({ token, onBack, onGpView }: Props) {
                   <tr>
                     <th></th>
                     <th>File</th>
-                    <th>Song</th>
-                    <th>Artist</th>
-                    <th>Date</th>
+                    <th className="gp-sortable" onClick={() => handleSort("title")}>
+                      Song{sortIndicator("title")}
+                    </th>
+                    <th className="gp-sortable" onClick={() => handleSort("artist")}>
+                      Artist{sortIndicator("artist")}
+                    </th>
+                    <th className="gp-sortable" onClick={() => handleSort("date")}>
+                      Date{sortIndicator("date")}
+                    </th>
                     <th>BPM</th>
-                    <th>Difficulty</th>
+                    <th className="gp-sortable" onClick={() => handleSort("difficulty")}>
+                      Difficulty{sortIndicator("difficulty")}
+                    </th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {scanResult.matches.map((m) => (
+                  {sortMatches(scanResult.matches).map((m) => (
                     <GpMatchRow
                       key={m.file.path}
                       match={m}

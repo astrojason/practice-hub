@@ -54,4 +54,7 @@
 
 - [x] GP viewer tempo control: interactive BPM control synced to audio engine speed, persisted per file in localStorage
 - [x] GP viewer loop control: loop in/out points set from playhead, loop enable toggle, persisted per file in localStorage; loop region overlay on progress bar
-- [ ] GP list view: add the ability to sort by columns (title, artist, difficulty, date added) with ascending/descending toggle
+- [x] GP list view: add the ability to sort by columns (title, artist, difficulty, date added) with ascending/descending toggle
+  - [x] Clickable Song/Artist/Date/Difficulty column headers in the Matched table (`GpLibraryView.tsx`), toggling asc/desc per click with a sort-direction arrow indicator; difficulty sort uses `manual_score ?? difficulty_score` and always sorts unscored rows last
+  - [x] Playwright tests in `tests/gp-list-sort.spec.ts` covering all four sortable columns and asc/desc toggling
+- [ ] Help panel only has the Calendar & Practice Plans tutorial so far — write tutorials for the other user-facing features (GP Library, Browse, Sessions/timer, Metronome, GP viewer) and add each to `src/help/tutorials.ts`
