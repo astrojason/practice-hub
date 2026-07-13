@@ -100,6 +100,11 @@ def scan_dir(root: Path):
     return entries
 
 
+def compute_raw_fingerprint(entries: list) -> str:
+    """Mirrors computeRawFingerprint() in useGpScanner.ts."""
+    return "\n".join(sorted(f"{e['path']}|{e['modified_ms']}|{e['size_bytes']}" for e in entries))
+
+
 def dedupe(parsed_files):
     version_map = {}
     for f in parsed_files:
@@ -258,6 +263,14 @@ def main():
     print(f"Scanning {root_path} ...")
     raw_entries = scan_dir(root_path)
 
+    # Fast path: if the directory listing is byte-for-byte identical to the
+    # last run, nothing could have changed — skip the catalog fetch, dedup,
+    # and analysis entirely (and skip touching Turso at all).
+    fingerprint = compute_raw_fingerprint(raw_entries)
+    if store.get("rawFingerprint") == fingerprint and store.get("lastScan"):
+        print(f"No changes since last scan ({len(raw_entries)} files) — skipping catalog fetch/analysis.")
+        return
+
     parsed = []
     for entry in raw_entries:
         p = parse_filename(entry["filename"])
@@ -331,6 +344,7 @@ def main():
         "skipped_count": skipped_count,
         "timestamp": int(time.time() * 1000),
     }
+    store["rawFingerprint"] = fingerprint
     STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STORE_PATH.write_text(json.dumps(store, indent=2))
     print(f"Wrote {STORE_PATH}")

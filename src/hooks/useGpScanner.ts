@@ -82,6 +82,18 @@ function normKey(s: string): string {
   return s.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+// A stable fingerprint of the raw directory listing (path + mtime + size for
+// every file, order-independent). Used to short-circuit the whole scan
+// pipeline (catalog fetch, dedup, analysis) when nothing on disk changed at
+// all since the last scan — cheaper than re-deriving that per-file via the
+// "seen" cache every time, and lets us skip the catalog fetch too.
+function computeRawFingerprint(entries: GpFileEntry[]): string {
+  return entries
+    .map((e) => `${e.path}|${e.modified_ms}|${e.size_bytes}`)
+    .sort()
+    .join("\n");
+}
+
 // ── Undated "current" alias resolution ────────────────────────────────────────
 // A separate versioning script (cleanup_duplicates.py) copies the newest
 // dated file to an undated "current" alias in the same folder, then trashes
@@ -173,6 +185,23 @@ export function useGpScanner(token: string) {
       const rawEntries: GpFileEntry[] = JSON.parse(
         await invoke<string>("scan_gp_directory", { rootPath })
       );
+
+      // 1b. Fast path: if the directory listing is byte-for-byte identical
+      // to the last scan, nothing could have changed — skip the catalog
+      // fetch, dedup, and analysis entirely and reuse the cached result.
+      const fingerprint = computeRawFingerprint(rawEntries);
+      const store = await load(STORE_KEY);
+      const prevFingerprint = await store.get<string>("rawFingerprint");
+      const cachedLastScan = await store.get<GpLastScan>("lastScan");
+
+      if (prevFingerprint === fingerprint && cachedLastScan) {
+        setScanResult(cachedLastScan);
+        setStatus("done");
+        setStatusMessage(
+          `Done — no changes since last scan (${new Date(cachedLastScan.timestamp).toLocaleString()}), ${cachedLastScan.matches.length} matched, ${cachedLastScan.unmatched.length} unmatched.`
+        );
+        return;
+      }
 
       // 2. Parse filenames
       const parsed: GpFileParsed[] = [];
@@ -323,9 +352,9 @@ export function useGpScanner(token: string) {
       setStatus("done");
       setStatusMessage(`Done — ${matches.length} matched, ${unmatched.length} unmatched, ${skippedCount} skipped.`);
 
-      const store = await load(STORE_KEY);
       const lastScan: GpLastScan = { ...result, timestamp: Date.now() };
       await store.set("lastScan", lastScan);
+      await store.set("rawFingerprint", fingerprint);
       await store.save();
     } catch (err) {
       setStatus("error");
@@ -390,6 +419,11 @@ export function useGpScanner(token: string) {
   const clearSeenCache = useCallback(async () => {
     const store = await load(STORE_KEY);
     await store.set("seen", {});
+    // Also drop the fast-path fingerprint/snapshot — otherwise an unchanged
+    // directory listing would make the next scan() short-circuit before it
+    // ever re-analyzes anything, defeating "Force Rescan".
+    await store.delete("rawFingerprint");
+    await store.delete("lastScan");
     await store.save();
   }, []);
 
