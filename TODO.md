@@ -34,6 +34,13 @@
   - [x] Shared `catalogExerciseToDashboard`/`catalogStudyMaterialToDashboard` converters extracted to `src/api/catalogConvert.ts`
   - [x] Playwright tests for browse/list, expand/collapse children, edit, add-child (exercise + study material), and 409 conflict handling
 
+- [x] In-app Help panel with user-facing tutorials
+  - [x] `HelpModal` (portal, overlay, Escape/click-outside close) with sidebar tutorial list + markdown content pane (`react-markdown`)
+  - [x] `src/help/tutorials.ts` registry loading `docs/tutorials/*.md` via Vite `?raw` imports — add new entries here as more tutorials are written
+  - [x] First tutorial: `docs/tutorials/calendar-practice-plan.md` ("Calendar & Practice Plans")
+  - [x] Help nav button in session header (`onHelp`)
+  - [x] Playwright tests for nav button, modal open/list, tutorial content, Escape close
+
 - [x] GP file viewer with alphaTab rendering + pitch controls
   - [x] alphaTab integration (no Vite plugin needed; useWorkers=false, font served from public/font/)
   - [x] Pitch controls: audio semitones, audio cents (fine tune), tab semitones, linked toggle
@@ -47,3 +54,4 @@
 
 - [x] GP viewer tempo control: interactive BPM control synced to audio engine speed, persisted per file in localStorage
 - [x] GP viewer loop control: loop in/out points set from playhead, loop enable toggle, persisted per file in localStorage; loop region overlay on progress bar
+- [ ] GP list view: add the ability to sort by columns (title, artist, difficulty, date added) with ascending/descending toggle

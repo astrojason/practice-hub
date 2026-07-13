@@ -17,6 +17,7 @@ import type {
 import { ChatPanel } from "./chat/ChatPanel";
 import type { ChatEntity } from "./chat/ChatPanel";
 import { ErrorModal } from "./ErrorModal";
+import { HelpModal } from "./HelpModal";
 import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { SessionHeader } from "./session/SessionHeader";
@@ -187,6 +188,7 @@ interface Props {
 }
 
 export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onGpView, isGpViewerActive }: Props) {
+  const [helpOpen, setHelpOpen] = useState(false);
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -969,7 +971,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
         onBrowse={onBrowse}
+        onHelp={() => setHelpOpen(true)}
       />
+
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
 
       {openSessionModalOpen && (
         <OpenSessionForm
