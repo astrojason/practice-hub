@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getDashboard, getExerciseCatalog, getStudyMaterialById, getUser, rebuildDashboard } from "../api/client";
+import {
+  getDashboard,
+  getExerciseCatalog,
+  getExerciseSessionHistory,
+  getStudyMaterialById,
+  getStudyMaterialSessionHistory,
+  getUser,
+  rebuildDashboard,
+} from "../api/client";
 import type {
   CatalogExercise,
   CatalogExerciseWithActive,
@@ -47,38 +55,78 @@ function hasSessionToday(sessions: { created_timestamp: number }[]): boolean {
 const COMPLETED_KEY = "ph_completed";
 const SKIPPED_KEY = "ph_skipped";
 
-function loadStoredCompletedIds(): Set<string> {
+interface StoredIdsResult {
+  ids: Set<string>;
+  error: string | null;
+}
+
+function loadStoredCompletedIds(): StoredIdsResult {
   try {
     const stored = JSON.parse(localStorage.getItem(COMPLETED_KEY) ?? "null");
     const today = new Date().toLocaleDateString("en-CA");
     if (stored?.date === today && Array.isArray(stored.ids)) {
-      return new Set<string>(stored.ids);
+      return { ids: new Set<string>(stored.ids), error: null };
     }
-  } catch {}
-  return new Set<string>();
+    return { ids: new Set<string>(), error: null };
+  } catch (err) {
+    return {
+      ids: new Set<string>(),
+      error: `Couldn't read today's completed items from local storage — they've been reset. (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
 }
 
-function loadStoredSkippedIds(): Set<string> {
+function loadStoredSkippedIds(): StoredIdsResult {
   try {
     const stored = JSON.parse(localStorage.getItem(SKIPPED_KEY) ?? "null");
     const today = new Date().toLocaleDateString("en-CA");
     if (stored?.date === today && Array.isArray(stored.ids)) {
-      return new Set<string>(stored.ids);
+      return { ids: new Set<string>(stored.ids), error: null };
     }
-  } catch {}
-  return new Set<string>();
+    return { ids: new Set<string>(), error: null };
+  } catch (err) {
+    return {
+      ids: new Set<string>(),
+      error: `Couldn't read today's skipped items from local storage — they've been reset. (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
+}
+
+// Marks a parent exercise/study-material as done in `doneIds` once every one of
+// its direct children is already present in `doneIds` — the single source of
+// truth for that rule, used everywhere a parent's completion needs recomputing.
+function autoCompleteParents(
+  exercises: DashboardExercise[],
+  studyMaterials: DashboardStudyMaterial[],
+  doneIds: Set<string>
+): Set<string> {
+  const next = new Set(doneIds);
+  for (const ex of exercises) {
+    const parentKey = `exercise-${ex.id}`;
+    if (
+      ex.child_exercises.length > 0 &&
+      !next.has(parentKey) &&
+      ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))
+    ) {
+      next.add(parentKey);
+    }
+  }
+  for (const sm of studyMaterials) {
+    const parentKey = `studymaterial-${sm.id}`;
+    const children = sm.child_study_materials ?? [];
+    if (children.length > 0 && !next.has(parentKey) && children.every((c) => next.has(`studymaterial-${c.id}`))) {
+      next.add(parentKey);
+    }
+  }
+  return next;
 }
 
 function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<string> {
-  const next = new Set(prev);
+  let next = new Set(prev);
   for (const ex of dash.exercises) {
     if (hasSessionToday(ex.meta.sessions)) next.add(`exercise-${ex.id}`);
     for (const child of ex.child_exercises) {
       if (hasSessionToday(child.meta.sessions)) next.add(`exercise-${child.id}`);
-    }
-    // Auto-complete the parent when all its children are done
-    if (ex.child_exercises.length > 0 && ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))) {
-      next.add(`exercise-${ex.id}`);
     }
   }
   for (const sm of dash.study_materials) {
@@ -86,15 +134,11 @@ function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<str
     for (const child of sm.child_study_materials ?? []) {
       if (hasSessionToday(child.meta.sessions)) next.add(`studymaterial-${child.id}`);
     }
-    // Auto-complete the parent when all its children are done
-    const children = sm.child_study_materials ?? [];
-    if (children.length > 0 && children.every((c) => next.has(`studymaterial-${c.id}`))) {
-      next.add(`studymaterial-${sm.id}`);
-    }
   }
   for (const song of [...(dash.project?.songs ?? []), ...(dash.to_review?.songs ?? [])]) {
     if (hasSessionToday(song.meta?.sessions ?? [])) next.add(`song-${song.id}`);
   }
+  next = autoCompleteParents(dash.exercises, dash.study_materials, next);
   return next;
 }
 
@@ -108,47 +152,44 @@ function collectAllExerciseIds(exercises: DashboardExercise[]): number[] {
 }
 
 function nestStudyMaterials(flat: DashboardStudyMaterial[]): DashboardStudyMaterial[] {
-  // Collect every item recursively — the API may return some parents already
-  // nested (children inside child_study_materials) while other branches arrive flat.
-  // We need all IDs in one pool before deciding how to build the tree.
-  function collectAll(items: DashboardStudyMaterial[]): DashboardStudyMaterial[] {
-    const result: DashboardStudyMaterial[] = [];
-    for (const sm of items) {
-      result.push(sm);
-      for (const child of sm.child_study_materials ?? []) {
-        result.push(...collectAll([child]));
-      }
-    }
-    return result;
+  // Study materials are exactly two levels deep: a parent and its direct children.
+  // The API may return a parent with its children already nested inside
+  // child_study_materials, or return children as flat siblings referencing their
+  // parent via parent_study_material_id — sometimes both in the same response.
+  // Gather every item (top-level entries plus any already-nested children) into
+  // one pool, keyed by id, before rebuilding the two-level tree.
+  const all: DashboardStudyMaterial[] = [];
+  for (const sm of flat) {
+    all.push(sm);
+    for (const child of sm.child_study_materials ?? []) all.push(child);
   }
-
-  const all = collectAll(flat);
-  const idsInAll = new Set(all.map((sm) => Number(sm.id)));
-
-  // If nothing references a sibling as its parent, structure is already correct.
-  const hasParentRefs = all.some(
-    (sm) => sm.parent_study_material_id != null && idsInAll.has(Number(sm.parent_study_material_id))
-  );
-  if (!hasParentRefs) return flat;
 
   const byId = new Map<number, DashboardStudyMaterial>();
   for (const sm of all) {
     const id = Number(sm.id);
-    if (!byId.has(id)) {
-      byId.set(id, { ...sm, child_study_materials: [] });
-    }
+    if (!byId.has(id)) byId.set(id, { ...sm, child_study_materials: [] });
   }
+
   const roots: DashboardStudyMaterial[] = [];
-  for (const [, sm] of byId) {
-    if (sm.parent_study_material_id != null) {
-      const parent = byId.get(Number(sm.parent_study_material_id));
-      if (parent) {
-        parent.child_study_materials!.push(sm);
-      } else {
-        roots.push(sm); // orphan — treat as top-level
+  const rootIds = new Set<number>();
+  for (const sm of all) {
+    const id = Number(sm.id);
+    const node = byId.get(id)!;
+    const parent = sm.parent_study_material_id != null ? byId.get(Number(sm.parent_study_material_id)) : undefined;
+    // A valid parent is itself parentless. This keeps the hierarchy exactly two
+    // levels and stops malformed data — a self-reference, or two items each
+    // naming the other as parent — from nesting items into an unreachable cycle
+    // that silently drops them from the dashboard.
+    const isValidChild = parent && parent.id !== node.id && parent.parent_study_material_id == null;
+    if (isValidChild) {
+      if (!parent!.child_study_materials!.some((c) => c.id === node.id)) {
+        parent!.child_study_materials!.push(node);
       }
-    } else {
-      roots.push(sm);
+      continue;
+    }
+    if (!rootIds.has(id)) {
+      rootIds.add(id);
+      roots.push(node);
     }
   }
   return roots;
@@ -224,6 +265,9 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildError, setRebuildError] = useState<string | null>(null);
   const [orphanFetchError, setOrphanFetchError] = useState<string | null>(null);
+  const [historicalExercisesError, setHistoricalExercisesError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [quickAddHistoryError, setQuickAddHistoryError] = useState<string | null>(null);
 
   // ── Timer state ─────────────────────────────────────────────────────────────
   // displayedSeconds = serverTotal + sum of all in-session elapsed (running + paused)
@@ -231,10 +275,19 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [now, setNow] = useState(Date.now());
 
   // ── Per-item state ───────────────────────────────────────────────────────────
+  // Read once on mount — captured alongside any read error so a corrupted
+  // localStorage value resets state (safe) but doesn't do so silently.
+  const [initialStoredIds] = useState(() => ({
+    completed: loadStoredCompletedIds(),
+    skipped: loadStoredSkippedIds(),
+  }));
+  const [storageError, setStorageError] = useState<string | null>(
+    [initialStoredIds.completed.error, initialStoredIds.skipped.error].filter(Boolean).join(" ") || null
+  );
   // completedIds: "exercise-{id}" | "song-{id}" | "studymaterial-{id}"
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   // skippedIds: subset of completedIds — items marked skipped (no session created)
-  const [skippedIds, setSkippedIds] = useState<Set<string>>(loadStoredSkippedIds());
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(initialStoredIds.skipped.ids);
   // activeTimers: itemKey → Date.now() when the current run started
   const [activeTimers, setActiveTimers] = useState<Map<string, number>>(new Map());
   // pausedElapsed: itemKey → accumulated seconds (set on pause or stop-and-save)
@@ -262,6 +315,24 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [chatEntity, setChatEntity] = useState<ChatEntity | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [historicalExercises, setHistoricalExercises] = useState<CatalogExerciseWithActive[]>([]);
+  const [historicalExercisesLoaded, setHistoricalExercisesLoaded] = useState(false);
+
+  // Loaded lazily on first chat open (rather than on every dashboard load) so a
+  // fetch failure only interrupts the user at the point the data is actually
+  // needed, and doesn't cost a network round-trip for sessions that never open chat.
+  useEffect(() => {
+    if (!chatEntity || historicalExercisesLoaded) return;
+    getExerciseCatalog(token)
+      .then((exercises) => {
+        setHistoricalExercises(exercises);
+        setHistoricalExercisesLoaded(true);
+      })
+      .catch((err) =>
+        setHistoricalExercisesError(
+          `Couldn't load exercise history for AI chat context: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
+  }, [chatEntity, historicalExercisesLoaded, token]);
 
   // ── Player / Metronome ────────────────────────────────────────────────────────
   const [playerState, setPlayerState] = useState<{
@@ -294,48 +365,54 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   useEffect(() => {
     setLoadError(null);
     setOrphanFetchError(null);
-    let dashResult: DashboardData | null = null;
-    let userResult: UserProfile | null = null;
 
-    const loadDash = getDashboard(token).then((d) => { dashResult = d; }).catch((err) => {
-      throw { which: "dashboard (/user/dashboard)", message: err instanceof Error ? err.message : String(err) };
-    });
-    const loadUser = getUser(token).then((u) => { userResult = u; }).catch((err) => {
-      throw { which: "user profile (/user/me)", message: err instanceof Error ? err.message : String(err) };
-    });
+    Promise.allSettled([getDashboard(token), getUser(token)]).then(async ([dashResult, userResult]) => {
+      const failures: { which: string; message: string }[] = [];
+      if (dashResult.status === "rejected") {
+        failures.push({
+          which: "dashboard (/user/dashboard)",
+          message: dashResult.reason instanceof Error ? dashResult.reason.message : String(dashResult.reason),
+        });
+      }
+      if (userResult.status === "rejected") {
+        failures.push({
+          which: "user profile (/user/me)",
+          message: userResult.reason instanceof Error ? userResult.reason.message : String(userResult.reason),
+        });
+      }
+      // Surface every failed request, not just whichever one Promise.all would have
+      // reported first — a support report of "why won't it load" is only useful if
+      // it doesn't discard half the story when both requests fail together.
+      if (failures.length > 0) {
+        setLoadError({
+          which: failures.map((f) => f.which).join(" + "),
+          message: failures.map((f) => f.message).join(" | "),
+        });
+        return;
+      }
 
-    Promise.all([loadDash, loadUser])
-      .then(async () => {
-        const raw = dashResult!;
-        const user = userResult!;
-        let nestedSms = nestStudyMaterials(raw.study_materials);
+      const raw = (dashResult as PromiseFulfilledResult<DashboardData>).value;
+      const user = (userResult as PromiseFulfilledResult<UserProfile>).value;
+      let nestedSms = nestStudyMaterials(raw.study_materials);
 
-        // If any top-level study material is an orphan (its parent isn't in the dashboard
-        // response), fetch the parent and re-nest so the hierarchy displays correctly.
-        const orphanParentIds = findOrphanParentIds(nestedSms);
-        if (orphanParentIds.length > 0) {
-          const { parents, errorMessage } = await fetchOrphanParents(token, orphanParentIds);
-          if (errorMessage) setOrphanFetchError(errorMessage);
-          if (parents.length > 0) {
-            nestedSms = nestStudyMaterials([...raw.study_materials, ...parents]);
-          }
+      // If any top-level study material is an orphan (its parent isn't in the dashboard
+      // response), fetch the parent and re-nest so the hierarchy displays correctly.
+      const orphanParentIds = findOrphanParentIds(nestedSms);
+      if (orphanParentIds.length > 0) {
+        const { parents, errorMessage } = await fetchOrphanParents(token, orphanParentIds);
+        if (errorMessage) setOrphanFetchError(errorMessage);
+        if (parents.length > 0) {
+          nestedSms = nestStudyMaterials([...raw.study_materials, ...parents]);
         }
+      }
 
-        const dash = { ...raw, study_materials: nestedSms };
-        setDashboard(dash);
-        setUserProfile(user);
-        setServerTotal(user.time_practiced_today ?? 0);
+      const dash = { ...raw, study_materials: nestedSms };
+      setDashboard(dash);
+      setUserProfile(user);
+      setServerTotal(user.time_practiced_today ?? 0);
 
-        setCompletedIds((prev) => mergeCompletedFromDash(dash, new Set([...prev, ...loadStoredCompletedIds()])));
-
-        // Load historical exercises for chat context (non-blocking)
-        getExerciseCatalog(token)
-          .then((exercises) => setHistoricalExercises(exercises))
-          .catch(() => { /* non-critical */ });
-      })
-      .catch((err: { which: string; message: string }) =>
-        setLoadError({ which: err.which ?? "unknown", message: err.message ?? String(err) })
-      );
+      setCompletedIds((prev) => mergeCompletedFromDash(dash, new Set([...prev, ...initialStoredIds.completed.ids])));
+    });
   }, [token, loadTrigger]);
 
   // ── Persist completedIds for today across restarts ────────────────────────────
@@ -357,21 +434,13 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   // ── Auto-complete parents when all children are done (completed or skipped) ───
   useEffect(() => {
     if (!dashboard) return;
-    const allDone = (key: string) => completedIds.has(key) || skippedIds.has(key);
-    const toComplete: string[] = [];
-    for (const ex of [...dashboard.exercises, ...additionalExercises]) {
-      const parentKey = `exercise-${ex.id}`;
-      if (ex.child_exercises.length > 0 && !allDone(parentKey) && ex.child_exercises.every((c) => allDone(`exercise-${c.id}`))) {
-        toComplete.push(parentKey);
-      }
-    }
-    for (const sm of [...dashboard.study_materials, ...additionalStudyMaterials]) {
-      const parentKey = `studymaterial-${sm.id}`;
-      const children = sm.child_study_materials ?? [];
-      if (children.length > 0 && !allDone(parentKey) && children.every((c) => allDone(`studymaterial-${c.id}`))) {
-        toComplete.push(parentKey);
-      }
-    }
+    const doneIds = new Set([...completedIds, ...skippedIds]);
+    const withParents = autoCompleteParents(
+      [...dashboard.exercises, ...additionalExercises],
+      [...dashboard.study_materials, ...additionalStudyMaterials],
+      doneIds
+    );
+    const toComplete = [...withParents].filter((k) => !doneIds.has(k));
     if (toComplete.length > 0) {
       setCompletedIds((prev) => {
         const next = new Set(prev);
@@ -578,46 +647,25 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       return next;
     });
     setCompletedIds((prev) => {
-      const next = new Set(prev);
-      keys.forEach((k) => next.add(k));
-      // Auto-complete any parent whose children are all now done
-      const allExercises = [...(dashboard?.exercises ?? []), ...additionalExercises];
-      for (const ex of allExercises) {
-        if (ex.child_exercises.length > 0 && ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))) {
-          next.add(`exercise-${ex.id}`);
-        }
-      }
-      const allSms = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
-      for (const sm of allSms) {
-        const children = sm.child_study_materials ?? [];
-        if (children.length > 0 && children.every((c) => next.has(`studymaterial-${c.id}`))) {
-          next.add(`studymaterial-${sm.id}`);
-        }
-      }
-      return next;
+      const withKeys = new Set(prev);
+      keys.forEach((k) => withKeys.add(k));
+      return autoCompleteParents(
+        [...(dashboard?.exercises ?? []), ...additionalExercises],
+        [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials],
+        withKeys
+      );
     });
   }
 
   function handleSessionSubmit(dailyPracticeTime: number, itemKey: string) {
     setServerTotal(dailyPracticeTime);
     setCompletedIds((prev) => {
-      const next = new Set(prev);
-      next.add(itemKey);
-      // Auto-complete any parent exercise or study material whose children are all now done
-      const allExercises = [...(dashboard?.exercises ?? []), ...additionalExercises];
-      for (const ex of allExercises) {
-        if (ex.child_exercises.length > 0 && ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))) {
-          next.add(`exercise-${ex.id}`);
-        }
-      }
-      const allSms = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
-      for (const sm of allSms) {
-        const children = sm.child_study_materials ?? [];
-        if (children.length > 0 && children.every((c) => next.has(`studymaterial-${c.id}`))) {
-          next.add(`studymaterial-${sm.id}`);
-        }
-      }
-      return next;
+      const withKey = new Set(prev).add(itemKey);
+      return autoCompleteParents(
+        [...(dashboard?.exercises ?? []), ...additionalExercises],
+        [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials],
+        withKey
+      );
     });
     setActiveTimers((prev) => {
       const next = new Map(prev);
@@ -665,9 +713,21 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     if (type === "exercise") {
       const all = [...(dashboard?.exercises ?? []), ...additionalExercises];
       const ex = all.find((e) => e.id === parentId);
-      if (!ex || ex.child_exercises.length === 0) return;
+      if (!ex) {
+        setActionError("Couldn't start that sequential session — the exercise group is no longer available. Try refreshing.");
+        return;
+      }
+      if (ex.child_exercises.length === 0) {
+        setActionError(`"${ex.name}" has no sub-exercises to run sequentially.`);
+        return;
+      }
       parentName = ex.name;
-      children = ex.child_exercises.map((child) => ({
+      const incompleteChildren = ex.child_exercises.filter((c) => !completedIds.has(`exercise-${c.id}`));
+      if (incompleteChildren.length === 0) {
+        setActionError(`All exercises in "${ex.name}" are already complete for today.`);
+        return;
+      }
+      children = incompleteChildren.map((child) => ({
         id: child.id,
         name: child.name,
         resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type })),
@@ -677,12 +737,22 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     } else {
       const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
       const sm = all.find((s) => s.id === parentId);
-      if (!sm || (sm.child_study_materials ?? []).length === 0) return;
+      if (!sm) {
+        setActionError("Couldn't start that sequential session — the study material group is no longer available. Try refreshing.");
+        return;
+      }
+      if ((sm.child_study_materials ?? []).length === 0) {
+        setActionError(`"${sm.name}" has no child items to run sequentially.`);
+        return;
+      }
       parentName = sm.name;
       const incompleteChildren = (sm.child_study_materials ?? []).filter(
         (c) => !completedIds.has(`studymaterial-${c.id}`)
       );
-      if (incompleteChildren.length === 0) return;
+      if (incompleteChildren.length === 0) {
+        setActionError(`All items in "${sm.name}" are already complete for today.`);
+        return;
+      }
       children = incompleteChildren.map((child) => ({
         id: child.id,
         name: child.name,
@@ -817,10 +887,40 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
   function handleAddExercise(exercise: CatalogExercise) {
     setAdditionalExercises((prev) => [...prev, catalogExerciseToDashboard(exercise)]);
+    // The catalog shape has no session history, so the freshly-added card would
+    // otherwise show "never practiced" even for exercises with real history —
+    // fill it in from the real session-history endpoint once it loads.
+    getExerciseSessionHistory(token, exercise.id)
+      .then((res) => {
+        setAdditionalExercises((prev) =>
+          prev.map((e) =>
+            e.id === exercise.id ? { ...e, meta: { ...e.meta, sessions: res.user_exercise_sessions } } : e
+          )
+        );
+      })
+      .catch((err) =>
+        setQuickAddHistoryError(
+          `Couldn't load session history for "${exercise.name}": ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 
   function handleAddStudyMaterial(material: CatalogStudyMaterial) {
     setAdditionalStudyMaterials((prev) => [...prev, catalogStudyMaterialToDashboard(material)]);
+    // Same gap as exercises above — backfill real session history in the background.
+    getStudyMaterialSessionHistory(token, material.id)
+      .then((res) => {
+        setAdditionalStudyMaterials((prev) =>
+          prev.map((sm) =>
+            sm.id === material.id ? { ...sm, meta: { ...sm.meta, sessions: res.user_study_material_sessions } } : sm
+          )
+        );
+      })
+      .catch((err) =>
+        setQuickAddHistoryError(
+          `Couldn't load session history for "${material.name}": ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 
   // ── Additional group completion counts ────────────────────────────────────────
@@ -887,7 +987,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       ...additionalSongs,
     ];
     const song = allSongs.find((s) => s.id === songId);
-    if (!song) return;
+    if (!song) {
+      setActionError("Couldn't open chat — that song is no longer in the session. Try refreshing.");
+      return;
+    }
     setChatEntity({ type: "song", item: song, sessions: (song.meta.sessions ?? []) as SongSession[] });
   }
 
@@ -902,7 +1005,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       const child = ex.child_exercises.find((c) => c.id === exerciseId);
       if (child) { found = child; break; }
     }
-    if (!found) return;
+    if (!found) {
+      setActionError("Couldn't open chat — that exercise is no longer in the session. Try refreshing.");
+      return;
+    }
     setChatEntity({ type: "exercise", item: found, sessions: (found.meta.sessions ?? []) as ExerciseSession[] });
   }
 
@@ -917,7 +1023,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       const child = (sm.child_study_materials ?? []).find((c) => c.id === materialId);
       if (child) { found = child; break; }
     }
-    if (!found) return;
+    if (!found) {
+      setActionError("Couldn't open chat — that study material is no longer in the session. Try refreshing.");
+      return;
+    }
     setChatEntity({ type: "study_material", item: found, sessions: (found.meta.sessions ?? []) as StudyMaterialSession[] });
   }
 
@@ -974,6 +1083,14 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     <div className="session-view">
       {rebuildError && <ErrorModal error={rebuildError} onDismiss={() => setRebuildError(null)} />}
       {orphanFetchError && <ErrorModal error={orphanFetchError} onDismiss={() => setOrphanFetchError(null)} />}
+      {storageError && <ErrorModal error={storageError} onDismiss={() => setStorageError(null)} />}
+      {historicalExercisesError && (
+        <ErrorModal error={historicalExercisesError} onDismiss={() => setHistoricalExercisesError(null)} />
+      )}
+      {actionError && <ErrorModal error={actionError} onDismiss={() => setActionError(null)} />}
+      {quickAddHistoryError && (
+        <ErrorModal error={quickAddHistoryError} onDismiss={() => setQuickAddHistoryError(null)} />
+      )}
       {/* Full-screen confetti canvas — hidden until triggered */}
       <canvas
         ref={confettiCanvasRef}
