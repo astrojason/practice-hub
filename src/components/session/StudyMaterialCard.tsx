@@ -1,22 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  ChatBubbleLeftRightIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  ForwardIcon,
-  NoSymbolIcon,
-  PauseIcon,
-  PencilSquareIcon,
-  PlayIcon,
-  PlusIcon,
-  StopIcon,
-} from "@heroicons/react/16/solid";
+import { useState } from "react";
+import { ItemSessionCard } from "./ItemSessionCard";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { StudyMaterialEditForm } from "./forms/StudyMaterialEditForm";
-import { SessionModal } from "./SessionModal";
-import { LastSessionInfo } from "./LastSessionInfo";
-import { RatingTrendChart } from "../reports/RatingTrendChart";
 import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
 
 function inferResourceType(url: string, storedType?: string): Resource["type"] {
@@ -25,19 +10,6 @@ function inferResourceType(url: string, storedType?: string): Resource["type"] {
   if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
   return "url";
-}
-
-function formatElapsed(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-/** Returns true if the last 3+ sessions are all Awful or Bad */
-function isStruggling(sessions: StudyMaterialSession[]): boolean {
-  const rated = sessions.filter((s) => s.rating != null);
-  if (rated.length < 3) return false;
-  return rated.slice(0, 3).every((s) => s.rating === "Awful" || s.rating === "Bad");
 }
 
 interface SingleCardProps {
@@ -99,234 +71,67 @@ function StudyMaterialSingleCard({
   onToggleChildren,
   onEntityEdited,
 }: SingleCardProps) {
-  const inSession = isTimerActive || isTimerPaused;
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [notes, setNotes] = useState("");
-  const [showHistory, setShowHistory] = useState(false);
-  const mediaWasOpenedRef = useRef(false);
-
-  useEffect(() => {
-    if (isFormOpen) setModalOpen(true);
-  }, [isFormOpen]);
-
-  useEffect(() => {
-    if (!(isMediaActive ?? false) && !(isGpViewerActive ?? false) && mediaWasOpenedRef.current) {
-      setModalOpen(true);
-      mediaWasOpenedRef.current = false;
-    }
-  }, [isMediaActive, isGpViewerActive]);
-
-  function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
-    mediaWasOpenedRef.current = true;
-    onOpenFile!(path, mediaType, itemKey);
-  }
-
-  function handleGpView(path: string, audioPath?: string) {
-    mediaWasOpenedRef.current = true;
-    onGpView!(path, audioPath);
-  }
-
-  function handleStart() {
-    if (onStartSequential) {
-      onStartSequential();
-    } else {
-      onStart();
-      setModalOpen(true);
-    }
-  }
-
-  function handleClose() {
-    if (isFormOpen) onFormClose();
-    setModalOpen(false);
-    setShowHistory(false);
-  }
-
-  function handleCancel() {
-    onCancel();
-    setModalOpen(false);
-    setNotes("");
-    setShowHistory(false);
-  }
-
-  function handleFormSubmit(dpt: number) {
-    onSessionSubmit(dpt);
-    setModalOpen(false);
-    setNotes("");
-    setShowHistory(false);
-  }
-
   const resources: Resource[] = material.url
     ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type) }]
     : [];
   const sessions = (material.meta.sessions ?? []) as StudyMaterialSession[];
-  const lastSession = sessions[0] ?? null;
-  const struggling = isStruggling(sessions);
 
   return (
-    <div
-      className={`item-card ${isChild ? "child-card" : ""} ${isSkippedToday ? "skipped" : isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
-    >
-      <div className="item-card-row">
-        <span className="item-status">
-          {isSkippedToday ? <ForwardIcon className="icon-sm" /> : isCompletedToday ? <CheckIcon className="icon-sm" /> : "○"}
-        </span>
-        <div className="item-info">
-          <span className="item-name">{material.name}</span>
-          {onStartSequential && !isChild && (
-            <span className="item-tags">
-              <span className="tag">{(material.child_study_materials ?? []).length} items</span>
-            </span>
-          )}
-        </div>
-        <div className="item-actions">
-          {onToggleChildren && (
-            <button
-              className="btn-ghost btn-collapse"
-              onClick={onToggleChildren}
-              title={childrenCollapsed ? "Expand" : "Collapse"}
-            >
-              {childrenCollapsed ? <ChevronRightIcon className="icon" /> : <ChevronDownIcon className="icon" />}
-            </button>
-          )}
-          {!inSession && (
-            <button
-              className="btn-ghost"
-              onClick={() => setEditOpen(true)}
-              title="Edit"
-            >
-              <PencilSquareIcon className="icon" />
-            </button>
-          )}
-          <button
-            className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
-            onClick={onOpenChat}
-            title="AI chat"
-          >
-            <ChatBubbleLeftRightIcon className="icon" />
-          </button>
-          {inSession ? (
-            <button
-              className="item-elapsed"
-              onClick={() => setModalOpen(true)}
-              title="Open session"
-            >
-              {formatElapsed(timerElapsed)}
-            </button>
-          ) : (
-            <>
-              <button className="btn-timer" onClick={handleStart} title={onStartSequential ? "Start sequential session" : "Start timer"}>
-                <PlayIcon className="icon" />
-              </button>
-              {!onStartSequential && (
-                <button
-                  className="btn-timer"
-                  onClick={() => { onFormOpen(); setModalOpen(true); }}
-                  title="Log session"
-                >
-                  <PlusIcon className="icon" />
-                </button>
-              )}
-              {!isCompletedToday && !isSkippedToday && (
-                <button className="btn-ghost btn-skip" onClick={onSkip} title="Skip">
-                  <ForwardIcon className="icon" />
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {modalOpen && (
-        <SessionModal
-          title={material.name}
-          resources={resources}
-          onClose={handleClose}
-          onOpenFile={onOpenFile ? handleOpenFile : undefined}
-          onGpView={onGpView ? handleGpView : undefined}
-        >
-          {isFormOpen ? (
-            <StudyMaterialSessionForm
-              token={token}
-              studyMaterialId={material.id}
-              initialSeconds={timerElapsed}
-              initialNotes={notes}
-              lastSession={lastSession}
-              onSubmit={handleFormSubmit}
-              onCancel={handleClose}
-            />
-          ) : (
-            <div className="modal-session-body">
-              <div className="modal-elapsed-display">{formatElapsed(timerElapsed)}</div>
-              {lastSession && (
-                <LastSessionInfo session={lastSession} />
-              )}
-              <label className="form-full modal-notes-label">
-                Notes
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Notes for this session…"
-                />
-              </label>
-              {sessions.length > 0 && (
-                <div className="modal-history">
-                  <button
-                    className="btn-ghost modal-history-toggle"
-                    onClick={() => setShowHistory((v) => !v)}
-                  >
-                    {showHistory ? "Hide history" : `Rating history (${sessions.length})`}
-                  </button>
-                  {showHistory && (
-                    <RatingTrendChart
-                      token={token}
-                      entityType="study_material"
-                      entityId={material.id}
-                      sessions={sessions}
-                    />
-                  )}
-                </div>
-              )}
-              <div className="modal-session-controls">
-                {isTimerActive ? (
-                  <button className="btn-secondary" onClick={onPause}>
-                    <PauseIcon className="icon" /> Pause
-                  </button>
-                ) : (
-                  <button className="btn-secondary" onClick={onStart}>
-                    <PlayIcon className="icon" /> Resume
-                  </button>
-                )}
-                <button className="btn-primary" onClick={onStopAndSave}>
-                  <StopIcon className="icon" /> Stop &amp; Save
-                </button>
-                <button className="btn-ghost" onClick={handleCancel}>
-                  <NoSymbolIcon className="icon" /> Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </SessionModal>
+    <ItemSessionCard
+      token={token}
+      name={material.name}
+      sequentialItemCount={onStartSequential ? (material.child_study_materials ?? []).length : undefined}
+      resources={resources}
+      sessions={sessions}
+      entityType="study_material"
+      entityId={material.id}
+      isChild={isChild}
+      isCompletedToday={isCompletedToday}
+      isSkippedToday={isSkippedToday}
+      isTimerActive={isTimerActive}
+      isTimerPaused={isTimerPaused}
+      timerElapsed={timerElapsed}
+      isFormOpen={isFormOpen}
+      onStart={onStart}
+      onPause={onPause}
+      onStopAndSave={onStopAndSave}
+      onCancel={onCancel}
+      onFormOpen={onFormOpen}
+      onFormClose={onFormClose}
+      onSessionSubmit={onSessionSubmit}
+      onSkip={onSkip}
+      onOpenFile={onOpenFile}
+      onGpView={onGpView}
+      onStartSequential={onStartSequential}
+      onOpenChat={onOpenChat}
+      isMediaActive={isMediaActive}
+      isGpViewerActive={isGpViewerActive}
+      childrenCollapsed={childrenCollapsed}
+      onToggleChildren={onToggleChildren}
+      editTitle={`Edit: ${material.name}`}
+      renderSessionForm={({ initialNotes, timerElapsed, lastSession, onSubmit, onCancel }) => (
+        <StudyMaterialSessionForm
+          token={token}
+          studyMaterialId={material.id}
+          initialSeconds={timerElapsed}
+          initialNotes={initialNotes}
+          lastSession={lastSession}
+          onSubmit={onSubmit}
+          onCancel={onCancel}
+        />
       )}
-
-      {editOpen && (
-        <SessionModal
-          title={`Edit: ${material.name}`}
-          onClose={() => setEditOpen(false)}
-        >
-          <StudyMaterialEditForm
-            token={token}
-            material={material}
-            onSuccess={(id, name, url, type) => {
-              setEditOpen(false);
-              onEntityEdited?.(id, name, url, type);
-            }}
-            onCancel={() => setEditOpen(false)}
-          />
-        </SessionModal>
+      renderEditForm={({ onSuccess, onCancel }) => (
+        <StudyMaterialEditForm
+          token={token}
+          material={material}
+          onSuccess={(id, name, url, type) => {
+            onSuccess();
+            onEntityEdited?.(id, name, url, type);
+          }}
+          onCancel={onCancel}
+        />
       )}
-    </div>
+    />
   );
 }
 
@@ -436,7 +241,7 @@ export function StudyMaterialCard({
             onGpView={onGpView}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}
-        isGpViewerActive={isGpViewerActive}
+            isGpViewerActive={isGpViewerActive}
             isChild
             onEntityEdited={onEntityEdited}
           />
