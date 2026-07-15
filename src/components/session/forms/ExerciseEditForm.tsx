@@ -32,9 +32,25 @@ export function ExerciseEditForm({ token, exercise, onSuccess, onCancel }: Props
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function findResourceNameError(): string | null {
+    const named = resources.filter((r) => r.url).map((r) => r.name.trim());
+    if (named.some((n) => !n)) return "Every resource needs a name.";
+    const seen = new Set<string>();
+    for (const n of named) {
+      if (seen.has(n.toLowerCase())) return `Resource name "${n}" is used more than once.`;
+      seen.add(n.toLowerCase());
+    }
+    return null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
+    const resourceNameError = findResourceNameError();
+    if (resourceNameError) {
+      setError(resourceNameError);
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload: UpdateExercisePayload = {
@@ -121,14 +137,18 @@ export function ExerciseEditForm({ token, exercise, onSuccess, onCancel }: Props
                     className="edit-resource-browse"
                     title={r.type === "local_folder" ? "Browse for folder" : "Browse for file"}
                     onClick={async () => {
-                      const path = await openFilePicker({
-                        multiple: false,
-                        directory: r.type === "local_folder",
-                        filters: r.type === "guitar_pro"
-                          ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
-                          : undefined,
-                      });
-                      if (typeof path === "string") updateResource(r.id, "url", path);
+                      try {
+                        const path = await openFilePicker({
+                          multiple: false,
+                          directory: r.type === "local_folder",
+                          filters: r.type === "guitar_pro"
+                            ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
+                            : undefined,
+                        });
+                        if (typeof path === "string") updateResource(r.id, "url", path);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : String(err));
+                      }
                     }}
                   >
                     <FolderOpenIcon />

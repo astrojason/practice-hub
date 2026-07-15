@@ -8,6 +8,12 @@ import {
 } from "@heroicons/react/16/solid";
 import type { Song } from "../../api/types";
 
+function decodeHtml(html: string): string {
+  const ta = document.createElement("textarea");
+  ta.innerHTML = html;
+  return ta.value;
+}
+
 interface Props {
   overdueSongs: Song[];
   existingSongIds: ReadonlySet<number>;
@@ -136,9 +142,9 @@ export function QuickAddPanel({
                       key={t}
                       className={`qa-filter-pill${filterTuning === t ? " active" : ""}`}
                       onClick={() => setFilterTuning((prev) => (prev === t ? null : t))}
-                      // eslint-disable-next-line react/no-danger
-                      dangerouslySetInnerHTML={{ __html: t }}
-                    />
+                    >
+                      {decodeHtml(t)}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -153,9 +159,9 @@ export function QuickAddPanel({
                       key={pl.name}
                       className={`qa-filter-pill qa-filter-pill--playlist${filterPlaylist === pl.name ? " active" : ""}`}
                       onClick={() => setFilterPlaylist((prev) => (prev === pl.name ? null : pl.name))}
-                      // eslint-disable-next-line react/no-danger
-                      dangerouslySetInnerHTML={{ __html: pl.name }}
-                    />
+                    >
+                      {decodeHtml(pl.name)}
+                    </button>
                   ))}
                 </div>
               </div>

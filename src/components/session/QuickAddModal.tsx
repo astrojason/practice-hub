@@ -5,6 +5,7 @@ import {
   getCatalogSongs,
   getCatalogStudyMaterials,
 } from "../../api/client";
+import { ErrorModal } from "../ErrorModal";
 import type {
   CatalogExercise,
   CatalogStudyMaterial,
@@ -56,6 +57,8 @@ export function QuickAddModal({
   const [addedExerciseIds, setAddedExerciseIds] = useState<Set<number>>(new Set());
   const [addedMaterialIds, setAddedMaterialIds] = useState<Set<number>>(new Set());
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
@@ -69,8 +72,8 @@ export function QuickAddModal({
         setSongs((prev) => (reset ? res.songs : [...prev, ...res.songs]));
         setSongsTotal(res.total);
         setSongsPage(page);
-      } catch {
-        /* ignore */
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setSongsLoading(false);
       }
@@ -86,8 +89,8 @@ export function QuickAddModal({
         setExercises((prev) => (reset ? res.exercises : [...prev, ...res.exercises]));
         setExercisesTotal(res.total);
         setExercisesPage(page);
-      } catch {
-        /* ignore */
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setExercisesLoading(false);
       }
@@ -105,8 +108,8 @@ export function QuickAddModal({
         );
         setMaterialsTotal(res.total);
         setMaterialsPage(page);
-      } catch {
-        /* ignore */
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setMaterialsLoading(false);
       }
@@ -201,7 +204,7 @@ export function QuickAddModal({
             <div className="qa-loading">Searching…</div>
           )}
 
-          {debouncedSearch && !isLoading && !hasResults && (
+          {debouncedSearch && !isLoading && !hasResults && !error && (
             <div className="qa-empty qa-empty-center">No results for "{debouncedSearch}"</div>
           )}
 
@@ -279,6 +282,7 @@ export function QuickAddModal({
           )}
         </div>
       </div>
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
     </div>
   );
 }

@@ -6,7 +6,7 @@ export interface LastSessionData {
   notes: string | null;
   focus?: StudyFocus | null;  // songs only
   bpm?: number | null;        // songs + exercises
-  created_timestamp: number;  // Unix seconds
+  created_timestamp: number;  // Unix milliseconds
 }
 
 function formatDate(timestamp: number): string {

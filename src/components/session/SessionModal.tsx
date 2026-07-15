@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowTopRightOnSquareIcon, FolderOpenIcon, XMarkIcon } from "@heroicons/react/16/solid";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { ErrorModal } from "../ErrorModal";
 import type { Resource } from "../../api/types";
 
 // Infer file type from extension — GP files open in the GP viewer, others in the media player.
@@ -91,6 +92,7 @@ interface Props {
 
 export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, onGpView, onMediaOpen, children }: Props) {
   const closeForMedia = onMediaOpen ?? onClose;
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -165,7 +167,9 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                   <button
                     key={r.url}
                     className="modal-resource-link"
-                    onClick={() => openUrl(r.url)}
+                    onClick={() => {
+                      openUrl(r.url).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                    }}
                   >
                     <ArrowTopRightOnSquareIcon style={{ width: 11, height: 11 }} />
                     {r.name}
@@ -178,6 +182,7 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
 
         <div className="modal-body">{children}</div>
       </div>
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
     </div>
   );
 }

@@ -21,6 +21,10 @@ pnpm-debug.log*
 # TypeScript
 *.tsbuildinfo
 
+# Playwright
+test-results/
+playwright-report/
+
 # Env files
 .env
 .env.*

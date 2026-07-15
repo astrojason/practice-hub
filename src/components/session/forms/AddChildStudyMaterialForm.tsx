@@ -86,14 +86,18 @@ export function AddChildStudyMaterialForm({ token, parentStudyMaterialId, onSucc
               className="edit-resource-browse"
               title={type === "local_folder" ? "Browse for folder" : "Browse for file"}
               onClick={async () => {
-                const path = await openFilePicker({
-                  multiple: false,
-                  directory: type === "local_folder",
-                  filters: type === "guitar_pro"
-                    ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
-                    : undefined,
-                });
-                if (typeof path === "string") setUrl(path);
+                try {
+                  const path = await openFilePicker({
+                    multiple: false,
+                    directory: type === "local_folder",
+                    filters: type === "guitar_pro"
+                      ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
+                      : undefined,
+                  });
+                  if (typeof path === "string") setUrl(path);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : String(err));
+                }
               }}
             >
               <FolderOpenIcon />

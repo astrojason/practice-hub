@@ -255,14 +255,18 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
                     className="edit-resource-browse"
                     title={r.type === "local_folder" ? "Browse for folder" : "Browse for file"}
                     onClick={async () => {
-                      const path = await openFilePicker({
-                        multiple: false,
-                        directory: r.type === "local_folder",
-                        filters: r.type === "guitar_pro"
-                          ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
-                          : undefined,
-                      });
-                      if (typeof path === "string") updateResource(r.id, "url", path);
+                      try {
+                        const path = await openFilePicker({
+                          multiple: false,
+                          directory: r.type === "local_folder",
+                          filters: r.type === "guitar_pro"
+                            ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
+                            : undefined,
+                        });
+                        if (typeof path === "string") updateResource(r.id, "url", path);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : String(err));
+                      }
                     }}
                   >
                     <FolderOpenIcon />

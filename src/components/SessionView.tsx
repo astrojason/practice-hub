@@ -167,6 +167,33 @@ function findOrphanParentIds(nested: DashboardStudyMaterial[]): number[] {
   return [...orphanIds];
 }
 
+/**
+ * Fetches orphaned study-material parents by id, tolerating individual failures
+ * (a missing/unreachable parent shouldn't block the rest of the dashboard from
+ * rendering) while still reporting which ids failed and why, so the failure is
+ * visible instead of silently rendering the child as if it had no parent.
+ */
+async function fetchOrphanParents(
+  token: string,
+  ids: number[]
+): Promise<{ parents: DashboardStudyMaterial[]; errorMessage: string | null }> {
+  const settled = await Promise.allSettled(ids.map((id) => getStudyMaterialById(token, id)));
+  const parents: DashboardStudyMaterial[] = [];
+  const failures: string[] = [];
+  settled.forEach((result, i) => {
+    if (result.status === "fulfilled") {
+      parents.push(result.value);
+    } else {
+      const reason = result.reason;
+      failures.push(`#${ids[i]}: ${reason instanceof Error ? reason.message : String(reason)}`);
+    }
+  });
+  const errorMessage = failures.length > 0
+    ? `Failed to load ${failures.length} parent study material${failures.length > 1 ? "s" : ""}: ${failures.join("; ")}`
+    : null;
+  return { parents, errorMessage };
+}
+
 function inferSmResourceType(url: string, storedType?: string): Resource["type"] {
   if (storedType === "local_folder") return "local_folder";
   if (storedType === "local_file") return "local_file";
@@ -196,6 +223,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [loadTrigger, setLoadTrigger] = useState(0);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildError, setRebuildError] = useState<string | null>(null);
+  const [orphanFetchError, setOrphanFetchError] = useState<string | null>(null);
 
   // ── Timer state ─────────────────────────────────────────────────────────────
   // displayedSeconds = serverTotal + sum of all in-session elapsed (running + paused)
@@ -265,6 +293,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   // ── Load on mount ────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoadError(null);
+    setOrphanFetchError(null);
     let dashResult: DashboardData | null = null;
     let userResult: UserProfile | null = null;
 
@@ -285,14 +314,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         // response), fetch the parent and re-nest so the hierarchy displays correctly.
         const orphanParentIds = findOrphanParentIds(nestedSms);
         if (orphanParentIds.length > 0) {
-          const fetched = await Promise.all(
-            orphanParentIds.map((id) =>
-              getStudyMaterialById(token, id).catch(() => null)
-            )
-          );
-          const validParents = fetched.filter(Boolean) as typeof nestedSms;
-          if (validParents.length > 0) {
-            nestedSms = nestStudyMaterials([...raw.study_materials, ...validParents]);
+          const { parents, errorMessage } = await fetchOrphanParents(token, orphanParentIds);
+          if (errorMessage) setOrphanFetchError(errorMessage);
+          if (parents.length > 0) {
+            nestedSms = nestStudyMaterials([...raw.study_materials, ...parents]);
           }
         }
 
@@ -822,19 +847,26 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   }
 
   async function handleRebuild() {
+    // A sequential session snapshots its children's resources/last-session info once,
+    // at start — rebuilding mid-sequence would replace `dashboard` without refreshing
+    // that snapshot, leaving the remaining queue items showing stale data. Block it
+    // instead of letting the two silently drift apart.
+    if (sequentialSession) {
+      setRebuildError("Finish or cancel the current sequential session before rebuilding the dashboard.");
+      return;
+    }
     setIsRebuilding(true);
     setRebuildError(null);
+    setOrphanFetchError(null);
     try {
       const raw = await rebuildDashboard(token);
       let nestedSms = nestStudyMaterials(raw.study_materials);
       const orphanParentIds = findOrphanParentIds(nestedSms);
       if (orphanParentIds.length > 0) {
-        const fetched = await Promise.all(
-          orphanParentIds.map((id) => getStudyMaterialById(token, id).catch(() => null))
-        );
-        const validParents = fetched.filter(Boolean) as typeof nestedSms;
-        if (validParents.length > 0) {
-          nestedSms = nestStudyMaterials([...raw.study_materials, ...validParents]);
+        const { parents, errorMessage } = await fetchOrphanParents(token, orphanParentIds);
+        if (errorMessage) setOrphanFetchError(errorMessage);
+        if (parents.length > 0) {
+          nestedSms = nestStudyMaterials([...raw.study_materials, ...parents]);
         }
       }
       const dash = { ...raw, study_materials: nestedSms };
@@ -941,6 +973,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   return (
     <div className="session-view">
       {rebuildError && <ErrorModal error={rebuildError} onDismiss={() => setRebuildError(null)} />}
+      {orphanFetchError && <ErrorModal error={orphanFetchError} onDismiss={() => setOrphanFetchError(null)} />}
       {/* Full-screen confetti canvas — hidden until triggered */}
       <canvas
         ref={confettiCanvasRef}
