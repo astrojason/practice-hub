@@ -20,7 +20,11 @@ export interface UpdateSongPayload {
   bpm: number | null;
   resources: { name: string; url: string; type: string }[];
   song_lists: number[];
-  difficulty: number;
+  has_lead: boolean;
+  has_singing: boolean;
+  rhythm_difficulty: number | null;
+  lead_difficulty: number | null;
+  singing_difficulty: number | null;
   date_learned: string | null;
 }
 
@@ -73,13 +77,12 @@ export interface SongSession {
   user_id: number;
   focus: StudyFocus | null;
   bpm: number | null;
-  rating: StudyRating | null;
+  rhythm_rating: StudyRating | null;
+  lead_rating: StudyRating | null;
+  singing_rating: StudyRating | null;
   seconds: number;
   notes: string | null;
   from_memory: boolean;
-  rhythm: boolean;
-  lead: boolean;
-  singing: boolean;
   created_timestamp: number;
   updated_timestamp: number;
 }
@@ -165,8 +168,12 @@ export interface SongMeta {
   user_id?: number;
   song_id?: number;
   date_learned: number | null;
-  difficulty: number | null;
-  difficulty_name: string | null;
+  rhythm_difficulty: number | null;
+  lead_difficulty: number | null;
+  singing_difficulty: number | null;
+  singing_difficulty_name: string | null;
+  rhythm_difficulty_manual: boolean;
+  lead_difficulty_manual: boolean;
   song_lists?: SongListRef[];
   sessions?: SongSession[];
   sections?: SongSection[];
@@ -186,6 +193,8 @@ export interface Song {
   tuning_id: number;
   tuning_name: string;
   bpm: number | null;
+  has_lead: boolean;
+  has_singing: boolean;
   active: boolean;
   resources: Resource[] | null;
   tags: string[];
@@ -362,12 +371,11 @@ export interface SongSessionPayload {
   seconds: number;
   focus: number | null; // 1=Control 2=Clarity 3=Consistency 4=Musicality 5=Playthrough
   bpm: number | null;
-  rating: number | null; // 1=Awful 2=Bad 3=Neutral 4=Good 5=Great
   notes: string | null;
   from_memory: boolean;
-  rhythm: boolean;
-  lead: boolean;
-  singing: boolean;
+  rhythm_rating: number | null; // 1=Awful 2=Bad 3=Neutral 4=Good 5=Great
+  lead_rating: number | null;
+  singing_rating: number | null;
 }
 
 export interface ExerciseSessionPayload {
@@ -406,13 +414,12 @@ export interface SongSessionResponse extends SessionPostResponse {
   user_id: number;
   focus: StudyFocus | null;
   bpm: number | null;
-  rating: StudyRating | null;
+  rhythm_rating: StudyRating | null;
+  lead_rating: StudyRating | null;
+  singing_rating: StudyRating | null;
   seconds: number;
   notes: string | null;
   from_memory: boolean;
-  rhythm: boolean;
-  lead: boolean;
-  singing: boolean;
   created_timestamp: number;
   updated_timestamp: number;
 }

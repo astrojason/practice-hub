@@ -16,7 +16,7 @@ import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import type { LastSessionData } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
-import type { ExerciseSession, Resource, SongSession, StudyMaterialSession, StudyRating } from "../../api/types";
+import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
 
 export function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -24,9 +24,22 @@ export function formatElapsed(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/** Returns true if the last 3+ sessions are all Awful or Bad */
-export function isStruggling(sessions: { rating: StudyRating | null }[]): boolean {
-  const rated = sessions.filter((s) => s.rating != null);
+const STRUGGLING_ASPECTS = ["rhythm_rating", "lead_rating", "singing_rating"] as const;
+
+/** Returns true if, for songs, any aspect's last 3+ rated sessions are all Awful/Bad;
+ * for exercises/study materials, if the last 3+ sessions overall are all Awful/Bad. */
+export function isStruggling(
+  sessions: AnySession[],
+  entityType: "exercise" | "song" | "study_material",
+): boolean {
+  if (entityType === "song") {
+    const songSessions = sessions as SongSession[];
+    return STRUGGLING_ASPECTS.some((key) => {
+      const rated = songSessions.filter((s) => s[key] != null);
+      return rated.length >= 3 && rated.slice(0, 3).every((s) => s[key] === "Awful" || s[key] === "Bad");
+    });
+  }
+  const rated = (sessions as (ExerciseSession | StudyMaterialSession)[]).filter((s) => s.rating != null);
   if (rated.length < 3) return false;
   return rated.slice(0, 3).every((s) => s.rating === "Awful" || s.rating === "Bad");
 }
@@ -187,7 +200,7 @@ export function ItemSessionCard({
   }
 
   const lastSession = sessions[0] ?? null;
-  const struggling = isStruggling(sessions);
+  const struggling = isStruggling(sessions, entityType);
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
 
