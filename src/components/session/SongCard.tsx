@@ -109,6 +109,8 @@ export function SongCard({
           songId={song.id}
           songBpm={song.bpm}
           songSeconds={song.seconds}
+          songHasLead={song.has_lead}
+          songHasSinging={song.has_singing}
           initialSeconds={timerElapsed}
           initialNotes={initialNotes}
           lastSession={lastSession}

@@ -2,7 +2,10 @@ import Markdown from "react-markdown";
 import type { StudyFocus, StudyRating } from "../../api/types";
 
 export interface LastSessionData {
-  rating: StudyRating | null;
+  rating?: StudyRating | null;         // exercises + study materials
+  rhythm_rating?: StudyRating | null;  // songs only
+  lead_rating?: StudyRating | null;    // songs only
+  singing_rating?: StudyRating | null; // songs only
   notes: string | null;
   focus?: StudyFocus | null;  // songs only
   bpm?: number | null;        // songs + exercises
@@ -27,11 +30,14 @@ interface Props {
 }
 
 export function LastSessionInfo({ session }: Props) {
-  const { rating, notes, focus, bpm, created_timestamp } = session;
+  const { rating, rhythm_rating, lead_rating, singing_rating, notes, focus, bpm, created_timestamp } = session;
 
   type Chip = { label: string; value: string };
   const chips: Chip[] = [];
   if (rating) chips.push({ label: "Rating", value: rating });
+  if (rhythm_rating) chips.push({ label: "Rhythm", value: rhythm_rating });
+  if (lead_rating) chips.push({ label: "Lead", value: lead_rating });
+  if (singing_rating) chips.push({ label: "Singing", value: singing_rating });
   if (focus)  chips.push({ label: "Focus",  value: focus });
   if (bpm)    chips.push({ label: "BPM",    value: String(bpm) });
 

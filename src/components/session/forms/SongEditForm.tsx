@@ -5,7 +5,15 @@ import { getArtists, getTunings, updateSong } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { Artist, Resource, Song, Tuning, UpdateSongPayload } from "../../../api/types";
 
-const DIFFICULTY_LABELS = ["None", "Beginner", "Intermediate", "Advanced", "Expert", "Master"];
+// Matches the backend's DifficultyRating enum (Simple/Easy/Average/Challenging/Hard)
+// x10, so singing_difficulty shares the same 1-100 scale as rhythm/lead.
+const SINGING_DIFFICULTY_OPTIONS = [
+  { label: "Simple", value: 10 },
+  { label: "Easy", value: 30 },
+  { label: "Average", value: 50 },
+  { label: "Challenging", value: 70 },
+  { label: "Hard", value: 100 },
+];
 
 function tsToDateStr(ts: number | null): string {
   if (!ts) return "";
@@ -49,7 +57,11 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
   const [tuningId, setTuningId] = useState(song.tuning_id);
   const [length, setLength] = useState(secsToMmSs(song.seconds));
   const [bpm, setBpm] = useState<number | "">(song.bpm ?? "");
-  const [difficulty, setDifficulty] = useState(song.meta.difficulty ?? 0);
+  const [hasLead, setHasLead] = useState(song.has_lead);
+  const [hasSinging, setHasSinging] = useState(song.has_singing);
+  const [rhythmDifficulty, setRhythmDifficulty] = useState<number | "">(song.meta.rhythm_difficulty ?? "");
+  const [leadDifficulty, setLeadDifficulty] = useState<number | "">(song.meta.lead_difficulty ?? "");
+  const [singingDifficulty, setSingingDifficulty] = useState<number | "">(song.meta.singing_difficulty ?? "");
   const [dateLearned, setDateLearned] = useState(tsToDateStr(song.meta.date_learned));
   const [resources, setResources] = useState<ResourceRow[]>(
     (song.resources ?? []).map((r: Resource, i: number) => ({
@@ -103,7 +115,11 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
           ...(currentListId != null ? [currentListId] : []),
         ]),
       ],
-      difficulty: Number(difficulty),
+      has_lead: hasLead,
+      has_singing: hasSinging,
+      rhythm_difficulty: rhythmDifficulty !== "" ? Number(rhythmDifficulty) : null,
+      lead_difficulty: hasLead && leadDifficulty !== "" ? Number(leadDifficulty) : null,
+      singing_difficulty: hasSinging && singingDifficulty !== "" ? Number(singingDifficulty) : null,
       date_learned: dateLearned || null,
     };
     try {
@@ -188,19 +204,68 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
           />
         </div>
       </div>
+      <div className="edit-form-row">
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={hasLead}
+            onChange={(e) => setHasLead(e.target.checked)}
+          />
+          Has Lead part
+        </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={hasSinging}
+            onChange={(e) => setHasSinging(e.target.checked)}
+          />
+          Has Singing part
+        </label>
+      </div>
       <div className="edit-form-grid">
         <div className="edit-form-row">
-          <label htmlFor="ef-diff">Difficulty</label>
-          <select
-            id="ef-diff"
-            value={difficulty}
-            onChange={(e) => setDifficulty(Number(e.target.value))}
-          >
-            {DIFFICULTY_LABELS.map((label, i) => (
-              <option key={i} value={i}>{label}</option>
-            ))}
-          </select>
+          <label htmlFor="ef-diff-rhythm">Rhythm Difficulty</label>
+          <input
+            id="ef-diff-rhythm"
+            type="number"
+            min={1}
+            max={100}
+            placeholder="—"
+            value={rhythmDifficulty}
+            onChange={(e) => setRhythmDifficulty(e.target.value === "" ? "" : Number(e.target.value))}
+          />
         </div>
+        {hasLead && (
+          <div className="edit-form-row">
+            <label htmlFor="ef-diff-lead">Lead Difficulty</label>
+            <input
+              id="ef-diff-lead"
+              type="number"
+              min={1}
+              max={100}
+              placeholder="—"
+              value={leadDifficulty}
+              onChange={(e) => setLeadDifficulty(e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          </div>
+        )}
+      </div>
+      <div className="edit-form-grid">
+        {hasSinging && (
+          <div className="edit-form-row">
+            <label htmlFor="ef-diff-singing">Singing Difficulty</label>
+            <select
+              id="ef-diff-singing"
+              value={singingDifficulty}
+              onChange={(e) => setSingingDifficulty(e.target.value === "" ? "" : Number(e.target.value))}
+            >
+              <option value="">—</option>
+              {SINGING_DIFFICULTY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="edit-form-row">
           <label htmlFor="ef-date">Date Learned</label>
           <input

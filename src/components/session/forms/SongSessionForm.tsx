@@ -27,6 +27,8 @@ interface Props {
   songId: number;
   songBpm?: number | null;
   songSeconds?: number | null;
+  songHasLead: boolean;
+  songHasSinging: boolean;
   initialSeconds: number;
   initialNotes?: string;
   lastSession?: LastSessionData | null;
@@ -39,6 +41,8 @@ export function SongSessionForm({
   songId,
   songBpm,
   songSeconds,
+  songHasLead,
+  songHasSinging,
   initialSeconds,
   initialNotes = "",
   lastSession,
@@ -46,11 +50,13 @@ export function SongSessionForm({
   onCancel,
 }: Props) {
   const [focus, setFocus] = useState<string>("5");
-  const [rhythm, setRhythm] = useState(false);
-  const [lead, setLead] = useState(false);
-  const [singing, setSinging] = useState(false);
   const [bpm, setBpm] = useState<string>(songBpm != null ? String(songBpm) : "");
-  const [rating, setRating] = useState<string>("3");
+  // Rhythm is assumed to always be part of a song, so its picker starts on a
+  // real value; lead/singing start blank — a rating being set is what marks
+  // that aspect as practiced this session, so blank means "not this time".
+  const [rhythmRating, setRhythmRating] = useState<string>("3");
+  const [leadRating, setLeadRating] = useState<string>("");
+  const [singingRating, setSingingRating] = useState<string>("");
   const [fromMemory, setFromMemory] = useState(false);
   const [seconds, setSeconds] = useState(
     initialSeconds > 0 ? String(initialSeconds) : (songSeconds ? String(songSeconds) : "0")
@@ -74,7 +80,10 @@ export function SongSessionForm({
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key >= "1" && e.key <= "5") setRating(e.key);
+      // Targets Rhythm specifically — it's the one aspect always present and
+      // the picker that starts pre-selected; Lead/Singing are set via their
+      // own dropdowns.
+      if (e.key >= "1" && e.key <= "5") setRhythmRating(e.key);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -90,12 +99,11 @@ export function SongSessionForm({
         seconds: Math.max(1, parseInt(seconds) || 1),
         focus: focus ? parseInt(focus) : null,
         bpm: bpm ? parseInt(bpm) : null,
-        rating: rating ? parseInt(rating) : null,
         notes: notes.trim() || null,
         from_memory: fromMemory,
-        rhythm,
-        lead,
-        singing,
+        rhythm_rating: rhythmRating ? parseInt(rhythmRating) : null,
+        lead_rating: songHasLead && leadRating ? parseInt(leadRating) : null,
+        singing_rating: songHasSinging && singingRating ? parseInt(singingRating) : null,
       };
       const res = await postSongSession(token, payload);
       onSubmit(res.daily_practice_time);
@@ -114,18 +122,6 @@ export function SongSessionForm({
           <select value={focus} onChange={(e) => setFocus(e.target.value)}>
             <option value="">—</option>
             {FOCUS_OPTIONS.map((o) => (
-              <option key={o.value} value={String(o.value)}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Rating
-          <select value={rating} onChange={(e) => setRating(e.target.value)}>
-            <option value="">—</option>
-            {RATING_OPTIONS.map((o) => (
               <option key={o.value} value={String(o.value)}>
                 {o.label}
               </option>
@@ -175,30 +171,43 @@ export function SongSessionForm({
       </div>
 
       <div className="form-row">
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={rhythm}
-            onChange={(e) => setRhythm(e.target.checked)}
-          />
+        <label>
           Rhythm
+          <select value={rhythmRating} onChange={(e) => setRhythmRating(e.target.value)}>
+            <option value="">—</option>
+            {RATING_OPTIONS.map((o) => (
+              <option key={o.value} value={String(o.value)}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={lead}
-            onChange={(e) => setLead(e.target.checked)}
-          />
-          Lead
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={singing}
-            onChange={(e) => setSinging(e.target.checked)}
-          />
-          Singing
-        </label>
+        {songHasLead && (
+          <label>
+            Lead
+            <select value={leadRating} onChange={(e) => setLeadRating(e.target.value)}>
+              <option value="">—</option>
+              {RATING_OPTIONS.map((o) => (
+                <option key={o.value} value={String(o.value)}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {songHasSinging && (
+          <label>
+            Singing
+            <select value={singingRating} onChange={(e) => setSingingRating(e.target.value)}>
+              <option value="">—</option>
+              {RATING_OPTIONS.map((o) => (
+                <option key={o.value} value={String(o.value)}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="checkbox-label">
           <input
             type="checkbox"

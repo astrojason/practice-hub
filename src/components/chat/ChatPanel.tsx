@@ -39,6 +39,17 @@ interface Message {
 
 const RATING_VALUES: Record<string, number> = { Awful: 1, Bad: 2, Neutral: 3, Good: 4, Great: 5 };
 
+function sessionRatingSummary(s: AnySession): string | null {
+  if ("rhythm_rating" in s) {
+    const parts: string[] = [];
+    if (s.rhythm_rating) parts.push(`rhythm: ${s.rhythm_rating}`);
+    if (s.lead_rating) parts.push(`lead: ${s.lead_rating}`);
+    if (s.singing_rating) parts.push(`singing: ${s.singing_rating}`);
+    return parts.length > 0 ? parts.join(", ") : null;
+  }
+  return s.rating ? `rating: ${s.rating}` : null;
+}
+
 function recentSessionsSummary(sessions: AnySession[], limit = 10): string {
   const recent = sessions.slice(0, limit);
   if (recent.length === 0) return "  No sessions logged yet.";
@@ -47,7 +58,8 @@ function recentSessionsSummary(sessions: AnySession[], limit = 10): string {
       const date = new Date(s.created_timestamp).toLocaleDateString();
       const mins = Math.round(s.seconds / 60);
       const parts = [`    ${date} — ${mins}m`];
-      if (s.rating) parts.push(`rating: ${s.rating}`);
+      const ratingSummary = sessionRatingSummary(s);
+      if (ratingSummary) parts.push(ratingSummary);
       if ("bpm" in s && s.bpm) parts.push(`BPM: ${s.bpm}`);
       if ("focus" in s && s.focus) parts.push(`focus: ${s.focus}`);
       if (s.notes) parts.push(`notes: "${s.notes}"`);
@@ -74,13 +86,42 @@ function buildSystemPrompt(ctx: ChatContext): string {
 
   // ── Session history for this entity ─────────────────────────────────────────
   const recentSessions = recentSessionsSummary(entity.sessions as AnySession[]);
-  const ratedSessions = (entity.sessions as AnySession[]).filter((s) => s.rating != null);
-  const avgRating = ratedSessions.length > 0
-    ? (ratedSessions.reduce((a, s) => a + (RATING_VALUES[s.rating!] ?? 0), 0) / ratedSessions.length).toFixed(1)
-    : null;
 
-  const last3 = ratedSessions.slice(0, 3);
-  const isStruggling = last3.length >= 3 && last3.every((s) => s.rating === "Awful" || s.rating === "Bad");
+  let ratingSummaryLine = "";
+  let strugglingLine = "";
+  if (entity.type === "song") {
+    const aspects: { key: "rhythm_rating" | "lead_rating" | "singing_rating"; label: string }[] = [
+      { key: "rhythm_rating", label: "Rhythm" },
+      { key: "lead_rating", label: "Lead" },
+      { key: "singing_rating", label: "Singing" },
+    ];
+    const avgParts: string[] = [];
+    const strugglingParts: string[] = [];
+    for (const { key, label } of aspects) {
+      const rated = entity.sessions.filter((s) => s[key] != null);
+      if (rated.length > 0) {
+        const avg = rated.reduce((a, s) => a + (RATING_VALUES[s[key]!] ?? 0), 0) / rated.length;
+        avgParts.push(`${label} ${avg.toFixed(1)}`);
+      }
+      const last3Aspect = rated.slice(0, 3);
+      if (last3Aspect.length >= 3 && last3Aspect.every((s) => s[key] === "Awful" || s[key] === "Bad")) {
+        strugglingParts.push(label);
+      }
+    }
+    ratingSummaryLine = avgParts.length > 0 ? `Average ratings (out of 5): ${avgParts.join(", ")}` : "";
+    strugglingLine = strugglingParts.length > 0
+      ? `⚠️ The user has rated ${strugglingParts.join("/")} Awful or Bad in their last 3+ sessions on ${strugglingParts.length > 1 ? "those aspects" : "that aspect"} — they are struggling.`
+      : "";
+  } else {
+    const ratedSessions = (entity.sessions as (ExerciseSession | StudyMaterialSession)[]).filter((s) => s.rating != null);
+    const avgRating = ratedSessions.length > 0
+      ? (ratedSessions.reduce((a, s) => a + (RATING_VALUES[s.rating!] ?? 0), 0) / ratedSessions.length).toFixed(1)
+      : null;
+    const last3 = ratedSessions.slice(0, 3);
+    const struggling = last3.length >= 3 && last3.every((s) => s.rating === "Awful" || s.rating === "Bad");
+    ratingSummaryLine = avgRating ? `Average rating: ${avgRating}/5` : "";
+    strugglingLine = struggling ? "⚠️ The user has rated this Awful or Bad in their last 3+ sessions — they are struggling." : "";
+  }
 
   // ── Project songs ────────────────────────────────────────────────────────────
   const projectSongsDesc = projectSongs.length > 0
@@ -119,8 +160,8 @@ ${entityDesc}
 
 ## Recent session history
 ${recentSessions}
-${avgRating ? `Average rating: ${avgRating}/5` : ""}
-${isStruggling ? "⚠️ The user has rated this Awful or Bad in their last 3+ sessions — they are struggling." : ""}
+${ratingSummaryLine}
+${strugglingLine}
 
 ## User's current project songs
 ${projectSongsDesc}

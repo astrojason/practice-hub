@@ -6,7 +6,7 @@ A task is **not done** until:
 
 1. The TypeScript build passes: `npm run build` (runs `tsc && vite build`).
 2. Any new behaviour has a corresponding Playwright test that was written **before** the implementation (see below).
-3. Any relevant TODO.md item is marked complete (`- [x]`).
+3. Any relevant TODO.md item is removed from TODO.md — the git log is the record.
 
 Never report a task as complete without running `npm run build` and confirming it exits cleanly.
 
@@ -18,7 +18,7 @@ All bugs and feature work must follow this cycle:
 2. Implement the fix or feature.
 3. Repeat steps 1–2 until every test passes (`npm run test:e2e`).
 4. Confirm the build succeeds (`npm run build`).
-5. If the work corresponds to a TODO.md item, mark it complete (`- [x]`).
+5. If the work corresponds to a TODO.md item, remove it from TODO.md — the git log is the record.
 
 E2E tests require the Vite dev server running on port 1420 (`npm run dev` in a separate terminal). The Playwright config launches it automatically via `webServer`.
 
@@ -41,5 +41,5 @@ Rules:
 
 Keep `TODO.md` up to date:
 
-- Mark items complete (`- [x]`) once the work, tests, and build all pass.
+- Remove items from TODO.md once the work has been committed — do not leave them checked off. The git log is the record.
 - Add new bugs or planned features as they are identified.
