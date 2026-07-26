@@ -10,7 +10,3 @@
 ### Section-level aspect ratings — Phase 3
 
 - [ ] Rate rhythm/lead/singing specifically within a song's sections, not just the whole song. Blocked on `SongSection` data coverage — very few songs currently have sections broken out.
-
-## Enhancements
-
-- [ ] Help panel only has the Calendar & Practice Plans tutorial so far — write tutorials for the other user-facing features (GP Library, Browse, Sessions/timer, Metronome, GP viewer) and add each to `src/help/tutorials.ts`

@@ -102,3 +102,27 @@ test("Escape closes the Help modal", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.locator(".help-modal")).not.toBeVisible();
 });
+
+const otherTutorials = [
+  { title: "GP Library", heading: "Guitar Pro Library" },
+  { title: "Browse", heading: "Browse" },
+  { title: "Sessions & Practice Timer", heading: "Sessions & the Practice Timer" },
+  { title: "Metronome", heading: "Metronome" },
+  { title: "GP Viewer", heading: "Guitar Pro Viewer" },
+];
+
+for (const { title, heading } of otherTutorials) {
+  test(`Help modal lists and shows the "${title}" tutorial`, async ({ page }) => {
+    await page.locator("button", { hasText: "Help" }).click();
+
+    await expect(
+      page.locator(".help-modal-list-item", { hasText: title })
+    ).toBeVisible();
+
+    await page.locator(".help-modal-list-item", { hasText: title }).click();
+
+    await expect(
+      page.locator(".help-modal-content", { hasText: heading })
+    ).toBeVisible();
+  });
+}
