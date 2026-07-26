@@ -360,6 +360,9 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const goalFiredRef = useRef(false);
   const allCompleteFiredRef = useRef(false);
   const confettiCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Tracks the calendar day completedIds/skippedIds were computed for, so a
+  // midnight rollover while the app stays open (no remount) can be detected.
+  const currentDayRef = useRef(new Date().toLocaleDateString("en-CA"));
 
   // ── Load on mount ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -411,7 +414,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       setUserProfile(user);
       setServerTotal(user.time_practiced_today ?? 0);
 
-      setCompletedIds((prev) => mergeCompletedFromDash(dash, new Set([...prev, ...initialStoredIds.completed.ids])));
+      setCompletedIds((prev) => mergeCompletedFromDash(dash, new Set([...prev, ...loadStoredCompletedIds().ids])));
     });
   }, [token, loadTrigger]);
 
@@ -452,7 +455,22 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
   // ── Clock tick ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => {
+      setNow(Date.now());
+
+      // Detect a midnight rollover while the app stays open — completedIds/
+      // skippedIds were computed for the previous day and must reset, since
+      // nothing else re-checks the calendar day for as long as the app runs.
+      const today = new Date().toLocaleDateString("en-CA");
+      if (today !== currentDayRef.current) {
+        currentDayRef.current = today;
+        setCompletedIds(new Set());
+        setSkippedIds(new Set());
+        goalFiredRef.current = false;
+        allCompleteFiredRef.current = false;
+        setLoadTrigger((n) => n + 1);
+      }
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
