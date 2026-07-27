@@ -43,3 +43,10 @@ Keep `TODO.md` up to date:
 
 - Remove items from TODO.md once the work has been committed — do not leave them checked off. The git log is the record.
 - Add new bugs or planned features as they are identified.
+
+## Versioning
+
+The app version lives in `package.json` and must be displayed in the app UI.
+
+- Any commit touching files other than `CLAUDE.md` must include a version bump — patch for fixes, minor for new features, major for breaking changes. CLAUDE.md-only commits may use `--no-verify` to skip the bump.
+- The version displayed must be a clickable link to a changelog view. The changelog view renders the git log — each entry shows the short hash and commit message (`git log --pretty=format:"%h %s" -n 50`). Implement as a Tauri command returning the log output if not already present.
