@@ -6,8 +6,9 @@ import { GpLibraryView } from "./components/GpLibraryView";
 import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { GpViewer } from "./components/GpViewer";
 import { BrowseView } from "./components/BrowseView";
+import { Changelog } from "./components/Changelog";
 
-type AppView = "session" | "gp-library" | "calendar" | "browse";
+type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog";
 
 const MUSIC_QUOTES = [
   { text: "Without music, life would be a mistake.", author: "Nietzsche" },
@@ -83,6 +84,10 @@ export function App() {
     return <BrowseView token={token} onBack={() => setView("session")} />;
   }
 
+  if (view === "changelog") {
+    return <Changelog onBack={() => setView("session")} />;
+  }
+
   return (
     <>
       <SessionView
@@ -91,6 +96,7 @@ export function App() {
         onGpLibrary={() => setView("gp-library")}
         onCalendar={() => setView("calendar")}
         onBrowse={() => setView("browse")}
+        onChangelog={() => setView("changelog")}
         onGpView={openGpViewer}
         isGpViewerActive={gpViewerPath !== null}
       />

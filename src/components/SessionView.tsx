@@ -40,6 +40,9 @@ import { MediaPlayer } from "./player/MediaPlayer";
 import { Metronome } from "./player/Metronome";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import type { SequentialChild } from "./session/SequentialSessionModal";
+import pkgJson from "../../package.json";
+
+const APP_VERSION: string = pkgJson.version;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -251,11 +254,12 @@ interface Props {
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
+  onChangelog: () => void;
   onGpView?: (path: string, audioPath?: string) => void;
   isGpViewerActive?: boolean;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onGpView, isGpViewerActive }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onChangelog, onGpView, isGpViewerActive }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -1122,6 +1126,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         goalReached={goalReached}
         allComplete={allComplete}
         isRebuilding={isRebuilding}
+        version={APP_VERSION}
         onRebuild={handleRebuild}
         onOpenSession={() => {
           if (!activeTimers.has(OPEN_SESSION_KEY) && !pausedElapsed.has(OPEN_SESSION_KEY)) {
@@ -1140,6 +1145,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onCalendar={onCalendar}
         onBrowse={onBrowse}
         onHelp={() => setHelpOpen(true)}
+        onChangelog={onChangelog}
       />
 
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}

@@ -18,6 +18,7 @@ interface Props {
   isRebuilding: boolean;
   openSessionActive: boolean;
   openSessionElapsed: number;
+  version: string;
   onRebuild: () => void;
   onOpenSession: () => void;
   onAdd: () => void;
@@ -29,6 +30,7 @@ interface Props {
   onCalendar: () => void;
   onBrowse: () => void;
   onHelp: () => void;
+  onChangelog: () => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -47,6 +49,7 @@ export function SessionHeader({
   isRebuilding,
   openSessionActive,
   openSessionElapsed,
+  version,
   onRebuild,
   onOpenSession,
   onAdd,
@@ -58,6 +61,7 @@ export function SessionHeader({
   onCalendar,
   onBrowse,
   onHelp,
+  onChangelog,
 }: Props) {
   const progressPct = Math.min(
     100,
@@ -67,7 +71,17 @@ export function SessionHeader({
   return (
     <header className="session-header">
       <div className="session-header-top">
-        <h1 className="session-title">Practice Hub</h1>
+        <h1 className="session-title">
+          Practice Hub{' '}
+          <button
+            onClick={onChangelog}
+            className="btn-ghost"
+            title="View changelog"
+            style={{ fontSize: '0.7em', fontWeight: 'normal', padding: '0.1em 0.4em', verticalAlign: 'middle' }}
+          >
+            v{version}
+          </button>
+        </h1>
         <div className="session-timer-row">
           <span className={`session-timer ${goalReached ? "goal-reached" : ""}`}>
             {formatTime(displayedSeconds)}

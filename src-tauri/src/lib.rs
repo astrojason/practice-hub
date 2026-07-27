@@ -439,6 +439,40 @@ async fn start_auth(
     }
 }
 
+// ─── Changelog ───────────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+pub struct ChangelogEntry {
+    hash: String,
+    message: String,
+    date: String,
+}
+
+#[tauri::command]
+fn get_changelog() -> Result<Vec<ChangelogEntry>, String> {
+    let output = std::process::Command::new("git")
+        .args(["log", "--pretty=format:%h|%s|%ad", "--date=short", "-n", "50"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let log = String::from_utf8_lossy(&output.stdout);
+    let entries = log.lines()
+        .filter(|l| !l.is_empty())
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.splitn(3, '|').collect();
+            if parts.len() == 3 {
+                Some(ChangelogEntry {
+                    hash: parts[0].to_string(),
+                    message: parts[1].to_string(),
+                    date: parts[2].to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(entries)
+}
+
 // ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -458,6 +492,7 @@ pub fn run() {
             scan_gp_directory,
             list_local_folder,
             open_with_default,
+            get_changelog,
         ])
         .run(tauri::generate_context!())
         .expect("error while running practice-hub");
