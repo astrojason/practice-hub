@@ -29,7 +29,6 @@ import { HelpModal } from "./HelpModal";
 import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { makeItemKey, parseItemKey } from "../lib/itemKey";
-import { inferResourceType } from "./session/forms/shared/inferResourceType";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../hooks/useLocalStorageJSON";
 import { SessionHeader } from "./session/SessionHeader";
 import { ItemGroup } from "./session/ItemGroup";
@@ -42,7 +41,10 @@ import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
 import { Metronome } from "./player/Metronome";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
-import type { SequentialChild } from "./session/SequentialSessionModal";
+import { ConfettiCanvas } from "./session/ConfettiCanvas";
+import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
+import { useSessionTimers } from "../hooks/useSessionTimers";
+import { useSequentialSession } from "../hooks/useSequentialSession";
 import pkgJson from "../../package.json";
 
 const APP_VERSION: string = pkgJson.version;
@@ -290,28 +292,12 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   // skippedIds: subset of completedIds — items marked skipped (no session created)
   const [skippedIds, setSkippedIds] = useState<Set<string>>(initialStoredIds.skipped.ids);
-  // activeTimers: itemKey → Date.now() when the current run started
-  const [activeTimers, setActiveTimers] = useState<Map<string, number>>(new Map());
-  // pausedElapsed: itemKey → accumulated seconds (set on pause or stop-and-save)
-  const [pausedElapsed, setPausedElapsed] = useState<Map<string, number>>(new Map());
+  const { activeTimers, pausedElapsed, getElapsed, startTimer, pauseTimer, clearTimer } = useSessionTimers(now);
   // openForm: which item's form is expanded (only one at a time)
   const [openForm, setOpenForm] = useState<string | null>(null);
   const [openSessionModalOpen, setOpenSessionModalOpen] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
-
-  // ── Sequential session (parent-triggers-children flow) ───────────────────────
-  const [sequentialSession, setSequentialSession] = useState<{
-    type: "exercise" | "study_material";
-    parentId: number;
-    parentName: string;
-    children: SequentialChild[];
-    currentIndex: number;
-  } | null>(null);
-  // Temporarily hides the sequential modal while media (audio/video/GP) opened
-  // from within it is playing, without cancelling the underlying session/timer.
-  const [sequentialModalHidden, setSequentialModalHidden] = useState(false);
-  const sequentialMediaWasOpenedRef = useRef(false);
 
   // ── Chat / Reports ────────────────────────────────────────────────────────────
   const [chatEntity, setChatEntity] = useState<ChatEntity | null>(null);
@@ -362,7 +348,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   // ── Visual-state-shift guards ────────────────────────────────────────────────
   const goalFiredRef = useRef(false);
   const allCompleteFiredRef = useRef(false);
-  const confettiCanvasRef = useRef<HTMLCanvasElement>(null);
+  const confettiRef = useRef<ConfettiCanvasHandle>(null);
   // Tracks the calendar day completedIds/skippedIds were computed for, so a
   // midnight rollover while the app stays open (no remount) can be detected.
   const currentDayRef = useRef(new Date().toLocaleDateString("en-CA"));
@@ -477,15 +463,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     return () => clearInterval(id);
   }, []);
 
-  // ── Re-show the sequential session modal once media opened from it closes ───
-  useEffect(() => {
-    const mediaActive = playerState !== null || (isGpViewerActive ?? false);
-    if (!mediaActive && sequentialMediaWasOpenedRef.current) {
-      setSequentialModalHidden(false);
-      sequentialMediaWasOpenedRef.current = false;
-    }
-  }, [playerState, isGpViewerActive]);
-
   // ── Derived values ────────────────────────────────────────────────────────────
   // Running timers: base (from prior pauses) + current run elapsed
   const activeElapsed = [...activeTimers.entries()].reduce(
@@ -558,7 +535,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   useEffect(() => {
     if (goalReached && !goalFiredRef.current) {
       goalFiredRef.current = true;
-      fireConfetti();
+      confettiRef.current?.fire();
     }
   }, [goalReached]);
 
@@ -570,94 +547,14 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     }
   }, [allComplete]);
 
-  // ── Confetti (canvas-based, no external library) ───────────────────────────
-  function fireConfetti() {
-    const canvas = confettiCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    canvas.style.display = "block";
-
-    const colors = ["#ff6b6b", "#feca57", "#48dbfb", "#ff9ff3", "#54a0ff", "#5f27cd"];
-    const particles = Array.from({ length: 120 }, () => ({
-      x: Math.random() * canvas.width,
-      y: -10,
-      r: 4 + Math.random() * 6,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      vx: (Math.random() - 0.5) * 4,
-      vy: 2 + Math.random() * 4,
-      alpha: 1,
-    }));
-
-    let frame = 0;
-    function tick() {
-      if (!ctx || !canvas) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (const p of particles) {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.1; // gravity
-        p.alpha -= 0.008;
-        ctx.globalAlpha = Math.max(0, p.alpha);
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      frame++;
-      if (frame < 180) requestAnimationFrame(tick);
-      else canvas.style.display = "none";
-    }
-    requestAnimationFrame(tick);
-  }
-
   // ── Item state helpers ────────────────────────────────────────────────────────
-  function getElapsed(itemKey: string): number {
-    const base = pausedElapsed.get(itemKey) ?? 0;
-    const startedAt = activeTimers.get(itemKey);
-    return startedAt ? base + Math.max(0, Math.floor((now - startedAt) / 1000)) : base;
-  }
-
-  function startTimer(itemKey: string) {
-    setActiveTimers((prev) => new Map(prev).set(itemKey, Date.now()));
-  }
-
-  function pauseTimer(itemKey: string) {
-    const total = getElapsed(itemKey);
-    setActiveTimers((prev) => {
-      const next = new Map(prev);
-      next.delete(itemKey);
-      return next;
-    });
-    setPausedElapsed((prev) => new Map(prev).set(itemKey, total));
-  }
-
   function stopAndSave(itemKey: string) {
-    const total = getElapsed(itemKey);
-    setActiveTimers((prev) => {
-      const next = new Map(prev);
-      next.delete(itemKey);
-      return next;
-    });
-    setPausedElapsed((prev) => new Map(prev).set(itemKey, total));
+    pauseTimer(itemKey);
     setOpenForm(itemKey);
   }
 
   function cancelSession(itemKey: string) {
-    setActiveTimers((prev) => {
-      const next = new Map(prev);
-      next.delete(itemKey);
-      return next;
-    });
-    setPausedElapsed((prev) => {
-      const next = new Map(prev);
-      next.delete(itemKey);
-      return next;
-    });
+    clearTimer(itemKey);
     setOpenForm(null);
   }
 
@@ -688,16 +585,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         withKey
       );
     });
-    setActiveTimers((prev) => {
-      const next = new Map(prev);
-      next.delete(itemKey);
-      return next;
-    });
-    setPausedElapsed((prev) => {
-      const next = new Map(prev);
-      next.delete(itemKey);
-      return next;
-    });
+    clearTimer(itemKey);
     setOpenForm(null);
   }
 
@@ -726,135 +614,38 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     };
   }
 
-  // ── Sequential session handlers ───────────────────────────────────────────────
-  function handleStartSequential(type: "exercise" | "study_material", parentId: number) {
-    let parentName = "";
-    let children: SequentialChild[] = [];
+  // ── Sequential session (parent-triggers-children flow) ───────────────────────
+  const {
+    sequentialSession,
+    sequentialModalHidden,
+    setSequentialModalHidden,
+    sequentialMediaWasOpenedRef,
+    handleStartSequential,
+    handleSequentialChildSubmit,
+    handleSequentialChildSkip,
+    handleCancelSequential,
+  } = useSequentialSession({
+    dashboard,
+    additionalExercises,
+    additionalStudyMaterials,
+    completedIds,
+    startTimer,
+    clearTimer,
+    cancelSession,
+    handleSessionSubmit,
+    handleSkipItems,
+    markComplete: (key) => setCompletedIds((prev) => new Set(prev).add(key)),
+    onError: setActionError,
+  });
 
-    if (type === "exercise") {
-      const all = [...(dashboard?.exercises ?? []), ...additionalExercises];
-      const ex = all.find((e) => e.id === parentId);
-      if (!ex) {
-        setActionError("Couldn't start that sequential session — the exercise group is no longer available. Try refreshing.");
-        return;
-      }
-      if (ex.child_exercises.length === 0) {
-        setActionError(`"${ex.name}" has no sub-exercises to run sequentially.`);
-        return;
-      }
-      parentName = ex.name;
-      const incompleteChildren = ex.child_exercises.filter((c) => !completedIds.has(makeItemKey("exercise", c.id)));
-      if (incompleteChildren.length === 0) {
-        setActionError(`All exercises in "${ex.name}" are already complete for today.`);
-        return;
-      }
-      children = incompleteChildren.map((child) => ({
-        id: child.id,
-        name: child.name,
-        resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type })),
-        lastSession: child.meta.sessions?.[0] ?? null,
-        inUserExercise: child.meta.user_exercise !== null,
-      }));
-    } else {
-      const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
-      const sm = all.find((s) => s.id === parentId);
-      if (!sm) {
-        setActionError("Couldn't start that sequential session — the study material group is no longer available. Try refreshing.");
-        return;
-      }
-      if ((sm.child_study_materials ?? []).length === 0) {
-        setActionError(`"${sm.name}" has no child items to run sequentially.`);
-        return;
-      }
-      parentName = sm.name;
-      const incompleteChildren = (sm.child_study_materials ?? []).filter(
-        (c) => !completedIds.has(makeItemKey("studymaterial", c.id))
-      );
-      if (incompleteChildren.length === 0) {
-        setActionError(`All items in "${sm.name}" are already complete for today.`);
-        return;
-      }
-      children = incompleteChildren.map((child) => ({
-        id: child.id,
-        name: child.name,
-        resources: child.url
-          ? [{ name: "Open material", url: child.url, type: inferResourceType(child.url, child.type) }]
-          : [],
-        lastSession: child.meta.sessions?.[0] ?? null,
-      }));
+  // ── Re-show the sequential session modal once media opened from it closes ───
+  useEffect(() => {
+    const mediaActive = playerState !== null || (isGpViewerActive ?? false);
+    if (!mediaActive && sequentialMediaWasOpenedRef.current) {
+      setSequentialModalHidden(false);
+      sequentialMediaWasOpenedRef.current = false;
     }
-
-    setSequentialSession({ type, parentId, parentName, children, currentIndex: 0 });
-    setSequentialModalHidden(false);
-    sequentialMediaWasOpenedRef.current = false;
-    const firstKey = type === "exercise"
-      ? makeItemKey("exercise", children[0].id)
-      : makeItemKey("studymaterial", children[0].id);
-    startTimer(firstKey);
-  }
-
-  function handleSequentialChildSubmit(dailyPracticeTime: number) {
-    if (!sequentialSession) return;
-    const { type, parentId, children, currentIndex } = sequentialSession;
-    const childId = children[currentIndex].id;
-    const childKey = type === "exercise"
-      ? makeItemKey("exercise", childId)
-      : makeItemKey("studymaterial", childId);
-
-    handleSessionSubmit(dailyPracticeTime, childKey);
-
-    const nextIndex = currentIndex + 1;
-    if (nextIndex >= children.length) {
-      // All children complete — mark parent as complete
-      const parentKey = type === "exercise"
-        ? makeItemKey("exercise", parentId)
-        : makeItemKey("studymaterial", parentId);
-      setCompletedIds((prev) => new Set(prev).add(parentKey));
-      setSequentialSession(null);
-    } else {
-      setSequentialSession((prev) => prev ? { ...prev, currentIndex: nextIndex } : null);
-      const nextKey = type === "exercise"
-        ? makeItemKey("exercise", children[nextIndex].id)
-        : makeItemKey("studymaterial", children[nextIndex].id);
-      startTimer(nextKey);
-    }
-  }
-
-  function handleSequentialChildSkip() {
-    if (!sequentialSession) return;
-    const { type, children, currentIndex } = sequentialSession;
-    const childId = children[currentIndex].id;
-    const childKey = type === "exercise"
-      ? makeItemKey("exercise", childId)
-      : makeItemKey("studymaterial", childId);
-
-    // Cancel the running timer for this child
-    setActiveTimers((prev) => { const next = new Map(prev); next.delete(childKey); return next; });
-    setPausedElapsed((prev) => { const next = new Map(prev); next.delete(childKey); return next; });
-
-    handleSkipItems([childKey]);
-
-    const nextIndex = currentIndex + 1;
-    if (nextIndex >= children.length) {
-      setSequentialSession(null);
-    } else {
-      setSequentialSession((prev) => prev ? { ...prev, currentIndex: nextIndex } : null);
-      const nextKey = type === "exercise"
-        ? makeItemKey("exercise", children[nextIndex].id)
-        : makeItemKey("studymaterial", children[nextIndex].id);
-      startTimer(nextKey);
-    }
-  }
-
-  function handleCancelSequential() {
-    if (!sequentialSession) return;
-    const { type, children, currentIndex } = sequentialSession;
-    const childKey = type === "exercise"
-      ? makeItemKey("exercise", children[currentIndex].id)
-      : makeItemKey("studymaterial", children[currentIndex].id);
-    cancelSession(childKey);
-    setSequentialSession(null);
-  }
+  }, [playerState, isGpViewerActive, sequentialMediaWasOpenedRef, setSequentialModalHidden]);
 
   // ── Entity-edited handlers ────────────────────────────────────────────────────
   function handleSongEdited(updated: Song) {
@@ -1020,47 +811,43 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   }
 
   // ── Chat handlers ─────────────────────────────────────────────────────────────
-  function openChatForSong(songId: number) {
-    const allSongs = [
-      ...(dashboard?.project?.songs ?? []),
-      ...(dashboard?.to_review?.songs ?? []),
-      ...additionalSongs,
-    ];
-    const song = allSongs.find((s) => s.id === songId);
-    if (!song) {
-      setActionError("Couldn't open chat — that song is no longer in the session. Try refreshing.");
+  function openChat(type: ChatEntity["type"], id: number) {
+    if (type === "song") {
+      const allSongs = [
+        ...(dashboard?.project?.songs ?? []),
+        ...(dashboard?.to_review?.songs ?? []),
+        ...additionalSongs,
+      ];
+      const song = allSongs.find((s) => s.id === id);
+      if (!song) {
+        setActionError("Couldn't open chat — that song is no longer in the session. Try refreshing.");
+        return;
+      }
+      setChatEntity({ type: "song", item: song, sessions: (song.meta.sessions ?? []) as SongSession[] });
       return;
     }
-    setChatEntity({ type: "song", item: song, sessions: (song.meta.sessions ?? []) as SongSession[] });
-  }
 
-  function openChatForExercise(exerciseId: number) {
-    const allExercises = [
-      ...(dashboard?.exercises ?? []),
-      ...additionalExercises,
-    ];
-    let found: DashboardExercise | undefined;
-    for (const ex of allExercises) {
-      if (ex.id === exerciseId) { found = ex; break; }
-      const child = ex.child_exercises.find((c) => c.id === exerciseId);
-      if (child) { found = child; break; }
-    }
-    if (!found) {
-      setActionError("Couldn't open chat — that exercise is no longer in the session. Try refreshing.");
+    if (type === "exercise") {
+      const allExercises = [...(dashboard?.exercises ?? []), ...additionalExercises];
+      let found: DashboardExercise | undefined;
+      for (const ex of allExercises) {
+        if (ex.id === id) { found = ex; break; }
+        const child = ex.child_exercises.find((c) => c.id === id);
+        if (child) { found = child; break; }
+      }
+      if (!found) {
+        setActionError("Couldn't open chat — that exercise is no longer in the session. Try refreshing.");
+        return;
+      }
+      setChatEntity({ type: "exercise", item: found, sessions: (found.meta.sessions ?? []) as ExerciseSession[] });
       return;
     }
-    setChatEntity({ type: "exercise", item: found, sessions: (found.meta.sessions ?? []) as ExerciseSession[] });
-  }
 
-  function openChatForStudyMaterial(materialId: number) {
-    const allMaterials = [
-      ...(dashboard?.study_materials ?? []),
-      ...additionalStudyMaterials,
-    ];
+    const allMaterials = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
     let found: DashboardStudyMaterial | undefined;
     for (const sm of allMaterials) {
-      if (sm.id === materialId) { found = sm; break; }
-      const child = (sm.child_study_materials ?? []).find((c) => c.id === materialId);
+      if (sm.id === id) { found = sm; break; }
+      const child = (sm.child_study_materials ?? []).find((c) => c.id === id);
       if (child) { found = child; break; }
     }
     if (!found) {
@@ -1132,11 +919,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         <ErrorModal error={quickAddHistoryError} onDismiss={() => setQuickAddHistoryError(null)} />
       )}
       {/* Full-screen confetti canvas — hidden until triggered */}
-      <canvas
-        ref={confettiCanvasRef}
-        className="confetti-canvas"
-        style={{ display: "none" }}
-      />
+      <ConfettiCanvas ref={confettiRef} />
 
       <SessionHeader
         displayedSeconds={displayedSeconds}
@@ -1317,7 +1100,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id))}
               onGpView={onGpView}
-              onOpenChat={(id) => openChatForExercise(id)}
+              onOpenChat={(id) => openChat("exercise", id)}
               isMediaActive={playerState !== null}
               isGpViewerActive={isGpViewerActive}
               onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
@@ -1363,7 +1146,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id))}
               onGpView={onGpView}
-              onOpenChat={(id) => openChatForStudyMaterial(id)}
+              onOpenChat={(id) => openChat("study_material", id)}
               isMediaActive={playerState !== null}
               isGpViewerActive={isGpViewerActive}
               onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
@@ -1407,7 +1190,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
               onGpView={onGpView}
-              onOpenChat={() => openChatForSong(song.id)}
+              onOpenChat={() => openChat("song", song.id)}
               isMediaActive={playerState !== null}
               isGpViewerActive={isGpViewerActive}
               onEntityEdited={handleSongEdited}
@@ -1450,7 +1233,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
               onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
               onGpView={onGpView}
-              onOpenChat={() => openChatForSong(song.id)}
+              onOpenChat={() => openChat("song", song.id)}
               isMediaActive={playerState !== null}
               isGpViewerActive={isGpViewerActive}
               onEntityEdited={handleSongEdited}
@@ -1490,7 +1273,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
                 onGpView={onGpView}
-                onOpenChat={() => openChatForSong(song.id)}
+                onOpenChat={() => openChat("song", song.id)}
                 isMediaActive={playerState !== null}
                 isGpViewerActive={isGpViewerActive}
                 onEntityEdited={handleSongEdited}
@@ -1522,7 +1305,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id))}
                 onGpView={onGpView}
-                onOpenChat={(id) => openChatForExercise(id)}
+                onOpenChat={(id) => openChat("exercise", id)}
                 isMediaActive={playerState !== null}
                 isGpViewerActive={isGpViewerActive}
                 onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
@@ -1555,7 +1338,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
                 onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id))}
                 onGpView={onGpView}
-                onOpenChat={(id) => openChatForStudyMaterial(id)}
+                onOpenChat={(id) => openChat("study_material", id)}
                 isMediaActive={playerState !== null}
                 isGpViewerActive={isGpViewerActive}
                 onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
