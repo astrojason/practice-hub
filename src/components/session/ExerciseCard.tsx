@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { makeItemKey } from "../../lib/itemKey";
 import { ItemSessionCard } from "./ItemSessionCard";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import { ExerciseEditForm } from "./forms/ExerciseEditForm";
@@ -262,7 +263,7 @@ export function ExerciseCard({
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
             onSkip={() => onSkip(child.id)}
-            onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, `exercise-${child.id}`) : undefined}
+            onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, makeItemKey("exercise", child.id)) : undefined}
             onGpView={onGpView}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}

@@ -28,6 +28,7 @@ import { ErrorModal } from "./ErrorModal";
 import { HelpModal } from "./HelpModal";
 import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
+import { makeItemKey, parseItemKey } from "../lib/itemKey";
 import { SessionHeader } from "./session/SessionHeader";
 import { ItemGroup } from "./session/ItemGroup";
 import { ExerciseCard } from "./session/ExerciseCard";
@@ -105,19 +106,19 @@ function autoCompleteParents(
 ): Set<string> {
   const next = new Set(doneIds);
   for (const ex of exercises) {
-    const parentKey = `exercise-${ex.id}`;
+    const parentKey = makeItemKey("exercise", ex.id);
     if (
       ex.child_exercises.length > 0 &&
       !next.has(parentKey) &&
-      ex.child_exercises.every((c) => next.has(`exercise-${c.id}`))
+      ex.child_exercises.every((c) => next.has(makeItemKey("exercise", c.id)))
     ) {
       next.add(parentKey);
     }
   }
   for (const sm of studyMaterials) {
-    const parentKey = `studymaterial-${sm.id}`;
+    const parentKey = makeItemKey("studymaterial", sm.id);
     const children = sm.child_study_materials ?? [];
-    if (children.length > 0 && !next.has(parentKey) && children.every((c) => next.has(`studymaterial-${c.id}`))) {
+    if (children.length > 0 && !next.has(parentKey) && children.every((c) => next.has(makeItemKey("studymaterial", c.id)))) {
       next.add(parentKey);
     }
   }
@@ -127,19 +128,19 @@ function autoCompleteParents(
 function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<string> {
   let next = new Set(prev);
   for (const ex of dash.exercises) {
-    if (hasSessionToday(ex.meta.sessions)) next.add(`exercise-${ex.id}`);
+    if (hasSessionToday(ex.meta.sessions)) next.add(makeItemKey("exercise", ex.id));
     for (const child of ex.child_exercises) {
-      if (hasSessionToday(child.meta.sessions)) next.add(`exercise-${child.id}`);
+      if (hasSessionToday(child.meta.sessions)) next.add(makeItemKey("exercise", child.id));
     }
   }
   for (const sm of dash.study_materials) {
-    if (hasSessionToday(sm.meta.sessions)) next.add(`studymaterial-${sm.id}`);
+    if (hasSessionToday(sm.meta.sessions)) next.add(makeItemKey("studymaterial", sm.id));
     for (const child of sm.child_study_materials ?? []) {
-      if (hasSessionToday(child.meta.sessions)) next.add(`studymaterial-${child.id}`);
+      if (hasSessionToday(child.meta.sessions)) next.add(makeItemKey("studymaterial", child.id));
     }
   }
   for (const song of [...(dash.project?.songs ?? []), ...(dash.to_review?.songs ?? [])]) {
-    if (hasSessionToday(song.meta?.sessions ?? [])) next.add(`song-${song.id}`);
+    if (hasSessionToday(song.meta?.sessions ?? [])) next.add(makeItemKey("song", song.id));
   }
   next = autoCompleteParents(dash.exercises, dash.study_materials, next);
   return next;
@@ -349,7 +350,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [metronomeOpen, setMetronomeOpen] = useState(false);
 
   const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string, itemKey?: string) => {
-    const songId = itemKey?.startsWith("song-") ? Number(itemKey.slice(5)) : undefined;
+    const parsedKey = itemKey ? parseItemKey(itemKey) : null;
+    const songId = parsedKey?.type === "song" ? parsedKey.id : undefined;
     setPlayerState({ path, mediaType, itemName, itemKey, songId: Number.isFinite(songId) ? songId : undefined });
   };
 
@@ -508,14 +510,14 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const allSuggestedIds: Set<string> = dashboard
     ? new Set([
         ...collectAllExerciseIds(dashboard.exercises).map(
-          (id) => `exercise-${id}`
+          (id) => makeItemKey("exercise", id)
         ),
         ...(dashboard.study_materials ?? []).flatMap((sm) => [
-          `studymaterial-${sm.id}`,
-          ...(sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`),
+          makeItemKey("studymaterial", sm.id),
+          ...(sm.child_study_materials ?? []).map((c) => makeItemKey("studymaterial", c.id)),
         ]),
-        ...(dashboard.project?.songs ?? []).map((s) => `song-${s.id}`),
-        ...(dashboard.to_review?.songs ?? []).map((s) => `song-${s.id}`),
+        ...(dashboard.project?.songs ?? []).map((s) => makeItemKey("song", s.id)),
+        ...(dashboard.to_review?.songs ?? []).map((s) => makeItemKey("song", s.id)),
       ])
     : new Set();
 
@@ -704,7 +706,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
   // ── Exercise helpers (exercise cards use IDs rather than keys directly) ──────
   function exerciseGetState(id: number) {
-    const key = `exercise-${id}`;
+    const key = makeItemKey("exercise", id);
     return {
       isCompletedToday: completedIds.has(key) && !skippedIds.has(key),
       isSkippedToday: skippedIds.has(key),
@@ -716,7 +718,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   }
 
   function studyMaterialGetState(id: number) {
-    const key = `studymaterial-${id}`;
+    const key = makeItemKey("studymaterial", id);
     return {
       isCompletedToday: completedIds.has(key) && !skippedIds.has(key),
       isSkippedToday: skippedIds.has(key),
@@ -744,7 +746,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         return;
       }
       parentName = ex.name;
-      const incompleteChildren = ex.child_exercises.filter((c) => !completedIds.has(`exercise-${c.id}`));
+      const incompleteChildren = ex.child_exercises.filter((c) => !completedIds.has(makeItemKey("exercise", c.id)));
       if (incompleteChildren.length === 0) {
         setActionError(`All exercises in "${ex.name}" are already complete for today.`);
         return;
@@ -769,7 +771,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       }
       parentName = sm.name;
       const incompleteChildren = (sm.child_study_materials ?? []).filter(
-        (c) => !completedIds.has(`studymaterial-${c.id}`)
+        (c) => !completedIds.has(makeItemKey("studymaterial", c.id))
       );
       if (incompleteChildren.length === 0) {
         setActionError(`All items in "${sm.name}" are already complete for today.`);
@@ -789,8 +791,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     setSequentialModalHidden(false);
     sequentialMediaWasOpenedRef.current = false;
     const firstKey = type === "exercise"
-      ? `exercise-${children[0].id}`
-      : `studymaterial-${children[0].id}`;
+      ? makeItemKey("exercise", children[0].id)
+      : makeItemKey("studymaterial", children[0].id);
     startTimer(firstKey);
   }
 
@@ -799,8 +801,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     const { type, parentId, children, currentIndex } = sequentialSession;
     const childId = children[currentIndex].id;
     const childKey = type === "exercise"
-      ? `exercise-${childId}`
-      : `studymaterial-${childId}`;
+      ? makeItemKey("exercise", childId)
+      : makeItemKey("studymaterial", childId);
 
     handleSessionSubmit(dailyPracticeTime, childKey);
 
@@ -808,15 +810,15 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     if (nextIndex >= children.length) {
       // All children complete — mark parent as complete
       const parentKey = type === "exercise"
-        ? `exercise-${parentId}`
-        : `studymaterial-${parentId}`;
+        ? makeItemKey("exercise", parentId)
+        : makeItemKey("studymaterial", parentId);
       setCompletedIds((prev) => new Set(prev).add(parentKey));
       setSequentialSession(null);
     } else {
       setSequentialSession((prev) => prev ? { ...prev, currentIndex: nextIndex } : null);
       const nextKey = type === "exercise"
-        ? `exercise-${children[nextIndex].id}`
-        : `studymaterial-${children[nextIndex].id}`;
+        ? makeItemKey("exercise", children[nextIndex].id)
+        : makeItemKey("studymaterial", children[nextIndex].id);
       startTimer(nextKey);
     }
   }
@@ -826,8 +828,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     const { type, children, currentIndex } = sequentialSession;
     const childId = children[currentIndex].id;
     const childKey = type === "exercise"
-      ? `exercise-${childId}`
-      : `studymaterial-${childId}`;
+      ? makeItemKey("exercise", childId)
+      : makeItemKey("studymaterial", childId);
 
     // Cancel the running timer for this child
     setActiveTimers((prev) => { const next = new Map(prev); next.delete(childKey); return next; });
@@ -841,8 +843,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     } else {
       setSequentialSession((prev) => prev ? { ...prev, currentIndex: nextIndex } : null);
       const nextKey = type === "exercise"
-        ? `exercise-${children[nextIndex].id}`
-        : `studymaterial-${children[nextIndex].id}`;
+        ? makeItemKey("exercise", children[nextIndex].id)
+        : makeItemKey("studymaterial", children[nextIndex].id);
       startTimer(nextKey);
     }
   }
@@ -851,8 +853,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     if (!sequentialSession) return;
     const { type, children, currentIndex } = sequentialSession;
     const childKey = type === "exercise"
-      ? `exercise-${children[currentIndex].id}`
-      : `studymaterial-${children[currentIndex].id}`;
+      ? makeItemKey("exercise", children[currentIndex].id)
+      : makeItemKey("studymaterial", children[currentIndex].id);
     cancelSession(childKey);
     setSequentialSession(null);
   }
@@ -971,10 +973,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       ...e.child_exercises.map((c) => c.id),
     ]);
     return (
-      additionalSongs.filter((s) => isDone(`song-${s.id}`)).length +
-      exIds.filter((id) => isDone(`exercise-${id}`)).length +
+      additionalSongs.filter((s) => isDone(makeItemKey("song", s.id))).length +
+      exIds.filter((id) => isDone(makeItemKey("exercise", id))).length +
       additionalStudyMaterials.flatMap((sm) => [sm, ...(sm.child_study_materials ?? [])])
-        .filter((sm) => isDone(`studymaterial-${sm.id}`)).length
+        .filter((sm) => isDone(makeItemKey("studymaterial", sm.id))).length
     );
   }
 
@@ -1079,7 +1081,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   function exerciseCompletedCount(): number {
     if (!dashboard) return 0;
     return collectAllExerciseIds(dashboard.exercises).filter((id) =>
-      isDone(`exercise-${id}`)
+      isDone(makeItemKey("exercise", id))
     ).length;
   }
 
@@ -1235,8 +1237,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         const { type, parentName, children, currentIndex } = sequentialSession;
         const childId = children[currentIndex].id;
         const childKey = type === "exercise"
-          ? `exercise-${childId}`
-          : `studymaterial-${childId}`;
+          ? makeItemKey("exercise", childId)
+          : makeItemKey("studymaterial", childId);
         function hideForMedia() {
           sequentialMediaWasOpenedRef.current = true;
           setSequentialModalHidden(true);
@@ -1298,25 +1300,25 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               token={token}
               exercise={ex}
               getState={(id) => exerciseGetState(id)}
-              onStart={(id) => startTimer(`exercise-${id}`)}
-              onPause={(id) => pauseTimer(`exercise-${id}`)}
-              onStopAndSave={(id) => stopAndSave(`exercise-${id}`)}
-              onCancel={(id) => cancelSession(`exercise-${id}`)}
-              onFormOpen={(id) => setOpenForm(`exercise-${id}`)}
+              onStart={(id) => startTimer(makeItemKey("exercise", id))}
+              onPause={(id) => pauseTimer(makeItemKey("exercise", id))}
+              onStopAndSave={(id) => stopAndSave(makeItemKey("exercise", id))}
+              onCancel={(id) => cancelSession(makeItemKey("exercise", id))}
+              onFormOpen={(id) => setOpenForm(makeItemKey("exercise", id))}
               onFormClose={() => setOpenForm(null)}
               onSessionSubmit={(id, dpt) =>
-                handleSessionSubmit(dpt, `exercise-${id}`)
+                handleSessionSubmit(dpt, makeItemKey("exercise", id))
               }
               onSkip={(id) => {
                 if (id === ex.id) {
-                  const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
-                  handleSkipItems([`exercise-${id}`, ...childKeys]);
+                  const childKeys = ex.child_exercises.map((c) => makeItemKey("exercise", c.id));
+                  handleSkipItems([makeItemKey("exercise", id), ...childKeys]);
                 } else {
-                  handleSkipItems([`exercise-${id}`]);
+                  handleSkipItems([makeItemKey("exercise", id)]);
                 }
               }}
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id))}
               onGpView={onGpView}
               onOpenChat={(id) => openChatForExercise(id)}
               isMediaActive={playerState !== null}
@@ -1332,7 +1334,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           title="Study Materials"
           completedCount={
             dashboard.study_materials.flatMap((sm) => [sm, ...(sm.child_study_materials ?? [])])
-              .filter((sm) => isDone(`studymaterial-${sm.id}`)).length
+              .filter((sm) => isDone(makeItemKey("studymaterial", sm.id))).length
           }
           totalCount={
             dashboard.study_materials.reduce((n, sm) => n + 1 + (sm.child_study_materials ?? []).length, 0)
@@ -1344,25 +1346,25 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               token={token}
               material={sm}
               getState={(id) => studyMaterialGetState(id)}
-              onStart={(id) => startTimer(`studymaterial-${id}`)}
-              onPause={(id) => pauseTimer(`studymaterial-${id}`)}
-              onStopAndSave={(id) => stopAndSave(`studymaterial-${id}`)}
-              onCancel={(id) => cancelSession(`studymaterial-${id}`)}
-              onFormOpen={(id) => setOpenForm(`studymaterial-${id}`)}
+              onStart={(id) => startTimer(makeItemKey("studymaterial", id))}
+              onPause={(id) => pauseTimer(makeItemKey("studymaterial", id))}
+              onStopAndSave={(id) => stopAndSave(makeItemKey("studymaterial", id))}
+              onCancel={(id) => cancelSession(makeItemKey("studymaterial", id))}
+              onFormOpen={(id) => setOpenForm(makeItemKey("studymaterial", id))}
               onFormClose={() => setOpenForm(null)}
               onSessionSubmit={(id, dpt) =>
-                handleSessionSubmit(dpt, `studymaterial-${id}`)
+                handleSessionSubmit(dpt, makeItemKey("studymaterial", id))
               }
               onSkip={(id) => {
                 if (id === sm.id) {
-                  const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
-                  handleSkipItems([`studymaterial-${id}`, ...childKeys]);
+                  const childKeys = (sm.child_study_materials ?? []).map((c) => makeItemKey("studymaterial", c.id));
+                  handleSkipItems([makeItemKey("studymaterial", id), ...childKeys]);
                 } else {
-                  handleSkipItems([`studymaterial-${id}`]);
+                  handleSkipItems([makeItemKey("studymaterial", id)]);
                 }
               }}
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id))}
               onGpView={onGpView}
               onOpenChat={(id) => openChatForStudyMaterial(id)}
               isMediaActive={playerState !== null}
@@ -1377,7 +1379,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         <ItemGroup
           title="Project"
           completedCount={
-            projectSongs.filter((s) => isDone(`song-${s.id}`)).length
+            projectSongs.filter((s) => isDone(makeItemKey("song", s.id))).length
           }
           totalCount={projectSongs.length}
         >
@@ -1387,26 +1389,26 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               token={token}
               song={song}
               currentListId={dashboard.project?.id}
-              isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
-              isSkippedToday={skippedIds.has(`song-${song.id}`)}
-              isTimerActive={activeTimers.has(`song-${song.id}`)}
+              isCompletedToday={completedIds.has(makeItemKey("song", song.id)) && !skippedIds.has(makeItemKey("song", song.id))}
+              isSkippedToday={skippedIds.has(makeItemKey("song", song.id))}
+              isTimerActive={activeTimers.has(makeItemKey("song", song.id))}
               isTimerPaused={
-                !activeTimers.has(`song-${song.id}`) &&
-                pausedElapsed.has(`song-${song.id}`)
+                !activeTimers.has(makeItemKey("song", song.id)) &&
+                pausedElapsed.has(makeItemKey("song", song.id))
               }
-              timerElapsed={getElapsed(`song-${song.id}`)}
-              isFormOpen={openForm === `song-${song.id}`}
-              onStart={() => startTimer(`song-${song.id}`)}
-              onPause={() => pauseTimer(`song-${song.id}`)}
-              onStopAndSave={() => stopAndSave(`song-${song.id}`)}
-              onCancel={() => cancelSession(`song-${song.id}`)}
-              onFormOpen={() => setOpenForm(`song-${song.id}`)}
+              timerElapsed={getElapsed(makeItemKey("song", song.id))}
+              isFormOpen={openForm === makeItemKey("song", song.id)}
+              onStart={() => startTimer(makeItemKey("song", song.id))}
+              onPause={() => pauseTimer(makeItemKey("song", song.id))}
+              onStopAndSave={() => stopAndSave(makeItemKey("song", song.id))}
+              onCancel={() => cancelSession(makeItemKey("song", song.id))}
+              onFormOpen={() => setOpenForm(makeItemKey("song", song.id))}
               onFormClose={() => setOpenForm(null)}
               onSessionSubmit={(dpt) =>
-                handleSessionSubmit(dpt, `song-${song.id}`)
+                handleSessionSubmit(dpt, makeItemKey("song", song.id))
               }
-              onSkip={() => handleSkipItems([`song-${song.id}`])}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+              onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
               onGpView={onGpView}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
@@ -1420,7 +1422,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         <ItemGroup
           title="Repertoire Review"
           completedCount={
-            reviewSongs.filter((s) => isDone(`song-${s.id}`)).length
+            reviewSongs.filter((s) => isDone(makeItemKey("song", s.id))).length
           }
           totalCount={reviewSongs.length}
         >
@@ -1430,26 +1432,26 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               token={token}
               song={song}
               currentListId={dashboard.to_review?.id}
-              isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
-              isSkippedToday={skippedIds.has(`song-${song.id}`)}
-              isTimerActive={activeTimers.has(`song-${song.id}`)}
+              isCompletedToday={completedIds.has(makeItemKey("song", song.id)) && !skippedIds.has(makeItemKey("song", song.id))}
+              isSkippedToday={skippedIds.has(makeItemKey("song", song.id))}
+              isTimerActive={activeTimers.has(makeItemKey("song", song.id))}
               isTimerPaused={
-                !activeTimers.has(`song-${song.id}`) &&
-                pausedElapsed.has(`song-${song.id}`)
+                !activeTimers.has(makeItemKey("song", song.id)) &&
+                pausedElapsed.has(makeItemKey("song", song.id))
               }
-              timerElapsed={getElapsed(`song-${song.id}`)}
-              isFormOpen={openForm === `song-${song.id}`}
-              onStart={() => startTimer(`song-${song.id}`)}
-              onPause={() => pauseTimer(`song-${song.id}`)}
-              onStopAndSave={() => stopAndSave(`song-${song.id}`)}
-              onCancel={() => cancelSession(`song-${song.id}`)}
-              onFormOpen={() => setOpenForm(`song-${song.id}`)}
+              timerElapsed={getElapsed(makeItemKey("song", song.id))}
+              isFormOpen={openForm === makeItemKey("song", song.id)}
+              onStart={() => startTimer(makeItemKey("song", song.id))}
+              onPause={() => pauseTimer(makeItemKey("song", song.id))}
+              onStopAndSave={() => stopAndSave(makeItemKey("song", song.id))}
+              onCancel={() => cancelSession(makeItemKey("song", song.id))}
+              onFormOpen={() => setOpenForm(makeItemKey("song", song.id))}
               onFormClose={() => setOpenForm(null)}
               onSessionSubmit={(dpt) =>
-                handleSessionSubmit(dpt, `song-${song.id}`)
+                handleSessionSubmit(dpt, makeItemKey("song", song.id))
               }
-              onSkip={() => handleSkipItems([`song-${song.id}`])}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+              onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
+              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
               onGpView={onGpView}
               onOpenChat={() => openChatForSong(song.id)}
               isMediaActive={playerState !== null}
@@ -1470,26 +1472,26 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 key={song.id}
                 token={token}
                 song={song}
-                isCompletedToday={completedIds.has(`song-${song.id}`) && !skippedIds.has(`song-${song.id}`)}
-                isSkippedToday={skippedIds.has(`song-${song.id}`)}
-                isTimerActive={activeTimers.has(`song-${song.id}`)}
+                isCompletedToday={completedIds.has(makeItemKey("song", song.id)) && !skippedIds.has(makeItemKey("song", song.id))}
+                isSkippedToday={skippedIds.has(makeItemKey("song", song.id))}
+                isTimerActive={activeTimers.has(makeItemKey("song", song.id))}
                 isTimerPaused={
-                  !activeTimers.has(`song-${song.id}`) &&
-                  pausedElapsed.has(`song-${song.id}`)
+                  !activeTimers.has(makeItemKey("song", song.id)) &&
+                  pausedElapsed.has(makeItemKey("song", song.id))
                 }
-                timerElapsed={getElapsed(`song-${song.id}`)}
-                isFormOpen={openForm === `song-${song.id}`}
-                onStart={() => startTimer(`song-${song.id}`)}
-                onPause={() => pauseTimer(`song-${song.id}`)}
-                onStopAndSave={() => stopAndSave(`song-${song.id}`)}
-                onCancel={() => cancelSession(`song-${song.id}`)}
-                onFormOpen={() => setOpenForm(`song-${song.id}`)}
+                timerElapsed={getElapsed(makeItemKey("song", song.id))}
+                isFormOpen={openForm === makeItemKey("song", song.id)}
+                onStart={() => startTimer(makeItemKey("song", song.id))}
+                onPause={() => pauseTimer(makeItemKey("song", song.id))}
+                onStopAndSave={() => stopAndSave(makeItemKey("song", song.id))}
+                onCancel={() => cancelSession(makeItemKey("song", song.id))}
+                onFormOpen={() => setOpenForm(makeItemKey("song", song.id))}
                 onFormClose={() => setOpenForm(null)}
                 onSessionSubmit={(dpt) =>
-                  handleSessionSubmit(dpt, `song-${song.id}`)
+                  handleSessionSubmit(dpt, makeItemKey("song", song.id))
                 }
-                onSkip={() => handleSkipItems([`song-${song.id}`])}
-                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? `song-${song.id}`)}
+                onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
+                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
                 onGpView={onGpView}
                 onOpenChat={() => openChatForSong(song.id)}
                 isMediaActive={playerState !== null}
@@ -1503,25 +1505,25 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 token={token}
                 exercise={ex}
                 getState={(id) => exerciseGetState(id)}
-                onStart={(id) => startTimer(`exercise-${id}`)}
-                onPause={(id) => pauseTimer(`exercise-${id}`)}
-                onStopAndSave={(id) => stopAndSave(`exercise-${id}`)}
-                onCancel={(id) => cancelSession(`exercise-${id}`)}
-                onFormOpen={(id) => setOpenForm(`exercise-${id}`)}
+                onStart={(id) => startTimer(makeItemKey("exercise", id))}
+                onPause={(id) => pauseTimer(makeItemKey("exercise", id))}
+                onStopAndSave={(id) => stopAndSave(makeItemKey("exercise", id))}
+                onCancel={(id) => cancelSession(makeItemKey("exercise", id))}
+                onFormOpen={(id) => setOpenForm(makeItemKey("exercise", id))}
                 onFormClose={() => setOpenForm(null)}
                 onSessionSubmit={(id, dpt) =>
-                  handleSessionSubmit(dpt, `exercise-${id}`)
+                  handleSessionSubmit(dpt, makeItemKey("exercise", id))
                 }
                 onSkip={(id) => {
                   if (id === ex.id) {
-                    const childKeys = ex.child_exercises.map((c) => `exercise-${c.id}`);
-                    handleSkipItems([`exercise-${id}`, ...childKeys]);
+                    const childKeys = ex.child_exercises.map((c) => makeItemKey("exercise", c.id));
+                    handleSkipItems([makeItemKey("exercise", id), ...childKeys]);
                   } else {
-                    handleSkipItems([`exercise-${id}`]);
+                    handleSkipItems([makeItemKey("exercise", id)]);
                   }
                 }}
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
-                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? `exercise-${ex.id}`)}
+                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id))}
                 onGpView={onGpView}
                 onOpenChat={(id) => openChatForExercise(id)}
                 isMediaActive={playerState !== null}
@@ -1536,25 +1538,25 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 token={token}
                 material={sm}
                 getState={(id) => studyMaterialGetState(id)}
-                onStart={(id) => startTimer(`studymaterial-${id}`)}
-                onPause={(id) => pauseTimer(`studymaterial-${id}`)}
-                onStopAndSave={(id) => stopAndSave(`studymaterial-${id}`)}
-                onCancel={(id) => cancelSession(`studymaterial-${id}`)}
-                onFormOpen={(id) => setOpenForm(`studymaterial-${id}`)}
+                onStart={(id) => startTimer(makeItemKey("studymaterial", id))}
+                onPause={(id) => pauseTimer(makeItemKey("studymaterial", id))}
+                onStopAndSave={(id) => stopAndSave(makeItemKey("studymaterial", id))}
+                onCancel={(id) => cancelSession(makeItemKey("studymaterial", id))}
+                onFormOpen={(id) => setOpenForm(makeItemKey("studymaterial", id))}
                 onFormClose={() => setOpenForm(null)}
                 onSessionSubmit={(id, dpt) =>
-                  handleSessionSubmit(dpt, `studymaterial-${id}`)
+                  handleSessionSubmit(dpt, makeItemKey("studymaterial", id))
                 }
                 onSkip={(id) => {
                   if (id === sm.id) {
-                    const childKeys = (sm.child_study_materials ?? []).map((c) => `studymaterial-${c.id}`);
-                    handleSkipItems([`studymaterial-${id}`, ...childKeys]);
+                    const childKeys = (sm.child_study_materials ?? []).map((c) => makeItemKey("studymaterial", c.id));
+                    handleSkipItems([makeItemKey("studymaterial", id), ...childKeys]);
                   } else {
-                    handleSkipItems([`studymaterial-${id}`]);
+                    handleSkipItems([makeItemKey("studymaterial", id)]);
                   }
                 }}
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
-                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? `studymaterial-${sm.id}`)}
+                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id))}
                 onGpView={onGpView}
                 onOpenChat={(id) => openChatForStudyMaterial(id)}
                 isMediaActive={playerState !== null}
