@@ -29,6 +29,7 @@ import { HelpModal } from "./HelpModal";
 import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { makeItemKey, parseItemKey } from "../lib/itemKey";
+import { inferResourceType } from "./session/forms/shared/inferResourceType";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../hooks/useLocalStorageJSON";
 import { SessionHeader } from "./session/SessionHeader";
 import { ItemGroup } from "./session/ItemGroup";
@@ -241,14 +242,6 @@ async function fetchOrphanParents(
     ? `Failed to load ${failures.length} parent study material${failures.length > 1 ? "s" : ""}: ${failures.join("; ")}`
     : null;
   return { parents, errorMessage };
-}
-
-function inferSmResourceType(url: string, storedType?: string): Resource["type"] {
-  if (storedType === "local_folder") return "local_folder";
-  if (storedType === "local_file") return "local_file";
-  if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
-  if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
-  return "url";
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -785,7 +778,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         id: child.id,
         name: child.name,
         resources: child.url
-          ? [{ name: "Open material", url: child.url, type: inferSmResourceType(child.url, child.type) }]
+          ? [{ name: "Open material", url: child.url, type: inferResourceType(child.url, child.type) }]
           : [],
         lastSession: child.meta.sessions?.[0] ?? null,
       }));

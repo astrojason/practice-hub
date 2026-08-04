@@ -4,15 +4,8 @@ import { ItemSessionCard } from "./ItemSessionCard";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { StudyMaterialEditForm } from "./forms/StudyMaterialEditForm";
 import { AddChildStudyMaterialForm } from "./forms/AddChildStudyMaterialForm";
+import { inferResourceType } from "./forms/shared/inferResourceType";
 import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
-
-function inferResourceType(url: string, storedType?: string): Resource["type"] {
-  if (storedType === "local_folder") return "local_folder";
-  if (storedType === "local_file") return "local_file";
-  if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
-  if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
-  return "url";
-}
 
 interface SingleCardProps {
   token: string;

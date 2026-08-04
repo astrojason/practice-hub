@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { FolderOpenIcon } from "@heroicons/react/16/solid";
-import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { createStudyMaterial } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { CreateStudyMaterialPayload, DashboardStudyMaterial } from "../../../api/types";
+import { SingleResourceField, resourceUrlLabel } from "./shared/ResourceListEditor";
 
 interface Props {
   token: string;
@@ -69,41 +68,8 @@ export function AddChildStudyMaterialForm({ token, parentStudyMaterialId, onSucc
         </select>
       </div>
       <div className="edit-form-row">
-        <label htmlFor="acsm-url">
-          {type === "local_file" || type === "guitar_pro" ? "File path" : type === "local_folder" ? "Folder path" : "URL"}
-        </label>
-        <div className="edit-url-row">
-          <input
-            id="acsm-url"
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder={type === "local_file" || type === "guitar_pro" ? "/path/to/file" : type === "local_folder" ? "/path/to/folder" : "https://..."}
-          />
-          {(type === "local_file" || type === "local_folder" || type === "guitar_pro") && (
-            <button
-              type="button"
-              className="edit-resource-browse"
-              title={type === "local_folder" ? "Browse for folder" : "Browse for file"}
-              onClick={async () => {
-                try {
-                  const path = await openFilePicker({
-                    multiple: false,
-                    directory: type === "local_folder",
-                    filters: type === "guitar_pro"
-                      ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
-                      : undefined,
-                  });
-                  if (typeof path === "string") setUrl(path);
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err));
-                }
-              }}
-            >
-              <FolderOpenIcon />
-            </button>
-          )}
-        </div>
+        <label htmlFor="acsm-url">{resourceUrlLabel(type)}</label>
+        <SingleResourceField id="acsm-url" url={url} type={type} onUrlChange={setUrl} onError={setError} />
       </div>
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
       <div className="edit-form-actions">

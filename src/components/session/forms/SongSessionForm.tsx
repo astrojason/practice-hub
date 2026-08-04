@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
+import { useRef, useState } from "react";
 import { postSongSession } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
 import type { SongSessionPayload } from "../../../api/types";
+import { RATING_OPTIONS } from "./shared/ratingOptions";
+import { useRatingKeyShortcut } from "./shared/useRatingKeyShortcut";
+import { BpmField } from "./shared/BpmField";
 
 const FOCUS_OPTIONS = [
   { label: "Control", value: 1 },
@@ -12,14 +14,6 @@ const FOCUS_OPTIONS = [
   { label: "Consistency", value: 3 },
   { label: "Musicality", value: 4 },
   { label: "Playthrough", value: 5 },
-];
-
-const RATING_OPTIONS = [
-  { label: "Awful", value: 1 },
-  { label: "Bad", value: 2 },
-  { label: "Neutral", value: 3 },
-  { label: "Good", value: 4 },
-  { label: "Great", value: 5 },
 ];
 
 interface Props {
@@ -66,28 +60,9 @@ export function SongSessionForm({
   const [error, setError] = useState<string | null>(null);
   const refBpm = useRef<number | null>(songBpm ?? null);
 
-  function adjustBpm(direction: 1 | -1) {
-    const current = Number(bpm) || 120;
-    const next = Math.max(1, Math.min(400, Math.round(current * (1 + direction * 0.05))));
-    setBpm(String(next));
-  }
-
-  const bpmPct = refBpm.current && bpm
-    ? Math.round(Number(bpm) / refBpm.current * 100)
-    : null;
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      // Targets Rhythm specifically — it's the one aspect always present and
-      // the picker that starts pre-selected; Lead/Singing are set via their
-      // own dropdowns.
-      if (e.key >= "1" && e.key <= "5") setRhythmRating(e.key);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  // Targets Rhythm specifically — it's the one aspect always present and the
+  // picker that starts pre-selected; Lead/Singing are set via their own dropdowns.
+  useRatingKeyShortcut(setRhythmRating);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -140,35 +115,7 @@ export function SongSessionForm({
         </label>
       </div>
 
-      <div className="bpm-field">
-        <label className="bpm-field-label">BPM</label>
-        <input
-          type="number"
-          min={1}
-          max={400}
-          value={bpm}
-          onChange={(e) => setBpm(e.target.value)}
-          placeholder="—"
-          className="bpm-number"
-        />
-        {bpmPct != null && (
-          <span className="bpm-pct">{bpmPct}%</span>
-        )}
-        <button type="button" className="bpm-arrow" onClick={() => adjustBpm(-1)}>
-          <ChevronLeftIcon className="icon-sm" />
-        </button>
-        <input
-          type="range"
-          min={20}
-          max={240}
-          value={bpm ? Math.min(240, Math.max(20, Number(bpm))) : 120}
-          onChange={(e) => setBpm(e.target.value)}
-          className="bpm-slider"
-        />
-        <button type="button" className="bpm-arrow" onClick={() => adjustBpm(1)}>
-          <ChevronRightIcon className="icon-sm" />
-        </button>
-      </div>
+      <BpmField value={bpm} onChange={setBpm} referenceBpm={refBpm.current} />
 
       <div className="form-row">
         <label>

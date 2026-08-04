@@ -1,17 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { postStudyMaterialSession } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
 import type { StudyMaterialSessionPayload } from "../../../api/types";
-
-const RATING_OPTIONS = [
-  { label: "Awful", value: 1 },
-  { label: "Bad", value: 2 },
-  { label: "Neutral", value: 3 },
-  { label: "Good", value: 4 },
-  { label: "Great", value: 5 },
-];
+import { RATING_OPTIONS } from "./shared/ratingOptions";
+import { useRatingKeyShortcut } from "./shared/useRatingKeyShortcut";
 
 interface Props {
   token: string;
@@ -38,15 +32,7 @@ export function StudyMaterialSessionForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key >= "1" && e.key <= "5") setRating(e.key);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  useRatingKeyShortcut(setRating);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

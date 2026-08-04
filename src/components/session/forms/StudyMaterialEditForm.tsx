@@ -1,17 +1,9 @@
 import { useState } from "react";
-import { FolderOpenIcon } from "@heroicons/react/16/solid";
-import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { updateStudyMaterial } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { DashboardStudyMaterial, UpdateStudyMaterialPayload } from "../../../api/types";
-
-function inferType(url: string | null, storedType?: string): string {
-  if (storedType) return storedType;
-  if (!url) return "url";
-  if (url.startsWith("/") || /^[A-Za-z]:\\/.test(url)) return "local_file";
-  if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
-  return "url";
-}
+import { SingleResourceField, resourceUrlLabel } from "./shared/ResourceListEditor";
+import { inferResourceType } from "./shared/inferResourceType";
 
 interface Props {
   token: string;
@@ -23,7 +15,7 @@ interface Props {
 export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: Props) {
   const [name, setName] = useState(material.name);
   const [url, setUrl] = useState(material.url ?? "");
-  const [type, setType] = useState(inferType(material.url ?? "", material.type));
+  const [type, setType] = useState<string>(inferResourceType(material.url ?? "", material.type));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,41 +67,8 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
         </select>
       </div>
       <div className="edit-form-row">
-        <label htmlFor="sm-ef-url">
-          {type === "local_file" || type === "guitar_pro" ? "File path" : type === "local_folder" ? "Folder path" : "URL"}
-        </label>
-        <div className="edit-url-row">
-          <input
-            id="sm-ef-url"
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder={type === "local_file" || type === "guitar_pro" ? "/path/to/file" : type === "local_folder" ? "/path/to/folder" : "https://..."}
-          />
-          {(type === "local_file" || type === "local_folder" || type === "guitar_pro") && (
-            <button
-              type="button"
-              className="edit-resource-browse"
-              title={type === "local_folder" ? "Browse for folder" : "Browse for file"}
-              onClick={async () => {
-                try {
-                  const path = await openFilePicker({
-                    multiple: false,
-                    directory: type === "local_folder",
-                    filters: type === "guitar_pro"
-                      ? [{ name: "Guitar Pro", extensions: ["gp", "gp3", "gp4", "gp5", "gpx"] }]
-                      : undefined,
-                  });
-                  if (typeof path === "string") setUrl(path);
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err));
-                }
-              }}
-            >
-              <FolderOpenIcon />
-            </button>
-          )}
-        </div>
+        <label htmlFor="sm-ef-url">{resourceUrlLabel(type)}</label>
+        <SingleResourceField id="sm-ef-url" url={url} type={type} onUrlChange={setUrl} onError={setError} />
       </div>
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
       <div className="edit-form-actions">

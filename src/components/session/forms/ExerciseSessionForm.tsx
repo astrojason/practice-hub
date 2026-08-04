@@ -1,18 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
+import { useRef, useState } from "react";
 import { postExerciseSession } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
 import type { ExerciseSessionPayload } from "../../../api/types";
-
-const RATING_OPTIONS = [
-  { label: "Awful", value: 1 },
-  { label: "Bad", value: 2 },
-  { label: "Neutral", value: 3 },
-  { label: "Good", value: 4 },
-  { label: "Great", value: 5 },
-];
+import { RATING_OPTIONS } from "./shared/ratingOptions";
+import { useRatingKeyShortcut } from "./shared/useRatingKeyShortcut";
+import { BpmField } from "./shared/BpmField";
 
 interface Props {
   token: string;
@@ -43,25 +37,7 @@ export function ExerciseSessionForm({
   const [error, setError] = useState<string | null>(null);
   const refBpm = useRef<number | null>(bpm ? Number(bpm) : null);
 
-  function adjustBpm(direction: 1 | -1) {
-    const current = Number(bpm) || 120;
-    const next = Math.max(1, Math.min(400, Math.round(current * (1 + direction * 0.05))));
-    setBpm(String(next));
-  }
-
-  const bpmPct = refBpm.current && bpm
-    ? Math.round(Number(bpm) / refBpm.current * 100)
-    : null;
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key >= "1" && e.key <= "5") setRating(e.key);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  useRatingKeyShortcut(setRating);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -111,35 +87,7 @@ export function ExerciseSessionForm({
         </label>
       </div>
 
-      <div className="bpm-field">
-        <label className="bpm-field-label">BPM</label>
-        <input
-          type="number"
-          min={1}
-          max={400}
-          value={bpm}
-          onChange={(e) => setBpm(e.target.value)}
-          placeholder="—"
-          className="bpm-number"
-        />
-        {bpmPct != null && (
-          <span className="bpm-pct">{bpmPct}%</span>
-        )}
-        <button type="button" className="bpm-arrow" onClick={() => adjustBpm(-1)}>
-          <ChevronLeftIcon className="icon-sm" />
-        </button>
-        <input
-          type="range"
-          min={20}
-          max={240}
-          value={bpm ? Math.min(240, Math.max(20, Number(bpm))) : 120}
-          onChange={(e) => setBpm(e.target.value)}
-          className="bpm-slider"
-        />
-        <button type="button" className="bpm-arrow" onClick={() => adjustBpm(1)}>
-          <ChevronRightIcon className="icon-sm" />
-        </button>
-      </div>
+      <BpmField value={bpm} onChange={setBpm} referenceBpm={refBpm.current} />
 
       <label className="form-full">
         Notes
