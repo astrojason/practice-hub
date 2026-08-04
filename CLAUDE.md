@@ -31,12 +31,6 @@ Rules:
 - Use the `ErrorModal` component (`src/components/ErrorModal.tsx`) to display errors — it renders as a centered, dismissable overlay (Escape or click-outside closes it). The error text inside is selectable/copyable by default.
 - `/* non-critical */` is only acceptable for truly fire-and-forget side effects (e.g. analytics pings) that have no user-visible impact if they fail. When in doubt, surface it.
 
-## Rust / Tauri commands
-
-- Tauri commands live in `src-tauri/src/lib.rs`.
-- After changing Rust code, confirm the full Tauri build succeeds: `npm run tauri build`.
-- Rust compile errors are not caught by `npm run build` (frontend-only) — always run the Tauri build when Rust is touched.
-
 ## TODO.md
 
 Keep `TODO.md` up to date:
