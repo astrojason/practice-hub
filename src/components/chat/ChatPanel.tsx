@@ -240,7 +240,7 @@ interface Props {
 }
 
 export function ChatPanel({ context, onClose }: Props) {
-  const { apiKey, loaded, saveKey } = useOpenAIKey();
+  const { apiKey, loaded, loadError, saveKey } = useOpenAIKey();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -253,6 +253,11 @@ export function ChatPanel({ context, onClose }: Props) {
   useEffect(() => {
     if (loaded && !apiKey) setShowKeySetup(true);
   }, [loaded, apiKey]);
+
+  // Surface a failed key lookup instead of silently treating it as "no key saved"
+  useEffect(() => {
+    if (loadError) setError(`Couldn't check for a saved OpenAI API key: ${loadError}`);
+  }, [loadError]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -375,13 +380,19 @@ export function ChatPanel({ context, onClose }: Props) {
         {showKeySetup && (
           <KeySetupModal
             onSave={async (key) => {
-              await saveKey(key);
-              setShowKeySetup(false);
-              inputRef.current?.focus();
+              try {
+                await saveKey(key);
+                setShowKeySetup(false);
+                inputRef.current?.focus();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
+              }
             }}
             onCancel={() => setShowKeySetup(false)}
           />
         )}
+
+        {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
 
         {/* Messages */}
         {!showKeySetup && (
@@ -404,7 +415,6 @@ export function ChatPanel({ context, onClose }: Props) {
                   </div>
                 </div>
               )}
-              {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
               <div ref={bottomRef} />
             </div>
 

@@ -8,6 +8,7 @@ const store = new LazyStore("practice-hub.json");
 export function useOpenAIKey() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,20 +20,19 @@ export function useOpenAIKey() {
           setLoaded(true);
         }
       })
-      .catch(() => {
-        if (!cancelled) setLoaded(true);
+      .catch((err) => {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+          setLoaded(true);
+        }
       });
     return () => { cancelled = true; };
   }, []);
 
   const saveKey = useCallback(async (key: string) => {
+    await store.set(KEY_NAME, key);
+    await store.save();
     setApiKey(key);
-    try {
-      await store.set(KEY_NAME, key);
-      await store.save();
-    } catch (e) {
-      console.error("Failed to persist OpenAI key:", e);
-    }
   }, []);
 
   const clearKey = useCallback(async () => {
@@ -41,5 +41,5 @@ export function useOpenAIKey() {
     setApiKey(null);
   }, []);
 
-  return { apiKey, loaded, saveKey, clearKey };
+  return { apiKey, loaded, loadError, saveKey, clearKey };
 }

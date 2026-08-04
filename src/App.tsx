@@ -22,7 +22,7 @@ const MUSIC_QUOTES = [
 ];
 
 export function App() {
-  const { isLoading, isAuthenticated, token, signIn, signOut } = useAuth();
+  const { isLoading, isAuthenticated, token, authError, signIn, signOut } = useAuth();
   const quoteRef = useRef(MUSIC_QUOTES[Math.floor(Math.random() * MUSIC_QUOTES.length)]);
   const [slowLoad, setSlowLoad] = useState(false);
   const [view, setView] = useState<AppView>("session");
@@ -62,7 +62,7 @@ export function App() {
   }
 
   if (!isAuthenticated || !token) {
-    return <SignInScreen onSignIn={signIn} />;
+    return <SignInScreen onSignIn={signIn} restoreError={authError} />;
   }
 
   if (view === "gp-library") {

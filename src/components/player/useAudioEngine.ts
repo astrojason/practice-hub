@@ -259,10 +259,10 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       eng.raf = null;
     }
     if (eng.shifter) {
-      try { eng.shifter.disconnect(); } catch (_) {}
+      try { eng.shifter.disconnect(); } catch (_) { /* non-critical: node already disconnected */ }
     }
     if (eng.gain) {
-      try { eng.gain.disconnect(); } catch (_) {}
+      try { eng.gain.disconnect(); } catch (_) { /* non-critical: node already disconnected */ }
       eng.gain = null;
     }
     if (!resetOffset && eng.shifter && eng.duration > 0) {
@@ -282,7 +282,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       eng.raf = null;
     }
     if (eng.gain) {
-      try { eng.gain.disconnect(); } catch (_) {}
+      try { eng.gain.disconnect(); } catch (_) { /* non-critical: node already disconnected */ }
     }
 
     const gain = eng.ctx.createGain();
@@ -326,7 +326,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
           const restartAt = eng.loopStart ?? 0;
           eng._pausedAt = restartAt;
           if (eng.raf !== null) { cancelAnimationFrame(eng.raf); eng.raf = null; }
-          if (eng.gain) { try { eng.gain.disconnect(); } catch (_) {} eng.gain = null; }
+          if (eng.gain) { try { eng.gain.disconnect(); } catch (_) { /* non-critical: node already disconnected */ } eng.gain = null; }
 
           if (eng.loopBreakEnabled && eng.loopBreakAfter > 0) {
             eng.loopBreakCount++;
@@ -447,7 +447,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     const clamped = Math.max(0, Math.min(eng.duration, time));
     eng._pausedAt = clamped;
     if (eng.raf !== null) {
-      if (eng.gain) { try { eng.gain.disconnect(); } catch (_) {} eng.gain = null; }
+      if (eng.gain) { try { eng.gain.disconnect(); } catch (_) { /* non-critical: node already disconnected */ } eng.gain = null; }
       cancelAnimationFrame(eng.raf);
       eng.raf = null;
       startEngine();
@@ -493,7 +493,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   const destroy = useCallback(() => {
     stopEngine(true);
     const eng = e.current;
-    if (eng.ctx) { eng.ctx.close().catch(() => {}); eng.ctx = null; }
+    if (eng.ctx) { eng.ctx.close().catch(() => {}); /* non-critical: context already closed */ eng.ctx = null; }
     eng.buffer = null;
     eng.shifter = null;
     setStatus("idle");

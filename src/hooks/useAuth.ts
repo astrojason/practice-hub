@@ -21,6 +21,7 @@ type AuthState =
 
 export function useAuth() {
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = getStoredRefreshToken();
@@ -31,8 +32,10 @@ export function useAuth() {
           setState({ status: "authenticated", token: idToken });
         })
         .catch((err) => {
-          console.error("[auth] Session restore failed:", err);
           clearStoredRefreshToken();
+          setAuthError(
+            `Couldn't restore your previous session — please sign in again. (${err instanceof Error ? err.message : String(err)})`
+          );
           setState({ status: "unauthenticated" });
         });
     } else {
@@ -51,8 +54,10 @@ export function useAuth() {
           storeRefreshToken(refreshToken);
           setState({ status: "authenticated", token: idToken });
         } catch (err) {
-          console.error("[auth] Token refresh failed:", err);
           clearStoredRefreshToken();
+          setAuthError(
+            `You've been signed out because your session couldn't be refreshed — please sign in again. (${err instanceof Error ? err.message : String(err)})`
+          );
           setState({ status: "unauthenticated" });
         }
       }
@@ -90,6 +95,7 @@ export function useAuth() {
     isLoading: state.status === "loading",
     isAuthenticated: state.status === "authenticated",
     token: state.status === "authenticated" ? state.token : null,
+    authError,
     signIn,
     signOut,
   };

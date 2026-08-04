@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorModal } from "./ErrorModal";
 
 interface Props {
   onSignIn: () => Promise<void>;
+  restoreError?: string | null;
 }
 
-export function SignInScreen({ onSignIn }: Props) {
+export function SignInScreen({ onSignIn, restoreError }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
+
+  useEffect(() => {
+    if (restoreError) setError(restoreError);
+  }, [restoreError]);
 
   async function handleSignIn() {
     setError(null);

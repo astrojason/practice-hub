@@ -9,6 +9,8 @@ import {
 import { XMarkIcon, BackwardIcon, ForwardIcon } from "@heroicons/react/16/solid";
 import { useAudioEngine, assetUrl } from "./useAudioEngine";
 import { createSongSection, updateSongSection, deleteSongSection } from "../../api/client";
+import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
+import { ErrorModal } from "../ErrorModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -174,18 +176,24 @@ function formatShortcutKey(key: string): string {
   return key.split("+").map(p => p.length === 1 ? p.toUpperCase() : p).join("+");
 }
 
-function loadPresets(): Record<string, Preset> {
-  try { return JSON.parse(localStorage.getItem(PRESET_KEY) ?? "{}") ?? {}; } catch { return {}; }
+function loadPresets(): { value: Record<string, Preset>; error: string | null } {
+  const { value, error } = readLocalStorageJSON<Record<string, Preset>>(PRESET_KEY, {});
+  return {
+    value,
+    error: error && `Couldn't load your saved player presets — loop/speed/marker settings won't be pre-filled. (${error})`,
+  };
 }
 
 function savePresets(p: Record<string, Preset>): void {
-  try { localStorage.setItem(PRESET_KEY, JSON.stringify(p)); } catch {}
+  writeLocalStorageJSON(PRESET_KEY, p);
 }
 
-function loadShortcuts(): Record<string, string> {
-  try {
-    return { ...defaultShortcuts, ...(JSON.parse(localStorage.getItem(SHORTCUT_KEY) ?? "{}") ?? {}) };
-  } catch { return { ...defaultShortcuts }; }
+function loadShortcuts(): { value: Record<string, string>; error: string | null } {
+  const { value, error } = readLocalStorageJSON<Record<string, string>>(SHORTCUT_KEY, {});
+  return {
+    value: { ...defaultShortcuts, ...value },
+    error: error && `Couldn't load your custom keyboard shortcuts — defaults are in use instead. (${error})`,
+  };
 }
 
 function createRegionId(): string {
@@ -291,13 +299,21 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const [presetStatus, setPresetStatusText] = useState("Not saved");
   const presetSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const presetStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const presetsRef = useRef<Record<string, Preset>>(loadPresets());
+  const initialPresetLoadRef = useRef<ReturnType<typeof loadPresets> | null>(null);
+  if (initialPresetLoadRef.current === null) initialPresetLoadRef.current = loadPresets();
+  const presetsRef = useRef<Record<string, Preset>>(initialPresetLoadRef.current.value);
   // Always points to the latest savePreset, used to flush on unmount
   const savePresetRef = useRef<(opts?: { silent?: boolean }) => void>(() => {});
 
   // ── Shortcuts ────────────────────────────────────────────────────────────────
-  const [shortcutBindings, setShortcutBindings] = useState<Record<string, string>>(loadShortcuts);
+  const initialShortcutLoadRef = useRef<ReturnType<typeof loadShortcuts> | null>(null);
+  if (initialShortcutLoadRef.current === null) initialShortcutLoadRef.current = loadShortcuts();
+  const [shortcutBindings, setShortcutBindings] = useState<Record<string, string>>(initialShortcutLoadRef.current.value);
   const shortcutBindingsRef = useRef(shortcutBindings);
+
+  const [persistError, setPersistError] = useState<string | null>(
+    initialPresetLoadRef.current.error ?? initialShortcutLoadRef.current.error
+  );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [pendingRebind, setPendingRebind] = useState<string | null>(null);
 
@@ -400,9 +416,14 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       markers: waveMarkersRef.current,
       updatedAt: Date.now(),
     };
-    savePresets(presets);
-    if (!opts.silent) setPresetStatus("Preset saved");
-    else setPresetStatusText("All changes saved");
+    try {
+      savePresets(presets);
+      if (!opts.silent) setPresetStatus("Preset saved");
+      else setPresetStatusText("All changes saved");
+    } catch (err) {
+      setPresetStatusText("Not saved");
+      setPersistError(`Couldn't save your player preset — loop/speed/marker settings won't persist. (${err instanceof Error ? err.message : String(err)})`);
+    }
   }, [filePath, isVideo, loopStartInput, loopEndInput, loopIncreaseBy, loopIncreaseAt,
       loopIncreaseEnabled, loopEnabled, loopBreakEnabled, loopBreakAfter, loopBreakDuration,
       pitchSemitones, pitchCents, setPresetStatus]);
@@ -638,7 +659,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         const ls = parseTimeInput(preset.loopStart, 9999);
         if (ls !== null) vid.currentTime = ls;
       }
-      vid.play().catch(() => {});
+      vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       setVideoCurrentTime(0);
       setVideoDuration(0);
       setVideoPlaying(false);
@@ -691,13 +712,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
             videoBreakTimerRef.current = setTimeout(() => {
               performCountInRef.current().then(() => {
                 videoBreakTimerRef.current = null;
-                vid.play().catch(() => {});
+                vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
               });
             }, loopBreakDurationRef.current * 1000);
             return;
           }
         }
-        if (vid.paused) vid.play().catch(() => {});
+        if (vid.paused) vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       }
     };
     const onMeta = () => setVideoDuration(vid.duration);
@@ -707,7 +728,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       if (loopEnabled) {
         const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
         vid.currentTime = ls;
-        vid.play().catch(() => {});
+        vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       }
     };
     vid.addEventListener("timeupdate", onTime);
@@ -951,7 +972,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (isVideo) {
       const vid = videoRef.current;
       if (!vid) return;
-      if (vid.paused) vid.play().catch(() => {});
+      if (vid.paused) vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       else vid.pause();
     } else {
       if (audioState.isPlaying) audioActions.pause();
@@ -1305,7 +1326,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         const next = { ...shortcutBindingsRef.current, [pendingRebind]: key };
         setShortcutBindings(next);
         shortcutBindingsRef.current = next;
-        try { localStorage.setItem(SHORTCUT_KEY, JSON.stringify(next)); } catch {}
+        try {
+          writeLocalStorageJSON(SHORTCUT_KEY, next);
+        } catch (err) {
+          setPersistError(`Couldn't save your keyboard shortcut — it'll reset next time the app opens. (${err instanceof Error ? err.message : String(err)})`);
+        }
         setPendingRebind(null);
         return;
       }
@@ -1402,6 +1427,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
   return (
     <div className="media-player" data-testid="media-player">
+      {persistError && <ErrorModal error={persistError} onDismiss={() => setPersistError(null)} />}
+
       {/* Toasts */}
       <div className="mp-toasts">
         {toasts.map(t => (
@@ -1420,7 +1447,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
               <button className="btn-ghost btn-xs" onClick={() => {
                 setShortcutBindings({ ...defaultShortcuts });
                 shortcutBindingsRef.current = { ...defaultShortcuts };
-                try { localStorage.setItem(SHORTCUT_KEY, JSON.stringify(defaultShortcuts)); } catch {}
+                try {
+                  writeLocalStorageJSON(SHORTCUT_KEY, defaultShortcuts);
+                } catch (err) {
+                  setPersistError(`Couldn't save your keyboard shortcuts reset — it'll revert next time the app opens. (${err instanceof Error ? err.message : String(err)})`);
+                }
               }}>Reset defaults</button>
               <button className="btn-ghost btn-xs" onClick={() => setPaletteOpen(false)}>✕</button>
             </div>

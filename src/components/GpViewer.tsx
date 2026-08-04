@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as alphaTab from "@coderline/alphatab";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useAudioEngine } from "./player/useAudioEngine";
+import { ErrorModal } from "./ErrorModal";
 
 // alphaTab's default worker factory uses importScripts() inside a blob worker,
 // which silently fails under Tauri's tauri:// custom protocol. Re-initialize
@@ -49,32 +50,41 @@ function viewKey(filePath: string) {
   return `gp-viewer-view:${filePath}`;
 }
 
-function loadView(filePath: string): ViewState {
+const defaultViewState: ViewState = { selectedTrack: 0, targetTempo: null, loopEnabled: false, loopStart: null, loopEnd: null };
+const defaultPitchState: PitchState = { audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: false, audioFilePath: null, audioOffsetMs: 0 };
+
+function loadView(filePath: string): { value: ViewState; error: string | null } {
   try {
     const raw = localStorage.getItem(viewKey(filePath));
-    if (raw) return { selectedTrack: 0, targetTempo: null, loopEnabled: false, loopStart: null, loopEnd: null, ...(JSON.parse(raw) as Partial<ViewState>) };
-  } catch { /* non-critical */ }
-  return { selectedTrack: 0, targetTempo: null, loopEnabled: false, loopStart: null, loopEnd: null };
+    if (raw) return { value: { ...defaultViewState, ...(JSON.parse(raw) as Partial<ViewState>) }, error: null };
+    return { value: defaultViewState, error: null };
+  } catch (err) {
+    return {
+      value: defaultViewState,
+      error: `Couldn't load your saved view settings (track/tempo/loop) for this file. (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
 }
 
-function saveView(filePath: string, state: ViewState) {
-  try {
-    localStorage.setItem(viewKey(filePath), JSON.stringify(state));
-  } catch { /* non-critical */ }
+function saveView(filePath: string, state: ViewState): void {
+  localStorage.setItem(viewKey(filePath), JSON.stringify(state));
 }
 
-function loadPitch(filePath: string): PitchState {
+function loadPitch(filePath: string): { value: PitchState; error: string | null } {
   try {
     const raw = localStorage.getItem(pitchKey(filePath));
-    if (raw) return JSON.parse(raw) as PitchState;
-  } catch { /* non-critical */ }
-  return { audioSemitones: 0, audioCents: 0, tabSemitones: 0, linked: false, audioFilePath: null, audioOffsetMs: 0 };
+    if (raw) return { value: JSON.parse(raw) as PitchState, error: null };
+    return { value: defaultPitchState, error: null };
+  } catch (err) {
+    return {
+      value: defaultPitchState,
+      error: `Couldn't load your saved pitch/audio-offset settings for this file. (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
 }
 
-function savePitch(filePath: string, state: PitchState) {
-  try {
-    localStorage.setItem(pitchKey(filePath), JSON.stringify(state));
-  } catch { /* non-critical */ }
+function savePitch(filePath: string, state: PitchState): void {
+  localStorage.setItem(pitchKey(filePath), JSON.stringify(state));
 }
 
 // ─── Pitch control spinner ────────────────────────────────────────────────────
@@ -127,12 +137,20 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const [title, setTitle] = useState<string | null>(null);
   const [artist, setArtist] = useState<string | null>(null);
   const [tempo, setTempo] = useState<number | null>(null);
-  const [targetTempo, setTargetTempo] = useState<number | null>(() => loadView(filePath).targetTempo);
-  const [loopEnabled, setLoopEnabledLocal] = useState<boolean>(() => loadView(filePath).loopEnabled ?? false);
-  const [loopStart, setLoopStart] = useState<number | null>(() => loadView(filePath).loopStart ?? null);
-  const [loopEnd, setLoopEnd] = useState<number | null>(() => loadView(filePath).loopEnd ?? null);
+  const initialViewLoadRef = useRef<ReturnType<typeof loadView> | null>(null);
+  if (initialViewLoadRef.current === null) initialViewLoadRef.current = loadView(filePath);
+  const initialPitchLoadRef = useRef<ReturnType<typeof loadPitch> | null>(null);
+  if (initialPitchLoadRef.current === null) initialPitchLoadRef.current = loadPitch(filePath);
 
-  const [pitch, setPitch] = useState<PitchState>(() => loadPitch(filePath));
+  const [targetTempo, setTargetTempo] = useState<number | null>(initialViewLoadRef.current.value.targetTempo);
+  const [loopEnabled, setLoopEnabledLocal] = useState<boolean>(initialViewLoadRef.current.value.loopEnabled ?? false);
+  const [loopStart, setLoopStart] = useState<number | null>(initialViewLoadRef.current.value.loopStart ?? null);
+  const [loopEnd, setLoopEnd] = useState<number | null>(initialViewLoadRef.current.value.loopEnd ?? null);
+
+  const [pitch, setPitch] = useState<PitchState>(initialPitchLoadRef.current.value);
+  const [persistError, setPersistError] = useState<string | null>(
+    initialViewLoadRef.current.error ?? initialPitchLoadRef.current.error
+  );
   const audioOffsetMsRef = useRef(pitch.audioOffsetMs ?? 0);
   const [audioState, audioActions] = useAudioEngine();
   const audioActionsRef = useRef(audioActions);
@@ -156,7 +174,11 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   // Persist pitch state (including audioFilePath) on every change
   useEffect(() => {
-    savePitch(filePath, pitch);
+    try {
+      savePitch(filePath, pitch);
+    } catch (err) {
+      setPersistError(`Couldn't save your pitch/audio-offset settings for this file. (${err instanceof Error ? err.message : String(err)})`);
+    }
   }, [filePath, pitch]);
 
   // Intercept console.error/warn and unhandled errors so they appear in the debug panel
@@ -179,7 +201,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   // On mount: load audio (prefer initialAudioPath from resources over stored), destroy on unmount
   useEffect(() => {
-    const stored = loadPitch(filePath);
+    const stored = loadPitch(filePath).value;
     const audioPath = initialAudioPath ?? stored.audioFilePath;
     if (audioPath) {
       if (audioPath !== stored.audioFilePath) {
@@ -225,7 +247,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setTitle(null);
     setArtist(null);
     setTempo(null);
-    setSelectedTrack(loadView(filePath).selectedTrack);
+    setSelectedTrack(loadView(filePath).value.selectedTrack);
     setAtReady(false);
     setAtPlaying(false);
     setAtCurrentTime(0);
@@ -298,7 +320,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
       setTempo(roundedTempo);
       setTargetTempo((prev) => prev ?? roundedTempo);
       setTrackNames(score.tracks.map((t: alphaTab.model.Track) => t.name));
-      const stored = loadPitch(filePath);
+      const stored = loadPitch(filePath).value;
       if (stored.tabSemitones !== 0) {
         api.settings.notation.transpositionPitches = Array(score.tracks.length).fill(stored.tabSemitones);
         api.updateSettings();
@@ -371,7 +393,11 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   // Persist view state (track, tempo, loop) per file
   useEffect(() => {
-    saveView(filePath, { selectedTrack, targetTempo, loopEnabled, loopStart, loopEnd });
+    try {
+      saveView(filePath, { selectedTrack, targetTempo, loopEnabled, loopStart, loopEnd });
+    } catch (err) {
+      setPersistError(`Couldn't save your view settings (track/tempo/loop) for this file. (${err instanceof Error ? err.message : String(err)})`);
+    }
   }, [filePath, selectedTrack, targetTempo, loopEnabled, loopStart, loopEnd]);
 
   // Sync loop state → audio engine
@@ -450,6 +476,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   return (
     <div className="gp-viewer" ref={backdropRef} onClick={handleBackdropClick}>
+      {persistError && <ErrorModal error={persistError} onDismiss={() => setPersistError(null)} />}
       <div className="gp-viewer-card">
         {/* Header */}
         <div className="gp-viewer-header">

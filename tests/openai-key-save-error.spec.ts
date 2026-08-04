@@ -48,13 +48,13 @@ const mockDashboard = {
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    // No OpenAI key saved — resolves cleanly so the key-lookup itself doesn't
-    // also surface an error alongside the one this test is asserting on.
     window.__TAURI_INTERNALS__ = {
       invoke: function (cmd: string) {
         if (cmd === "plugin:store|load") return Promise.resolve(1);
+        // No key saved yet — the key-setup screen shows on chat open.
         if (cmd === "plugin:store|get") return Promise.resolve([null, false]);
-        if (cmd === "plugin:store|set") return Promise.resolve(null);
+        // The disk write itself fails (e.g. permissions, full disk).
+        if (cmd === "plugin:store|set") return Promise.reject(new Error("EACCES: permission denied, open 'practice-hub.json'"));
         if (cmd === "plugin:store|save") return Promise.resolve(null);
         if (cmd === "plugin:event|listen") return Promise.resolve(1);
         if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
@@ -84,27 +84,30 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) })
   );
   await page.route("**/exercise/user-catalog", (route) =>
-    route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "catalog lookup failed" }) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
   );
 
   await page.goto("/");
 });
 
-test("a failed historical-exercise-catalog fetch (used for AI chat context) surfaces an error instead of failing silently", async ({ page }) => {
+test("a failed OpenAI key save surfaces the real error instead of silently reporting success", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
-
-  // Loaded lazily on chat open, not on initial dashboard load — no modal yet.
-  await expect(page.locator(".error-modal")).toHaveCount(0);
 
   await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
   await page.locator(".item-card", { hasText: "Nutshell" }).locator(".btn-chat").click();
 
+  const keySetup = page.locator(".chat-key-setup");
+  await expect(keySetup).toBeVisible();
+
+  await keySetup.locator(".chat-key-input").fill("sk-test-key-12345");
+  await keySetup.getByRole("button", { name: "Save key" }).click();
+
   await expect(page.locator(".error-modal")).toBeVisible();
-  await expect(page.getByText(/catalog lookup failed/i)).toBeVisible();
+  await expect(page.getByText(/permission denied/i)).toBeVisible();
+
+  // The key-setup screen must still be showing — the save did not silently "succeed".
+  await expect(keySetup).toBeVisible();
 
   await page.locator(".error-modal-close").click();
   await expect(page.locator(".error-modal")).not.toBeVisible();
-
-  // The rest of the dashboard must still work despite this background fetch failing.
-  await expect(page.locator(".item-group", { hasText: "Exercises" })).toBeVisible();
 });
