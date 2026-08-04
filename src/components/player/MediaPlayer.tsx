@@ -8,7 +8,10 @@ import {
 } from "react";
 import { XMarkIcon, BackwardIcon, ForwardIcon } from "@heroicons/react/16/solid";
 import { useAudioEngine, assetUrl } from "./useAudioEngine";
-import { createSongSection, updateSongSection, deleteSongSection } from "../../api/client";
+import { useMetronomeEngine } from "./useMetronomeEngine";
+import { useMarkers, type WaveMarker } from "./useMarkers";
+import { useRegions, type Region } from "./useRegions";
+import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { ErrorModal } from "../ErrorModal";
 
@@ -30,24 +33,6 @@ interface Props {
   token?: string;
   /** Song ID — when provided, regions are synced to the DB as song sections */
   songId?: number;
-}
-
-interface WaveMarker {
-  time: number;
-  name: string;
-}
-
-interface Region {
-  id: string;
-  name: string;
-  start: number;
-  end: number;
-  playbackSpeed: number;
-  speedIncreasePercent: number;
-  speedIncreaseInterval: number;
-  increaseEnabled: boolean;
-  createdAt: number;
-  section_id?: number;
 }
 
 interface Preset {
@@ -81,62 +66,9 @@ interface Toast {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRESET_KEY = "practicePlayerPresets";
-const SHORTCUT_KEY = "practicePlayerShortcuts";
 const LOOP_NUDGE = 0.5;
 const MARKER_NUDGE = 0.5;
 const SEEK_STEP = 5;
-
-const defaultShortcuts: Record<string, string> = {
-  increaseSpeed: "=",
-  decreaseSpeed: "-",
-  togglePlayPause: "Space",
-  seekBackward: "ArrowLeft",
-  seekForward: "ArrowRight",
-  jumpForward: ".",
-  jumpBackward: ",",
-  setLoopStart: "a",
-  setLoopEnd: "b",
-  toggleLoop: "l",
-  nudgeLoopStartBack: "[",
-  nudgeLoopStartForward: "]",
-  nudgeLoopEndBack: ";",
-  nudgeLoopEndForward: "'",
-  nudgeMarkerBack: "Shift+ArrowLeft",
-  nudgeMarkerForward: "Shift+ArrowRight",
-  nudgeLoopStartBackSmall: "Ctrl+ArrowLeft",
-  nudgeLoopStartForwardSmall: "Ctrl+ArrowRight",
-  nudgeLoopEndBackSmall: "Ctrl+ArrowUp",
-  nudgeLoopEndForwardSmall: "Ctrl+ArrowDown",
-  addMarker: "m",
-  closePlayer: "Escape",
-};
-
-const shortcutMeta: Record<string, { label: string; description: string }> = {
-  increaseSpeed: { label: "Increase speed", description: "Raise playback speed by one step" },
-  decreaseSpeed: { label: "Decrease speed", description: "Lower playback speed by one step" },
-  togglePlayPause: { label: "Play / pause", description: "Toggle playback" },
-  seekBackward: { label: "Seek backward", description: `Seek back ${SEEK_STEP}s` },
-  seekForward: { label: "Seek forward", description: `Seek forward ${SEEK_STEP}s` },
-  jumpForward: { label: "Skip forward", description: "Jump ahead by 5%" },
-  jumpBackward: { label: "Skip backward", description: "Jump back by 5%" },
-  setLoopStart: { label: "Set loop start", description: "Drop loop start at playhead" },
-  setLoopEnd: { label: "Set loop end", description: "Drop loop end at playhead" },
-  toggleLoop: { label: "Toggle loop", description: "Enable or disable loop playback" },
-  nudgeLoopStartBack: { label: "Loop start −5%", description: "Move loop start backward by 5%" },
-  nudgeLoopStartForward: { label: "Loop start +5%", description: "Move loop start forward by 5%" },
-  nudgeLoopEndBack: { label: "Loop end −5%", description: "Move loop end backward by 5%" },
-  nudgeLoopEndForward: { label: "Loop end +5%", description: "Move loop end forward by 5%" },
-  nudgeMarkerBack: { label: "Marker −0.5s", description: "Nudge selected marker back 0.5s" },
-  nudgeMarkerForward: { label: "Marker +0.5s", description: "Nudge selected marker forward 0.5s" },
-  nudgeLoopStartBackSmall: { label: "Loop start −0.5s", description: "Nudge loop start back 0.5s" },
-  nudgeLoopStartForwardSmall: { label: "Loop start +0.5s", description: "Nudge loop start forward 0.5s" },
-  nudgeLoopEndBackSmall: { label: "Loop end −0.5s", description: "Nudge loop end back 0.5s" },
-  nudgeLoopEndForwardSmall: { label: "Loop end +0.5s", description: "Nudge loop end forward 0.5s" },
-  addMarker: { label: "Add marker", description: "Drop a marker at current playhead" },
-  closePlayer: { label: "Close player", description: "Close the media player" },
-};
-
-const shortcutOrder = Object.keys(defaultShortcuts);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -188,34 +120,7 @@ function savePresets(p: Record<string, Preset>): void {
   writeLocalStorageJSON(PRESET_KEY, p);
 }
 
-function loadShortcuts(): { value: Record<string, string>; error: string | null } {
-  const { value, error } = readLocalStorageJSON<Record<string, string>>(SHORTCUT_KEY, {});
-  return {
-    value: { ...defaultShortcuts, ...value },
-    error: error && `Couldn't load your custom keyboard shortcuts — defaults are in use instead. (${error})`,
-  };
-}
-
-function createRegionId(): string {
-  return `region-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 let toastCounter = 0;
-
-// ─── Metronome click helper ───────────────────────────────────────────────────
-
-function scheduleClick(ctx: AudioContext, time: number, accent: boolean) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "square";
-  osc.frequency.value = accent ? 1400 : 900;
-  gain.gain.setValueAtTime(0.0001, time);
-  gain.gain.exponentialRampToValueAtTime(accent ? 0.4 : 0.25, time + 0.001);
-  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.08);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(time);
-  osc.stop(time + 0.1);
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -270,27 +175,30 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const loopBreakDurationRef = useRef(3);
   const videoBreakCountRef = useRef(0);
   const videoBreakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const performCountInRef = useRef<() => Promise<void>>(async () => {});
 
   // ── Pitch ───────────────────────────────────────────────────────────────────
   const [pitchSemitones, setPitchSemitonesLocal] = useState(0);
   const [pitchCents, setPitchCentsLocal] = useState(0);
 
   // ── Markers ─────────────────────────────────────────────────────────────────
-  const [waveMarkers, setWaveMarkers] = useState<WaveMarker[]>([]);
-  const [selectedMarkerIdx, setSelectedMarkerIdx] = useState(-1);
-  const [markerNameInput, setMarkerNameInput] = useState("");
-  const waveMarkersRef = useRef<WaveMarker[]>([]);
-  const selectedMarkerIdxRef = useRef(-1);
+  const markerState = useMarkers({
+    dur,
+    currentTime,
+    isVideo,
+    videoRef,
+    seekAudio: (t) => audioActions.seek(t),
+    onChange: () => schedulePresetSaveRef.current(),
+  });
 
   // ── Regions ──────────────────────────────────────────────────────────────────
-  const [regions, setRegions] = useState<Region[]>([]);
-  const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const [regionNameInput, setRegionNameInput] = useState("");
   const [editingRegionId, setEditingRegionId] = useState<string | null>(null);
   const [editingRegionName, setEditingRegionName] = useState("");
-  const regionsRef = useRef<Region[]>([]);
-  const activeRegionIdRef = useRef<string | null>(null);
+  const regionState = useRegions({
+    token,
+    songId,
+    onServerError: (msg) => showToast(msg, { icon: "⚠️", tone: "warning" }),
+  });
 
   // ── Toasts ──────────────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -306,37 +214,24 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const savePresetRef = useRef<(opts?: { silent?: boolean }) => void>(() => {});
 
   // ── Shortcuts ────────────────────────────────────────────────────────────────
-  const initialShortcutLoadRef = useRef<ReturnType<typeof loadShortcuts> | null>(null);
-  if (initialShortcutLoadRef.current === null) initialShortcutLoadRef.current = loadShortcuts();
-  const [shortcutBindings, setShortcutBindings] = useState<Record<string, string>>(initialShortcutLoadRef.current.value);
-  const shortcutBindingsRef = useRef(shortcutBindings);
-
+  const shortcuts = useShortcuts({
+    onPersistError: (msg) => setPersistError((prev) => prev ?? msg),
+  });
   const [persistError, setPersistError] = useState<string | null>(
-    initialPresetLoadRef.current.error ?? initialShortcutLoadRef.current.error
+    initialPresetLoadRef.current.error ?? shortcuts.initialLoadError
   );
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [pendingRebind, setPendingRebind] = useState<string | null>(null);
 
   // ── Metronome ────────────────────────────────────────────────────────────────
-  const [metronomeBpm, setMetronomeBpm] = useState(120);
-  const [metronomeBeats, setMetronomeBeats] = useState(4);
-  const [metronomeEnabled, setMetronomeEnabled] = useState(false);
   const [metronomeFollowSpeed, setMetronomeFollowSpeed] = useState(true);
   const [metronomeCountIn, setMetronomeCountIn] = useState(true);
-  const [metronomeBeatFlash, setMetronomeBeatFlash] = useState(false);
-  const metronomeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const metronomeNextTimeRef = useRef(0);
-  const metronomeBeatIndexRef = useRef(0);
-  const metronomeBpmRef = useRef(120);
-  const metronomeBeatsRef = useRef(4);
   const metronomeFollowSpeedRef = useRef(true);
   const metronomeCountInRef = useRef(true);
-  const metronomeEnabledRef = useRef(false);
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const metronome = useMetronomeEngine({
+    getAudioContext: () => audioActions.getContext(),
+    speedMultiplier: () => (metronomeFollowSpeedRef.current ? speedRef.current : 1.0),
+  });
 
   // ── Ref sync ────────────────────────────────────────────────────────────────
-  useEffect(() => { metronomeBpmRef.current = metronomeBpm; }, [metronomeBpm]);
-  useEffect(() => { metronomeBeatsRef.current = metronomeBeats; }, [metronomeBeats]);
   useEffect(() => { metronomeFollowSpeedRef.current = metronomeFollowSpeed; }, [metronomeFollowSpeed]);
   useEffect(() => { metronomeCountInRef.current = metronomeCountIn; }, [metronomeCountIn]);
   useEffect(() => { speedRef.current = parseFloat(speedInput) || 1.0; }, [speedInput]);
@@ -350,22 +245,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     setSpeedInput(s);
     speedRef.current = audioState.speed;
   }, [audioState.speed, isVideo]);
-  useEffect(() => { shortcutBindingsRef.current = shortcutBindings; }, [shortcutBindings]);
   useEffect(() => { loopBreakEnabledRef.current = loopBreakEnabled; }, [loopBreakEnabled]);
   useEffect(() => { loopBreakAfterRef.current = loopBreakAfter; }, [loopBreakAfter]);
   useEffect(() => { loopBreakDurationRef.current = loopBreakDuration; }, [loopBreakDuration]);
-  useEffect(() => { waveMarkersRef.current = waveMarkers; }, [waveMarkers]);
-  useEffect(() => { selectedMarkerIdxRef.current = selectedMarkerIdx; }, [selectedMarkerIdx]);
-  useEffect(() => { regionsRef.current = regions; }, [regions]);
-  useEffect(() => { activeRegionIdRef.current = activeRegionId; }, [activeRegionId]);
 
   // ── Active section linkage ────────────────────────────────────────────────────
   useEffect(() => {
     if (activeSectionId == null) return;
-    const region = regionsRef.current.find(r => r.section_id === activeSectionId);
+    const region = regionState.regionsRef.current.find(r => r.section_id === activeSectionId);
     if (!region) return;
-    setActiveRegionId(region.id);
-    activeRegionIdRef.current = region.id;
+    regionState.setActiveRegionId(region.id);
     if (isVideo && videoRef.current) {
       videoRef.current.currentTime = region.start;
     } else {
@@ -409,11 +298,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       loopBreakEnabled,
       loopBreakAfter: String(loopBreakAfter),
       loopBreakDuration: String(loopBreakDuration),
-      metronomeBpm: metronomeBpmRef.current,
+      metronomeBpm: metronome.bpm,
       pitchSemitones,
       pitchCents,
-      regions: regionsRef.current,
-      markers: waveMarkersRef.current,
+      regions: regionState.regionsRef.current,
+      markers: markerState.markersRef.current,
       updatedAt: Date.now(),
     };
     try {
@@ -426,7 +315,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     }
   }, [filePath, isVideo, loopStartInput, loopEndInput, loopIncreaseBy, loopIncreaseAt,
       loopIncreaseEnabled, loopEnabled, loopBreakEnabled, loopBreakAfter, loopBreakDuration,
-      pitchSemitones, pitchCents, setPresetStatus]);
+      metronome.bpm, pitchSemitones, pitchCents, setPresetStatus]);
 
   const schedulePresetSave = useCallback(() => {
     if (presetSaveTimerRef.current) clearTimeout(presetSaveTimerRef.current);
@@ -463,11 +352,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       setPitchSemitonesLocal(0);
       setPitchCentsLocal(0);
       audioActions.setPitch(0, 0);
-      setWaveMarkers([]);
-      setSelectedMarkerIdx(-1);
-      setMarkerNameInput("");
-      setRegions([]);
-      setActiveRegionId(null);
+      markerState.loadMarkers([]);
+      regionState.loadRegions([]);
       setRegionNameInput("");
       setPresetStatusText("Not saved");
       return;
@@ -511,137 +397,41 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     setPitchCentsLocal(ct);
     audioActions.setPitch(sem, ct);
     if (preset.metronomeBpm) {
-      setMetronomeBpm(preset.metronomeBpm);
-      metronomeBpmRef.current = preset.metronomeBpm;
+      metronome.setBpmImmediate(preset.metronomeBpm);
     }
-    const markers = Array.isArray(preset.markers) ? [...preset.markers] : [];
-    setWaveMarkers(markers);
-    waveMarkersRef.current = markers;
-    setSelectedMarkerIdx(markers.length ? 0 : -1);
-    setMarkerNameInput(markers.length ? (markers[0].name ?? "") : "");
-    const regs = Array.isArray(preset.regions) ? [...preset.regions] : [];
-    setRegions(regs);
-    regionsRef.current = regs;
-    setActiveRegionId(null);
+    markerState.loadMarkers(preset.markers);
+    regionState.loadRegions(preset.regions);
     setRegionNameInput("");
     setPresetStatusText("All changes saved");
-  }, [audioActions, isVideo]);
+  }, [audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions]);
 
   // ── Metronome ────────────────────────────────────────────────────────────────
 
-  const stopMetronome = useCallback(() => {
-    if (metronomeTimerRef.current !== null) {
-      clearInterval(metronomeTimerRef.current);
-      metronomeTimerRef.current = null;
-    }
-    metronomeEnabledRef.current = false;
-    setMetronomeEnabled(false);
-  }, []);
-
-  const performCountIn = useCallback((): Promise<void> => {
-    return new Promise((resolve) => {
-      let ctx = audioActions.getContext();
-      if (!ctx || ctx.state === "closed") {
-        ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      }
-      const audioCtx = ctx;
-      audioCtx.resume();
-      const beats = metronomeBeatsRef.current || 4;
-      const speed = metronomeFollowSpeedRef.current ? speedRef.current : 1.0;
-      const effectiveBpm = metronomeBpmRef.current * speed;
-      const interval = 60 / effectiveBpm;
-      const startTime = audioCtx.currentTime + 0.05;
-      for (let i = 0; i < beats; i++) {
-        scheduleClick(audioCtx, startTime + i * interval, i === 0);
-      }
-      const waitMs = (beats * interval * 1000) | 0;
-      setTimeout(resolve, waitMs);
-    });
-  }, [audioActions]);
-
-  const startMetronome = useCallback(() => {
-    let ctx = audioActions.getContext();
-    if (!ctx || ctx.state === "closed") {
-      ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    }
-    const audioCtx = ctx;
-    audioCtx.resume();
-    if (metronomeTimerRef.current !== null) clearInterval(metronomeTimerRef.current);
-    metronomeNextTimeRef.current = audioCtx.currentTime + 0.05;
-    metronomeBeatIndexRef.current = 0;
-    metronomeEnabledRef.current = true;
-    setMetronomeEnabled(true);
-    metronomeTimerRef.current = setInterval(() => {
-      if (!metronomeEnabledRef.current) return;
-      const speed = metronomeFollowSpeedRef.current ? speedRef.current : 1.0;
-      const effectiveBpm = metronomeBpmRef.current * speed;
-      const interval = 60 / effectiveBpm;
-      const ahead = audioCtx.currentTime + 0.5;
-      while (metronomeNextTimeRef.current < ahead) {
-        const beats = metronomeBeatsRef.current;
-        const accent = beats > 0 ? metronomeBeatIndexRef.current % beats === 0 : false;
-        scheduleClick(audioCtx, metronomeNextTimeRef.current, accent);
-        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-        const delay = Math.max(0, (metronomeNextTimeRef.current - audioCtx.currentTime) * 1000);
-        flashTimerRef.current = setTimeout(() => {
-          setMetronomeBeatFlash(true);
-          setTimeout(() => setMetronomeBeatFlash(false), 80);
-        }, delay);
-        metronomeNextTimeRef.current += interval;
-        metronomeBeatIndexRef.current++;
-      }
-    }, 100);
-  }, [audioActions]);
-
-  const toggleMetronome = () => {
-    if (metronomeEnabled) stopMetronome();
-    else startMetronome();
-  };
-
-  useEffect(() => { performCountInRef.current = performCountIn; }, [performCountIn]);
-
-  // Keep count-in callback in engine
+  // Keep count-in callback wired into the audio engine
   useEffect(() => {
-    if (!isVideo && metronomeEnabled && metronomeCountIn) {
-      audioActions.setCountIn(performCountIn);
+    if (!isVideo && metronome.enabled && metronomeCountIn) {
+      audioActions.setCountIn(metronome.performCountIn);
     } else {
       audioActions.setCountIn(null);
     }
-  }, [isVideo, metronomeEnabled, metronomeCountIn, performCountIn, audioActions]);
+  }, [isVideo, metronome.enabled, metronomeCountIn, metronome.performCountIn, audioActions]);
 
   useEffect(() => {
     if (!isVideo) {
-      audioActions.setBreakCountIn(loopBreakEnabled ? performCountIn : null);
+      audioActions.setBreakCountIn(loopBreakEnabled ? metronome.performCountIn : null);
     }
-  }, [isVideo, loopBreakEnabled, performCountIn, audioActions]);
-
-  // Tap tempo
-  const tapTimestampsRef = useRef<number[]>([]);
-  const handleTapTempo = () => {
-    const now = Date.now();
-    const taps = tapTimestampsRef.current;
-    taps.push(now);
-    if (taps.length > 8) taps.shift();
-    if (taps.length >= 2) {
-      const intervals = taps.slice(1).map((t, i) => t - taps[i]);
-      const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-      const bpm = Math.round(60000 / avg);
-      setMetronomeBpm(Math.max(40, Math.min(260, bpm)));
-    }
-  };
+  }, [isVideo, loopBreakEnabled, metronome.performCountIn, audioActions]);
 
   // Auto-set BPM from detected value
   useEffect(() => {
-    if (audioState.detectedBpm) {
-      setMetronomeBpm(audioState.detectedBpm);
-      metronomeBpmRef.current = audioState.detectedBpm;
-    }
+    if (audioState.detectedBpm) metronome.setBpmImmediate(audioState.detectedBpm);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioState.detectedBpm]);
 
   // ── Load file ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    stopMetronome();
+    metronome.stop();
     const preset = presetsRef.current[filePath];
     applyPreset(preset);
 
@@ -669,7 +459,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
     return () => {
       if (!isVideo) audioActions.destroy();
-      stopMetronome();
+      metronome.stop();
       // Flush any pending debounced save before unmounting so settings aren't lost
       if (presetSaveTimerRef.current) {
         clearTimeout(presetSaveTimerRef.current);
@@ -710,7 +500,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
             vid.pause();
             if (videoBreakTimerRef.current) clearTimeout(videoBreakTimerRef.current);
             videoBreakTimerRef.current = setTimeout(() => {
-              performCountInRef.current().then(() => {
+              metronome.performCountIn().then(() => {
                 videoBreakTimerRef.current = null;
                 vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
               });
@@ -809,10 +599,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
     // Draw saved regions
     if (dur > 0) {
-      regionsRef.current.forEach((region, idx) => {
+      regionState.regionsRef.current.forEach((region, idx) => {
         const x1 = Math.min(1, region.start / dur) * width;
         const x2 = Math.min(1, region.end / dur) * width;
-        const isActive = region.id === activeRegionIdRef.current;
+        const isActive = region.id === regionState.activeRegionIdRef.current;
         const baseColor = idx === 0 ? "124, 93, 255" : "109, 255, 203";
         ctx.fillStyle = `rgba(${baseColor}, ${isActive ? 0.32 : 0.18})`;
         ctx.strokeStyle = `rgba(${baseColor}, ${isActive ? 1 : 0.8})`;
@@ -846,10 +636,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
     // Markers
     if (dur > 0) {
-      waveMarkersRef.current.forEach((marker, idx) => {
+      markerState.markersRef.current.forEach((marker, idx) => {
         const x = Math.min(1, marker.time / dur) * width;
-        ctx.strokeStyle = idx === selectedMarkerIdxRef.current ? "#6dffcb" : "rgba(255,255,255,0.45)";
-        ctx.lineWidth = idx === selectedMarkerIdxRef.current ? 2 : 1;
+        ctx.strokeStyle = idx === markerState.selectedIdx ? "#6dffcb" : "rgba(255,255,255,0.45)";
+        ctx.lineWidth = idx === markerState.selectedIdx ? 2 : 1;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
@@ -957,7 +747,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    addMarkerAt(ratio * dur);
+    markerState.addMarkerAt(ratio * dur);
   };
 
   // ── Loop handle drag ─────────────────────────────────────────────────────────
@@ -1057,10 +847,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (dur <= 0) return;
     if (which === "start") {
       commitLoopStart(String(currentTime));
-      addMarkerAt(currentTime);
+      markerState.addMarkerAt(currentTime);
     } else {
       commitLoopEnd(String(currentTime));
-      addMarkerAt(currentTime);
+      markerState.addMarkerAt(currentTime);
     }
   };
 
@@ -1069,7 +859,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     setLoopEndInput("");
     audioActions.setLoopStart(null);
     audioActions.setLoopEnd(null);
-    setActiveRegionId(null);
+    regionState.setActiveRegionId(null);
     setPresetStatus("Loop cleared");
     schedulePresetSave();
   };
@@ -1092,92 +882,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     schedulePresetSave();
   };
 
-  // ── Markers ───────────────────────────────────────────────────────────────────
-
-  const addMarkerAt = useCallback((time: number) => {
-    if (!Number.isFinite(time) || dur <= 0) return;
-    const clamped = Math.max(0, Math.min(dur, time));
-    setWaveMarkers(prev => {
-      const existing = prev.findIndex(m => Math.abs(m.time - clamped) < 0.05);
-      let next: WaveMarker[];
-      let idx: number;
-      if (existing === -1) {
-        next = [...prev, { time: clamped, name: "" }];
-      } else {
-        next = prev.map((m, i) => i === existing ? { ...m, time: clamped } : m);
-      }
-      next = [...next].sort((a, b) => a.time - b.time);
-      idx = next.findIndex(m => m.time === clamped);
-      waveMarkersRef.current = next;
-      setSelectedMarkerIdx(idx);
-      selectedMarkerIdxRef.current = idx;
-      setMarkerNameInput(next[idx]?.name ?? "");
-      return next;
-    });
-    schedulePresetSave();
-  }, [dur, schedulePresetSave]);
-
-  const addMarkerFromCurrentTime = () => addMarkerAt(currentTime);
-
-  const jumpToMarker = (dir: "prev" | "next") => {
-    const markers = waveMarkersRef.current;
-    if (!markers.length) return;
-    let idx = selectedMarkerIdxRef.current;
-    if (idx === -1) idx = 0;
-    else {
-      if (dir === "next") idx = (idx + 1) % markers.length;
-      else idx = (idx - 1 + markers.length) % markers.length;
-    }
-    const marker = markers[idx];
-    setSelectedMarkerIdx(idx);
-    selectedMarkerIdxRef.current = idx;
-    setMarkerNameInput(marker.name ?? "");
-    if (isVideo && videoRef.current) videoRef.current.currentTime = marker.time;
-    else audioActions.seek(marker.time);
-  };
-
-  const deleteSelectedMarker = () => {
-    const idx = selectedMarkerIdxRef.current;
-    if (idx < 0) return;
-    setWaveMarkers(prev => {
-      const next = prev.filter((_, i) => i !== idx);
-      waveMarkersRef.current = next;
-      const newIdx = next.length ? Math.min(idx, next.length - 1) : -1;
-      setSelectedMarkerIdx(newIdx);
-      selectedMarkerIdxRef.current = newIdx;
-      setMarkerNameInput(newIdx >= 0 ? (next[newIdx]?.name ?? "") : "");
-      return next;
-    });
-    schedulePresetSave();
-  };
-
-  const clearAllMarkers = () => {
-    setWaveMarkers([]);
-    waveMarkersRef.current = [];
-    setSelectedMarkerIdx(-1);
-    selectedMarkerIdxRef.current = -1;
-    setMarkerNameInput("");
-    schedulePresetSave();
-  };
-
-  const nudgeSelectedMarker = (delta: number) => {
-    const idx = selectedMarkerIdxRef.current;
-    if (idx < 0 || dur <= 0) return;
-    setWaveMarkers(prev => {
-      const marker = prev[idx];
-      if (!marker) return prev;
-      const next = Math.max(0, Math.min(dur, marker.time + delta));
-      const updated = prev.map((m, i) => i === idx ? { ...m, time: next } : m);
-      const sorted = [...updated].sort((a, b) => a.time - b.time);
-      const newIdx = sorted.findIndex(m => m.time === next);
-      waveMarkersRef.current = sorted;
-      setSelectedMarkerIdx(newIdx);
-      selectedMarkerIdxRef.current = newIdx;
-      return sorted;
-    });
-    schedulePresetSave();
-  };
-
   // ── Regions ───────────────────────────────────────────────────────────────────
 
   const saveRegion = async () => {
@@ -1191,22 +895,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       showToast("Loop end must be after loop start.", { icon: "⚠️", tone: "warning" });
       return;
     }
-    const name = regionNameInput.trim() || `Region ${regionsRef.current.length + 1}`;
-    let sectionId: number | undefined;
-    if (token && songId) {
-      try {
-        const section = await createSongSection(token, songId, {
-          name,
-          start_seconds: ls,
-          end_seconds: le,
-        });
-        sectionId = section.id;
-      } catch (err) {
-        showToast(`Failed to save region to server: ${err instanceof Error ? err.message : String(err)}`, { icon: "⚠️", tone: "warning" });
-      }
-    }
-    const newRegion: Region = {
-      id: createRegionId(),
+    const name = regionNameInput.trim() || `Region ${regionState.regionsRef.current.length + 1}`;
+    const newRegion = await regionState.createRegion({
       name,
       start: ls,
       end: le,
@@ -1214,14 +904,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       speedIncreasePercent: loopIncreaseBy,
       speedIncreaseInterval: loopIncreaseAt,
       increaseEnabled: loopIncreaseEnabled,
-      createdAt: Date.now(),
-      section_id: sectionId,
-    };
-    const next = [...regionsRef.current, newRegion];
-    setRegions(next);
-    regionsRef.current = next;
-    setActiveRegionId(null);
-    activeRegionIdRef.current = null;
+    });
     setRegionNameInput("");
     setLoopStartInput("");
     setLoopEndInput("");
@@ -1233,9 +916,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   };
 
   const applyRegion = (id: string) => {
-    if (activeRegionIdRef.current === id) {
-      setActiveRegionId(null);
-      activeRegionIdRef.current = null;
+    if (regionState.activeRegionIdRef.current === id) {
+      regionState.setActiveRegionId(null);
       setRegionNameInput("");
       setLoopStartInput("");
       setLoopEndInput("");
@@ -1243,7 +925,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       audioActions.setLoopEnd(null);
       return;
     }
-    const region = regionsRef.current.find(r => r.id === id);
+    const region = regionState.regionsRef.current.find(r => r.id === id);
     if (!region) return;
     setLoopStartInput(formatTime(region.start));
     setLoopEndInput(formatTime(region.end));
@@ -1263,8 +945,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       : region.speedIncreasePercent > 0;
     setLoopIncreaseEnabledLocal(incEnabled);
     audioActions.setLoopIncreaseEnabled(incEnabled);
-    setActiveRegionId(id);
-    activeRegionIdRef.current = id;
+    regionState.setActiveRegionId(id);
     setRegionNameInput(region.name ?? "");
     showToast(`Region "${region.name}" applied (${formatTime(region.start)} → ${formatTime(region.end)})`, { icon: "🎯" });
     if (isVideo && videoRef.current) videoRef.current.currentTime = region.start;
@@ -1273,35 +954,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   };
 
   const deleteRegion = (id: string) => {
-    const region = regionsRef.current.find(r => r.id === id);
-    const next = regionsRef.current.filter(r => r.id !== id);
-    setRegions(next);
-    regionsRef.current = next;
-    if (activeRegionIdRef.current === id) {
-      setActiveRegionId(null);
-      activeRegionIdRef.current = null;
-      setRegionNameInput("");
-    }
-    if (token && region?.section_id) {
-      deleteSongSection(token, region.section_id).catch(err => {
-        showToast(`Failed to delete region from server: ${err instanceof Error ? err.message : String(err)}`, { icon: "⚠️", tone: "warning" });
-      });
-    }
+    const wasActive = regionState.activeRegionIdRef.current === id;
+    regionState.removeRegion(id);
+    if (wasActive) setRegionNameInput("");
     setPresetStatus("Region removed");
     showToast("Region removed.", { icon: "🗑", tone: "warning" });
     savePreset({ silent: true });
   };
 
   const renameRegion = (id: string, name: string) => {
-    const region = regionsRef.current.find(r => r.id === id);
-    const next = regionsRef.current.map(r => r.id === id ? { ...r, name } : r);
-    setRegions(next);
-    regionsRef.current = next;
-    if (token && region?.section_id) {
-      updateSongSection(token, region.section_id, { name }).catch(err => {
-        showToast(`Failed to rename region on server: ${err instanceof Error ? err.message : String(err)}`, { icon: "⚠️", tone: "warning" });
-      });
-    }
+    regionState.renameRegionAt(id, name);
     savePreset({ silent: true });
   };
 
@@ -1310,10 +972,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Shortcut rebind mode
-      if (pendingRebind !== null) {
+      if (shortcuts.pendingRebind !== null) {
         e.preventDefault();
         if (e.key === "Escape") {
-          setPendingRebind(null);
+          shortcuts.setPendingRebind(null);
           return;
         }
         const base = normalizeKey(e.key);
@@ -1323,20 +985,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         if (e.altKey) mods.push("Alt");
         if (e.shiftKey) mods.push("Shift");
         const key = mods.length ? `${mods.join("+")}+${base}` : base;
-        const next = { ...shortcutBindingsRef.current, [pendingRebind]: key };
-        setShortcutBindings(next);
-        shortcutBindingsRef.current = next;
-        try {
-          writeLocalStorageJSON(SHORTCUT_KEY, next);
-        } catch (err) {
-          setPersistError(`Couldn't save your keyboard shortcut — it'll reset next time the app opens. (${err instanceof Error ? err.message : String(err)})`);
-        }
-        setPendingRebind(null);
+        shortcuts.commitRebind(shortcuts.pendingRebind, key);
+        shortcuts.setPendingRebind(null);
         return;
       }
 
-      if (e.key === "Escape" && paletteOpen) {
-        setPaletteOpen(false);
+      if (e.key === "Escape" && shortcuts.paletteOpen) {
+        shortcuts.setPaletteOpen(false);
         return;
       }
 
@@ -1346,7 +1001,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         (target instanceof HTMLInputElement && !["range", "checkbox"].includes(target.type)) ||
         target.isContentEditable;
       if (isTyping) return;
-      if (paletteOpen) return;
+      if (shortcuts.paletteOpen) return;
 
       const base = normalizeKey(e.key);
       const mods: string[] = [];
@@ -1356,7 +1011,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       if (e.shiftKey) mods.push("Shift");
       const pressedKey = mods.length ? `${mods.join("+")}+${base}` : base;
 
-      const bindings = shortcutBindingsRef.current;
+      const bindings = shortcuts.bindingsRef.current;
       let actionId = Object.keys(bindings).find(id => bindings[id] === pressedKey);
       if (!actionId && e.key === "+" && bindings.increaseSpeed === "=") actionId = "increaseSpeed";
       if (!actionId) return;
@@ -1402,24 +1057,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         case "nudgeLoopStartForwardSmall": nudgeLoopBound("start", LOOP_NUDGE); break;
         case "nudgeLoopEndBackSmall": nudgeLoopBound("end", -LOOP_NUDGE); break;
         case "nudgeLoopEndForwardSmall": nudgeLoopBound("end", LOOP_NUDGE); break;
-        case "nudgeMarkerBack": nudgeSelectedMarker(-MARKER_NUDGE); break;
-        case "nudgeMarkerForward": nudgeSelectedMarker(MARKER_NUDGE); break;
-        case "addMarker": addMarkerFromCurrentTime(); break;
+        case "nudgeMarkerBack": markerState.nudgeSelected(-MARKER_NUDGE); break;
+        case "nudgeMarkerForward": markerState.nudgeSelected(MARKER_NUDGE); break;
+        case "addMarker": markerState.addMarkerFromCurrentTime(); break;
         case "closePlayer": onClose(); break;
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingRebind, paletteOpen, loopEnabled, dur, speedInput, currentTime]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopMetronome();
-      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    };
-  }, [stopMetronome]);
+  }, [shortcuts.pendingRebind, shortcuts.paletteOpen, shortcuts.bindingsRef, shortcuts.commitRebind, shortcuts.setPendingRebind, shortcuts.setPaletteOpen, loopEnabled, dur, speedInput, currentTime]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -1439,21 +1086,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       </div>
 
       {/* Shortcut palette */}
-      {paletteOpen && (
-        <div className="mp-palette-backdrop" onClick={() => setPaletteOpen(false)}>
+      {shortcuts.paletteOpen && (
+        <div className="mp-palette-backdrop" onClick={() => shortcuts.setPaletteOpen(false)}>
           <div className="mp-palette" onClick={e => e.stopPropagation()}>
             <div className="mp-palette-header">
               <span>Keyboard Shortcuts</span>
-              <button className="btn-ghost btn-xs" onClick={() => {
-                setShortcutBindings({ ...defaultShortcuts });
-                shortcutBindingsRef.current = { ...defaultShortcuts };
-                try {
-                  writeLocalStorageJSON(SHORTCUT_KEY, defaultShortcuts);
-                } catch (err) {
-                  setPersistError(`Couldn't save your keyboard shortcuts reset — it'll revert next time the app opens. (${err instanceof Error ? err.message : String(err)})`);
-                }
-              }}>Reset defaults</button>
-              <button className="btn-ghost btn-xs" onClick={() => setPaletteOpen(false)}>✕</button>
+              <button className="btn-ghost btn-xs" onClick={shortcuts.resetToDefaults}>Reset defaults</button>
+              <button className="btn-ghost btn-xs" onClick={() => shortcuts.setPaletteOpen(false)}>✕</button>
             </div>
             <ul className="mp-palette-list">
               {shortcutOrder.map(id => {
@@ -1466,10 +1105,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                       <div className="mp-palette-desc">{meta.description}</div>
                     </div>
                     <button
-                      className={`mp-shortcut-key ${pendingRebind === id ? "is-recording" : ""}`}
-                      onClick={() => setPendingRebind(id)}
+                      className={`mp-shortcut-key ${shortcuts.pendingRebind === id ? "is-recording" : ""}`}
+                      onClick={() => shortcuts.setPendingRebind(id)}
                     >
-                      {pendingRebind === id ? "Press a key…" : formatShortcutKey(shortcutBindings[id] ?? "")}
+                      {shortcuts.pendingRebind === id ? "Press a key…" : formatShortcutKey(shortcuts.bindings[id] ?? "")}
                     </button>
                   </li>
                 );
@@ -1495,7 +1134,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         </div>
         <div className="media-player__header-actions">
           <span className="media-player__preset-status">{presetStatus}</span>
-          <button className="btn-ghost btn-xs" onClick={() => setPaletteOpen(true)} title="Keyboard shortcuts">
+          <button className="btn-ghost btn-xs" onClick={() => shortcuts.setPaletteOpen(true)} title="Keyboard shortcuts">
             ⌨ Shortcuts
           </button>
           <button className="btn-ghost media-player__close" onClick={onClose} title="Close player">
@@ -1631,17 +1270,17 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         <div className="mp-section-header">
           <span className="mp-section-label">Markers</span>
           <span id="waveMarkerLabel" className="mp-marker-count">
-            {waveMarkers.length} marker{waveMarkers.length !== 1 ? "s" : ""}
-            {selectedMarkerIdx >= 0 ? ` · ${selectedMarkerIdx + 1}/${waveMarkers.length} selected` : ""}
+            {markerState.markers.length} marker{markerState.markers.length !== 1 ? "s" : ""}
+            {markerState.selectedIdx >= 0 ? ` · ${markerState.selectedIdx + 1}/${markerState.markers.length} selected` : ""}
           </span>
         </div>
         <div className="mp-row mp-row--wrap">
-          <button className="btn-ghost btn-xs" id="waveAddMarkerBtn" onClick={addMarkerFromCurrentTime} title="Add marker at playhead">Add</button>
-          <button className="btn-ghost btn-xs" id="wavePrevMarkerBtn" onClick={() => jumpToMarker("prev")} disabled={!waveMarkers.length} title="Previous marker">◀ Prev</button>
-          <button className="btn-ghost btn-xs" id="waveNextMarkerBtn" onClick={() => jumpToMarker("next")} disabled={!waveMarkers.length} title="Next marker">Next ▶</button>
-          <button className="btn-ghost btn-xs" id="waveDeleteMarkerBtn" onClick={deleteSelectedMarker} disabled={selectedMarkerIdx < 0} title="Delete selected marker">Delete</button>
-          <button className="btn-ghost btn-xs" id="waveClearMarkersBtn" onClick={clearAllMarkers} disabled={!waveMarkers.length} title="Clear all markers">Clear all</button>
-          {selectedMarkerIdx >= 0 && (
+          <button className="btn-ghost btn-xs" id="waveAddMarkerBtn" onClick={markerState.addMarkerFromCurrentTime} title="Add marker at playhead">Add</button>
+          <button className="btn-ghost btn-xs" id="wavePrevMarkerBtn" onClick={() => markerState.jumpToMarker("prev")} disabled={!markerState.markers.length} title="Previous marker">◀ Prev</button>
+          <button className="btn-ghost btn-xs" id="waveNextMarkerBtn" onClick={() => markerState.jumpToMarker("next")} disabled={!markerState.markers.length} title="Next marker">Next ▶</button>
+          <button className="btn-ghost btn-xs" id="waveDeleteMarkerBtn" onClick={markerState.deleteSelected} disabled={markerState.selectedIdx < 0} title="Delete selected marker">Delete</button>
+          <button className="btn-ghost btn-xs" id="waveClearMarkersBtn" onClick={markerState.clearAll} disabled={!markerState.markers.length} title="Clear all markers">Clear all</button>
+          {markerState.selectedIdx >= 0 && (
             <>
               <span className="mp-marker-sep">·</span>
               <label className="mp-pitch-label">Name</label>
@@ -1649,19 +1288,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                 type="text"
                 id="waveMarkerName"
                 className="mp-marker-name-input"
-                value={markerNameInput}
+                value={markerState.nameInput}
                 placeholder="Marker name…"
-                onChange={e => {
-                  setMarkerNameInput(e.target.value);
-                  const idx = selectedMarkerIdxRef.current;
-                  if (idx < 0) return;
-                  setWaveMarkers(prev => {
-                    const next = prev.map((m, i) => i === idx ? { ...m, name: e.target.value } : m);
-                    waveMarkersRef.current = next;
-                    return next;
-                  });
-                  schedulePresetSave();
-                }}
+                onChange={e => markerState.renameSelected(e.target.value)}
               />
             </>
           )}
@@ -1866,10 +1495,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
             <section className="mp-section">
               <div className="mp-section-header">
                 <span className="mp-section-label">Regions</span>
-                {activeRegionId && (
+                {regionState.activeRegionId && (
                   <button
                     className="btn-ghost btn-xs"
-                    onClick={() => { setActiveRegionId(null); activeRegionIdRef.current = null; }}
+                    onClick={() => regionState.setActiveRegionId(null)}
                     title="Deselect region"
                   >
                     Deselect
@@ -1887,9 +1516,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                 />
                 <button className="btn-ghost btn-xs" id="addRegionBtn" onClick={saveRegion} title="Save current loop as a new region">Save Region</button>
               </div>
-              {regions.length > 0 && (
+              {regionState.regions.length > 0 && (
                 <ul id="regionList" className="mp-region-list">
-                  {regions.map((region, idx) => {
+                  {regionState.regions.map((region, idx) => {
                     const speedLabel = `${Math.round((region.playbackSpeed ?? 1) * 100)}%`;
                     const incStr = region.increaseEnabled && region.speedIncreasePercent > 0
                       ? ` · +${region.speedIncreasePercent}% every ${region.speedIncreaseInterval} loops`
@@ -1899,7 +1528,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                       <li
                         key={region.id}
                         data-region-id={region.id}
-                        className={`mp-region-item ${region.id === activeRegionId ? "is-active" : ""}`}
+                        className={`mp-region-item ${region.id === regionState.activeRegionId ? "is-active" : ""}`}
                         onClick={() => { if (!isEditing) applyRegion(region.id); }}
                         style={{ cursor: "pointer" }}
                       >
@@ -1947,7 +1576,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                   })}
                 </ul>
               )}
-              {regions.length === 0 && (
+              {regionState.regions.length === 0 && (
                 <p id="regionEmptyState" className="mp-empty-state">
                   Save loop settings to start a region list.
                 </p>
@@ -1960,8 +1589,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                 <div className="mp-section-header">
                   <span className="mp-section-label">Metronome</span>
                   <span id="metronomeStatus" className="mp-metronome-status">
-                    {metronomeEnabled
-                      ? `On · ${Math.round(metronomeBpm * (metronomeFollowSpeed ? (parseFloat(speedInput) || 1) : 1))} BPM`
+                    {metronome.enabled
+                      ? `On · ${Math.round(metronome.bpm * (metronomeFollowSpeed ? (parseFloat(speedInput) || 1) : 1))} BPM`
                       : "Off"}
                   </span>
                 </div>
@@ -1971,16 +1600,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                     id="metronomeBpm"
                     className="media-player__bpm-input"
                     min="40" max="260"
-                    value={metronomeBpm}
-                    onChange={e => setMetronomeBpm(Math.max(40, Math.min(260, parseInt(e.target.value) || 120)))}
+                    value={metronome.bpm}
+                    onChange={e => metronome.setBpm(Math.max(40, Math.min(260, parseInt(e.target.value) || 120)))}
                     title="BPM"
                   />
                   <span className="media-player__bpm-label">BPM</span>
                   <select
                     id="metronomeAccent"
                     className="media-player__timesig"
-                    value={metronomeBeats}
-                    onChange={e => setMetronomeBeats(parseInt(e.target.value))}
+                    value={metronome.beats}
+                    onChange={e => metronome.setBeats(parseInt(e.target.value))}
                     title="Accent beats"
                   >
                     <option value={2}>2/4</option>
@@ -1990,16 +1619,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                     <option value={0}>No accent</option>
                   </select>
                   <div
-                    className={`media-player__beat-indicator ${metronomeBeatFlash ? "is-flashing" : ""}`}
+                    className={`media-player__beat-indicator ${metronome.beatFlash ? "is-flashing" : ""}`}
                     title="Beat"
                   />
-                  <button className="btn-ghost btn-xs" onClick={handleTapTempo} title="Tap tempo">Tap</button>
+                  <button className="btn-ghost btn-xs" onClick={metronome.handleTapTempo} title="Tap tempo">Tap</button>
                   <button
-                    className={`btn-ghost ${metronomeEnabled ? "is-active" : ""}`}
+                    className={`btn-ghost ${metronome.enabled ? "is-active" : ""}`}
                     id="metronomeToggle"
-                    onClick={toggleMetronome}
+                    onClick={metronome.toggle}
                   >
-                    {metronomeEnabled ? "Stop" : "Start"}
+                    {metronome.enabled ? "Stop" : "Start"}
                   </button>
                 </div>
                 <div className="mp-row mp-row--wrap">
