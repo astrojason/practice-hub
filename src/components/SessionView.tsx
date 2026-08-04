@@ -29,6 +29,7 @@ import { HelpModal } from "./HelpModal";
 import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { makeItemKey, parseItemKey } from "../lib/itemKey";
+import { readLocalStorageJSON, writeLocalStorageJSON } from "../hooks/useLocalStorageJSON";
 import { SessionHeader } from "./session/SessionHeader";
 import { ItemGroup } from "./session/ItemGroup";
 import { ExerciseCard } from "./session/ExerciseCard";
@@ -64,36 +65,39 @@ interface StoredIdsResult {
   error: string | null;
 }
 
+interface StoredIds {
+  date: string;
+  ids: string[];
+}
+
 function loadStoredCompletedIds(): StoredIdsResult {
-  try {
-    const stored = JSON.parse(localStorage.getItem(COMPLETED_KEY) ?? "null");
-    const today = new Date().toLocaleDateString("en-CA");
-    if (stored?.date === today && Array.isArray(stored.ids)) {
-      return { ids: new Set<string>(stored.ids), error: null };
-    }
-    return { ids: new Set<string>(), error: null };
-  } catch (err) {
+  const { value: stored, error } = readLocalStorageJSON<StoredIds | null>(COMPLETED_KEY, null);
+  if (error) {
     return {
       ids: new Set<string>(),
-      error: `Couldn't read today's completed items from local storage — they've been reset. (${err instanceof Error ? err.message : String(err)})`,
+      error: `Couldn't read today's completed items from local storage — they've been reset. (${error})`,
     };
   }
+  const today = new Date().toLocaleDateString("en-CA");
+  if (stored?.date === today && Array.isArray(stored.ids)) {
+    return { ids: new Set<string>(stored.ids), error: null };
+  }
+  return { ids: new Set<string>(), error: null };
 }
 
 function loadStoredSkippedIds(): StoredIdsResult {
-  try {
-    const stored = JSON.parse(localStorage.getItem(SKIPPED_KEY) ?? "null");
-    const today = new Date().toLocaleDateString("en-CA");
-    if (stored?.date === today && Array.isArray(stored.ids)) {
-      return { ids: new Set<string>(stored.ids), error: null };
-    }
-    return { ids: new Set<string>(), error: null };
-  } catch (err) {
+  const { value: stored, error } = readLocalStorageJSON<StoredIds | null>(SKIPPED_KEY, null);
+  if (error) {
     return {
       ids: new Set<string>(),
-      error: `Couldn't read today's skipped items from local storage — they've been reset. (${err instanceof Error ? err.message : String(err)})`,
+      error: `Couldn't read today's skipped items from local storage — they've been reset. (${error})`,
     };
   }
+  const today = new Date().toLocaleDateString("en-CA");
+  if (stored?.date === today && Array.isArray(stored.ids)) {
+    return { ids: new Set<string>(stored.ids), error: null };
+  }
+  return { ids: new Set<string>(), error: null };
 }
 
 // Marks a parent exercise/study-material as done in `doneIds` once every one of
@@ -426,18 +430,18 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
   // ── Persist completedIds for today across restarts ────────────────────────────
   useEffect(() => {
-    localStorage.setItem(COMPLETED_KEY, JSON.stringify({
+    writeLocalStorageJSON(COMPLETED_KEY, {
       date: new Date().toLocaleDateString("en-CA"),
       ids: [...completedIds],
-    }));
+    });
   }, [completedIds]);
 
   // ── Persist skippedIds for today across restarts ──────────────────────────────
   useEffect(() => {
-    localStorage.setItem(SKIPPED_KEY, JSON.stringify({
+    writeLocalStorageJSON(SKIPPED_KEY, {
       date: new Date().toLocaleDateString("en-CA"),
       ids: [...skippedIds],
-    }));
+    });
   }, [skippedIds]);
 
   // ── Auto-complete parents when all children are done (completed or skipped) ───
