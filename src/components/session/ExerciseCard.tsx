@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ItemSessionCard } from "./ItemSessionCard";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import { ExerciseEditForm } from "./forms/ExerciseEditForm";
+import { AddChildExerciseForm } from "./forms/AddChildExerciseForm";
 import type { DashboardExercise, ExerciseSession, Resource } from "../../api/types";
 
 interface CardProps {
@@ -33,6 +34,8 @@ interface CardProps {
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
   onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
+  /** Only set for the top-level (non-child) card — enables the "Add child" button. */
+  onAddChild?: (child: DashboardExercise) => void;
 }
 
 function ExerciseSingleCard({
@@ -62,6 +65,7 @@ function ExerciseSingleCard({
   childrenCollapsed,
   onToggleChildren,
   onEntityEdited,
+  onAddChild,
 }: CardProps) {
   const ue = exercise.meta.user_exercise;
   const tags: string[] = [];
@@ -136,6 +140,17 @@ function ExerciseSingleCard({
           onCancel={onCancel}
         />
       )}
+      renderAddChildForm={onAddChild ? ({ onSuccess, onCancel }) => (
+        <AddChildExerciseForm
+          token={token}
+          parentExerciseId={exercise.id}
+          onSuccess={(child) => {
+            onSuccess();
+            onAddChild(child);
+          }}
+          onCancel={onCancel}
+        />
+      ) : undefined}
     />
   );
 }
@@ -166,6 +181,7 @@ interface ExerciseCardProps {
   isMediaActive?: boolean;
   isGpViewerActive?: boolean;
   onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
+  onChildAdded?: (parentId: number, child: DashboardExercise) => void;
 }
 
 export function ExerciseCard({
@@ -187,6 +203,7 @@ export function ExerciseCard({
   isMediaActive,
   isGpViewerActive,
   onEntityEdited,
+  onChildAdded,
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(true);
@@ -219,6 +236,10 @@ export function ExerciseCard({
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
         onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
         onEntityEdited={onEntityEdited}
+        onAddChild={onChildAdded ? (child) => {
+          onChildAdded(exercise.id, child);
+          setChildrenCollapsed(false);
+        } : undefined}
       />
       {!childrenCollapsed && exercise.child_exercises.map((child) => {
         const childState = getState(child.id);

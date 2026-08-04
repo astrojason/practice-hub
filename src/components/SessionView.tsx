@@ -902,6 +902,25 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     setAdditionalStudyMaterials((prev) => prev.map(mergeSm));
   }
 
+  // ── Add-child handlers ────────────────────────────────────────────────────────
+  function handleExerciseChildAdded(parentId: number, child: DashboardExercise) {
+    const mergeEx = (ex: DashboardExercise): DashboardExercise =>
+      ex.id === parentId ? { ...ex, child_exercises: [...ex.child_exercises, child] } : ex;
+    setDashboard((prev) => prev && { ...prev, exercises: prev.exercises.map(mergeEx) });
+    setAdditionalExercises((prev) => prev.map(mergeEx));
+  }
+
+  function handleStudyMaterialChildAdded(parentId: number, child: DashboardStudyMaterial) {
+    const mergeSm = (sm: DashboardStudyMaterial): DashboardStudyMaterial =>
+      sm.id === parentId
+        ? { ...sm, child_study_materials: [...(sm.child_study_materials ?? []), child] }
+        : sm;
+    setDashboard((prev) =>
+      prev && { ...prev, study_materials: prev.study_materials.map(mergeSm) }
+    );
+    setAdditionalStudyMaterials((prev) => prev.map(mergeSm));
+  }
+
   // ── Quick Add handlers ────────────────────────────────────────────────────────
   function handleAddSong(song: Song) {
     setAdditionalSongs((prev) => [...prev, song]);
@@ -1303,6 +1322,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               isMediaActive={playerState !== null}
               isGpViewerActive={isGpViewerActive}
               onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
+              onChildAdded={handleExerciseChildAdded}
             />
           ))}
         </ItemGroup>
@@ -1348,6 +1368,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               isMediaActive={playerState !== null}
               isGpViewerActive={isGpViewerActive}
               onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
+              onChildAdded={handleStudyMaterialChildAdded}
             />
           ))}
         </ItemGroup>
@@ -1506,6 +1527,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 isMediaActive={playerState !== null}
                 isGpViewerActive={isGpViewerActive}
                 onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
+                onChildAdded={handleExerciseChildAdded}
               />
             ))}
             {additionalStudyMaterials.map((sm) => (
@@ -1538,6 +1560,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 isMediaActive={playerState !== null}
                 isGpViewerActive={isGpViewerActive}
                 onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
+                onChildAdded={handleStudyMaterialChildAdded}
               />
             ))}
           </ItemGroup>

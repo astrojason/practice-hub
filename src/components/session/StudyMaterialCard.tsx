@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ItemSessionCard } from "./ItemSessionCard";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { StudyMaterialEditForm } from "./forms/StudyMaterialEditForm";
+import { AddChildStudyMaterialForm } from "./forms/AddChildStudyMaterialForm";
 import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
 
 function inferResourceType(url: string, storedType?: string): Resource["type"] {
@@ -41,6 +42,8 @@ interface SingleCardProps {
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
   onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
+  /** Only set for the top-level (non-child) card — enables the "Add child" button. */
+  onAddChild?: (child: DashboardStudyMaterial) => void;
 }
 
 function StudyMaterialSingleCard({
@@ -70,6 +73,7 @@ function StudyMaterialSingleCard({
   childrenCollapsed,
   onToggleChildren,
   onEntityEdited,
+  onAddChild,
 }: SingleCardProps) {
   const resources: Resource[] = material.url
     ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type) }]
@@ -131,6 +135,17 @@ function StudyMaterialSingleCard({
           onCancel={onCancel}
         />
       )}
+      renderAddChildForm={onAddChild ? ({ onSuccess, onCancel }) => (
+        <AddChildStudyMaterialForm
+          token={token}
+          parentStudyMaterialId={material.id}
+          onSuccess={(child) => {
+            onSuccess();
+            onAddChild(child);
+          }}
+          onCancel={onCancel}
+        />
+      ) : undefined}
     />
   );
 }
@@ -161,6 +176,7 @@ export interface StudyMaterialCardProps {
   isMediaActive?: boolean;
   isGpViewerActive?: boolean;
   onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
+  onChildAdded?: (parentId: number, child: DashboardStudyMaterial) => void;
 }
 
 export function StudyMaterialCard({
@@ -182,6 +198,7 @@ export function StudyMaterialCard({
   isMediaActive,
   isGpViewerActive,
   onEntityEdited,
+  onChildAdded,
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(true);
@@ -215,6 +232,10 @@ export function StudyMaterialCard({
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
         onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
         onEntityEdited={onEntityEdited}
+        onAddChild={onChildAdded ? (child) => {
+          onChildAdded(material.id, child);
+          setChildrenCollapsed(false);
+        } : undefined}
       />
       {!childrenCollapsed && (material.child_study_materials ?? []).map((child) => {
         const childState = getState(child.id);

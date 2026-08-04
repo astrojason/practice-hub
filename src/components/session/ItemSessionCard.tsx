@@ -4,6 +4,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  FolderPlusIcon,
   ForwardIcon,
   NoSymbolIcon,
   PauseIcon,
@@ -102,6 +103,8 @@ export interface ItemSessionCardProps {
   editTitle: string;
   renderSessionForm: (ctx: RenderFormCtx) => React.ReactNode;
   renderEditForm: (ctx: RenderEditCtx) => React.ReactNode;
+  /** When set (only for top-level, non-child cards), shows an "Add child" button that opens this form. */
+  renderAddChildForm?: (ctx: RenderEditCtx) => React.ReactNode;
 }
 
 export function ItemSessionCard({
@@ -141,10 +144,12 @@ export function ItemSessionCard({
   editTitle,
   renderSessionForm,
   renderEditForm,
+  renderAddChildForm,
 }: ItemSessionCardProps) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [addChildOpen, setAddChildOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const mediaWasOpenedRef = useRef(false);
@@ -232,6 +237,15 @@ export function ItemSessionCard({
               title={childrenCollapsed ? "Expand" : "Collapse"}
             >
               {childrenCollapsed ? <ChevronRightIcon className="icon" /> : <ChevronDownIcon className="icon" />}
+            </button>
+          )}
+          {!inSession && renderAddChildForm && (
+            <button
+              className="btn-ghost"
+              onClick={() => setAddChildOpen(true)}
+              title="Add child"
+            >
+              <FolderPlusIcon className="icon" />
             </button>
           )}
           {!inSession && (
@@ -363,6 +377,18 @@ export function ItemSessionCard({
           {renderEditForm({
             onSuccess: () => setEditOpen(false),
             onCancel: () => setEditOpen(false),
+          })}
+        </SessionModal>
+      )}
+
+      {addChildOpen && renderAddChildForm && (
+        <SessionModal
+          title={`Add child: ${name}`}
+          onClose={() => setAddChildOpen(false)}
+        >
+          {renderAddChildForm({
+            onSuccess: () => setAddChildOpen(false),
+            onCancel: () => setAddChildOpen(false),
           })}
         </SessionModal>
       )}
