@@ -68,6 +68,10 @@ export interface BarLayout {
   index: number;
   xStart: number;
   xEnd: number;
+  /** This bar's first beat's startMs (or the previous bar's end, if this bar has no beats). */
+  startMs: number;
+  /** Cumulative bar-gap pixels inserted before this bar — see TrackLayout.pixelsPerMs / timeToX. */
+  gapOffsetPx: number;
   clef: alphaTab.model.Clef;
   keySignature: number;
   timeSignatureNumerator: number;
@@ -79,6 +83,24 @@ export interface TrackLayout {
   bars: BarLayout[];
   totalWidth: number;
   stringCount: number;
+  pixelsPerMs: number;
+}
+
+/**
+ * Maps a global playback time to its x position in this layout. This is the
+ * deterministic function that replaces alphaTab's event-driven cursor relay
+ * (see TabCursor.tsx) — layout is time-proportional *within* each bar, with a
+ * constant per-bar offset (gapOffsetPx) added at each bar boundary, so x is
+ * piecewise-linear in time rather than a single global linear function.
+ */
+export function timeToX(layout: TrackLayout, timeMs: number): number {
+  if (layout.bars.length === 0) return 0;
+  let bar = layout.bars[0];
+  for (const b of layout.bars) {
+    if (b.startMs > timeMs) break;
+    bar = b;
+  }
+  return timeMs * layout.pixelsPerMs + bar.gapOffsetPx;
 }
 
 // ─── Pitch spelling ────────────────────────────────────────────────────────────
@@ -152,21 +174,30 @@ export function buildTrackLayout(
   const bars: BarLayout[] = [];
   let beamGroupCounter = 0;
   let x = 0;
+  let gapOffset = 0; // cumulative bar-gap px inserted so far — see timeToX
+  let lastBarEndMs = 0;
 
   for (const bar of staff.bars) {
     const masterBar = score.masterBars[bar.index];
     const xStart = x;
+    const barGapOffset = gapOffset;
 
     // A bar may have multiple voices; v1 renders voice 0 only.
     const voice = bar.voices[0];
     const beatGlyphs: BeatGlyph[] = [];
+    let barStartMs = lastBarEndMs;
 
-    // First pass: build glyphs with time-proportional x.
+    // First pass: build glyphs with time-proportional x (plus the constant
+    // per-bar gap offset, so beat.x stays consistent with bar.xStart/xEnd —
+    // without this, beats past the first bar would land to the left of
+    // their own bar line, drifting further with every subsequent bar).
     for (const beat of voice.beats) {
       const timing = beatTiming.get(beat.id);
       const startMs = timing?.startMs ?? 0;
       const durationMs = timing?.durationMs ?? 0;
-      const beatX = startMs * options.pixelsPerMs;
+      if (beatGlyphs.length === 0) barStartMs = startMs;
+      lastBarEndMs = Math.max(lastBarEndMs, startMs + durationMs);
+      const beatX = startMs * options.pixelsPerMs + barGapOffset;
       x = Math.max(x, beatX + durationMs * options.pixelsPerMs);
 
       const notes: NoteGlyph[] = beat.notes.map((note) => {
@@ -217,6 +248,8 @@ export function buildTrackLayout(
       index: bar.index,
       xStart,
       xEnd,
+      startMs: barStartMs,
+      gapOffsetPx: barGapOffset,
       clef: bar.clef,
       keySignature: masterBar.keySignature,
       timeSignatureNumerator: masterBar.timeSignatureNumerator,
@@ -224,7 +257,8 @@ export function buildTrackLayout(
       beats: beatGlyphs,
     });
     x = xEnd;
+    gapOffset += options.barGapPx;
   }
 
-  return { bars, totalWidth: x, stringCount };
+  return { bars, totalWidth: x, stringCount, pixelsPerMs: options.pixelsPerMs };
 }

@@ -71,6 +71,22 @@ test("a second bar starts after the first bar's content plus the bar gap", async
   expect(layout.totalWidth).toBeGreaterThan(layout.bars[1].xStart);
 });
 
+test("a later bar's own beats never land to the left of that bar's xStart (regression: gap offset must propagate into beat.x)", async ({ page }) => {
+  // Three bars so any per-bar drift (a bug here previously accumulated the
+  // gap into bar.xStart/xEnd bookkeeping but not into beat.x itself) would
+  // compound and become obviously wrong by the third bar.
+  const layout = await layoutFromTex(
+    page,
+    "\\tempo 120 . 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 |",
+  );
+  expect(layout.bars).toHaveLength(3);
+  for (const bar of layout.bars) {
+    for (const beat of bar.beats) {
+      expect(beat.x).toBeGreaterThanOrEqual(bar.xStart);
+    }
+  }
+});
+
 // ─── Notation staff pitch mapping (treble clef, no key signature) ─────────────
 
 test("natural notes land on the expected diatonic staff steps in treble clef", async ({ page }) => {
@@ -165,4 +181,38 @@ test("a beam breaks at a quarter note and a rest, and a lone eighth note gets no
   expect(beats[5].beamGroupId).not.toBeNull();
   expect(beats[5].beamGroupId).toBe(beats[6].beamGroupId);
   expect(beats[5].beamGroupId).not.toBe(beats[0].beamGroupId);
+});
+
+// ─── timeToX (the deterministic cursor mapping) ────────────────────────────────
+
+async function timeToXSamples(page: import("@playwright/test").Page, tex: string, times: number[]) {
+  return page.evaluate(async ({ tex, times }) => {
+    const gpScore = await import("/src/lib/gpScore.ts");
+    const tabLayout = await import("/src/lib/tabLayout.ts");
+    const score = gpScore.alphaTab.importer.ScoreLoader.loadAlphaTex(tex);
+    const timing = gpScore.buildBeatTiming(score);
+    const layout = tabLayout.buildTrackLayout(score, 0, timing);
+    return times.map((t) => tabLayout.timeToX(layout, t));
+  }, { tex, times });
+}
+
+test("timeToX matches each beat's own x at that beat's startMs, across bar boundaries", async ({ page }) => {
+  const tex = "\\tempo 120 . 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 |";
+  const layout = await layoutFromTex(page, tex);
+  const allBeats = layout.bars.flatMap((b) => b.beats);
+  const startTimes = allBeats.map((b) => b.startMs);
+  const xs = await timeToXSamples(page, tex, startTimes);
+  for (let i = 0; i < allBeats.length; i++) {
+    expect(xs[i]).toBeCloseTo(allBeats[i].x, 5);
+  }
+});
+
+test("timeToX is monotonically non-decreasing as time advances, including across bar lines", async ({ page }) => {
+  const tex = "\\tempo 140 . 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 | 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 1.1.8 |";
+  const samples: number[] = [];
+  for (let ms = 0; ms <= 3000; ms += 17) samples.push(ms); // ~60fps steps
+  const xs = await timeToXSamples(page, tex, samples);
+  for (let i = 1; i < xs.length; i++) {
+    expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
+  }
 });

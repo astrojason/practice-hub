@@ -6,6 +6,8 @@ import { ErrorModal } from "./ErrorModal";
 import { loadScoreFromFile, buildBeatTiming } from "../lib/gpScore";
 import { buildTrackLayout, type TrackLayout } from "../lib/tabLayout";
 import { TabCanvas } from "./tab/TabCanvas";
+import { TabCursor } from "./tab/TabCursor";
+import { computeStaffMetrics } from "./tab/tabGeometry";
 
 // alphaTab's default worker factory uses importScripts() inside a blob worker,
 // which silently fails under Tauri's tauri:// custom protocol. Re-initialize
@@ -131,6 +133,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const newRendererScrollRef = useRef<HTMLDivElement>(null);
   const updateTimerRef = useRef<number>(0);
 
   const [loading, setLoading] = useState(true);
@@ -478,6 +481,15 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     if (e.target === backdropRef.current) onClose();
   }
 
+  // Read directly from the audio engine's clock every frame — no relay
+  // through an intermediary event/cursor system. audioOffsetMs is kept as a
+  // manual escape hatch (e.g. genuine output-device latency) but should need
+  // little/no adjustment now that layout position and cursor position come
+  // from the same timeToX mapping.
+  const getNewRendererTimeMs = useCallback(() => {
+    return audioActionsRef.current.getCurrentTime() * 1000 + audioOffsetMsRef.current;
+  }, []);
+
   function setAudioSemitones(n: number) {
     setPitch((p) => ({ ...p, audioSemitones: n, ...(p.linked ? { tabSemitones: n } : {}) }));
   }
@@ -811,7 +823,17 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
             newRendererError ? (
               <p className="gp-viewer-error">New renderer failed to load: {newRendererError}</p>
             ) : newLayout ? (
-              <TabCanvas layout={newLayout} className="gp-tab-canvas" />
+              <div ref={newRendererScrollRef} className="gp-tab-canvas-scroll">
+                <div className="gp-tab-canvas-inner">
+                  <TabCanvas layout={newLayout} className="gp-tab-canvas" />
+                  <TabCursor
+                    layout={newLayout}
+                    getCurrentTimeMs={getNewRendererTimeMs}
+                    scrollContainerRef={newRendererScrollRef}
+                    height={computeStaffMetrics(newLayout.stringCount).canvasHeight}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="gp-viewer-spinner">
                 <div className="loading-spinner" />

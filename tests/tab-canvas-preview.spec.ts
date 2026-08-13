@@ -138,6 +138,34 @@ test("the new-renderer toggle shows a populated tab canvas for a real GP file", 
   expect(newRendererErrors).toEqual([]);
 });
 
+test("the cursor mounts and sits at the deterministic x position for the current playback time", async ({ page }) => {
+  await openViewer(page);
+  await page.locator(".gp-new-renderer-toggle").click();
+
+  const cursor = page.locator('[data-testid="tab-cursor"]');
+  await expect(cursor).toBeAttached();
+
+  // No audio is loaded in this test, so getCurrentTimeMs() reads the audio
+  // engine's paused-at-zero state — the cursor should settle at x=0 (plus
+  // the canvas's left margin for clef/key signature), computed by the same
+  // timeToX the notes themselves are laid out with.
+  await expect
+    .poll(async () => Number((await cursor.getAttribute("data-cursor-x")) ?? "-1"))
+    .toBeGreaterThanOrEqual(0);
+
+  const cursorX = Number(await cursor.getAttribute("data-cursor-x"));
+  const expectedX = await page.evaluate(async () => {
+    const gpScore = await import("/src/lib/gpScore.ts");
+    const tabLayout = await import("/src/lib/tabLayout.ts");
+    const geo = await import("/src/components/tab/tabGeometry.ts");
+    const score = await gpScore.loadScoreFromFile("/Songs/whatever.gp");
+    const timing = gpScore.buildBeatTiming(score);
+    const layout = tabLayout.buildTrackLayout(score, 0, timing);
+    return tabLayout.timeToX(layout, 0) + geo.LEFT_MARGIN_PX;
+  });
+  expect(cursorX).toBeCloseTo(expectedX, 3);
+});
+
 test("the new-renderer toggle switches back to the alphaTab view", async ({ page }) => {
   await openViewer(page);
   await page.locator(".gp-new-renderer-toggle").click();

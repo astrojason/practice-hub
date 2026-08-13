@@ -3066,6 +3066,24 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   position: relative;
 }
 
+/* ── custom renderer preview (phases 1-4 of the rewrite) ─────────────────── */
+
+.gp-tab-canvas-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--r-sm);
+  background: #1a1a24;
+}
+
+.gp-tab-canvas-inner {
+  position: relative;
+  display: inline-block;
+}
+
+.gp-tab-canvas {
+  display: block;
+}
+
 /* ── alphaTab native player cursors ─────────────────────────────────────── */
 
 /* Bar highlight — the whole-bar background block */
