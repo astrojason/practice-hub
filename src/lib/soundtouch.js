@@ -683,8 +683,19 @@ class PitchShifterWorklet {
     // linear elapsed-time * speed rate locally, only on average, so an
     // estimate that never checks in against the real reports drifts. Null
     // until the first report arrives (or is invalidated by a seek).
+    //
+    // The report is tagged with the audio-thread's own `currentTime` (the
+    // AudioWorkletGlobalScope global — the same continuous clock
+    // AudioContext.currentTime reads on the main thread), NOT a
+    // performance.now() timestamp taken when the postMessage is received.
+    // An earlier version used the receipt-time wall clock, which made the
+    // anchor jittery: postMessage delivery has its own scheduling latency
+    // (worse under any main-thread load), so an accurate position value
+    // paired with an inaccurate timestamp produced a visibly vibrating
+    // cursor. Reading both sides of the anchor from the same audio-clock
+    // timeline removes that jitter entirely.
     this._lastReportPositionSeconds = null;
-    this._lastReportWallTime = 0;
+    this._lastReportContextTime = 0;
     this._onEnd = onEnd;
     this._tempo = 1;
     this._pitch = 1;
@@ -710,7 +721,7 @@ class PitchShifterWorklet {
       if (msg.type === 'position') {
         this._sourcePosition = msg.sourcePosition;
         this._lastReportPositionSeconds = msg.sourcePosition / this.sampleRate;
-        this._lastReportWallTime = performance.now() / 1000;
+        this._lastReportContextTime = msg.contextTime;
       } else if (msg.type === 'ended') {
         this._onEnd();
       }
@@ -734,8 +745,8 @@ class PitchShifterWorklet {
   get lastReportedPositionSeconds() {
     return this._lastReportPositionSeconds;
   }
-  get lastReportedWallTime() {
-    return this._lastReportWallTime;
+  get lastReportedContextTime() {
+    return this._lastReportContextTime;
   }
 
   get tempo() {

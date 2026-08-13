@@ -19,6 +19,15 @@ import { test, expect } from "@playwright/test";
 // so an estimate that never checks in against the worklet's real, ground-truth
 // position drifts (visible as the reported "cursor lags, jumps, then runs
 // ahead" bug) instead of self-correcting.
+//
+// Both sides of the anchor — the worklet's report and the "now" reading —
+// are measured on AudioContext.currentTime (nowCtx here), never
+// performance.now(). An earlier version tagged each report with a
+// performance.now() timestamp taken at postMessage-receipt time on the main
+// thread; postMessage delivery has its own scheduling jitter, so an
+// accurate position value paired with a jittery timestamp made the cursor
+// visibly vibrate. Comparing two points on the same audio-clock timeline
+// removes that source of noise entirely.
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -27,23 +36,23 @@ test.beforeEach(async ({ page }) => {
 async function resolve(
   page: import("@playwright/test").Page,
   state: {
-    playStartWallTime: number;
+    playStartCtxTime: number;
     playStartPosition: number;
     lastReportPositionSeconds: number | null;
-    lastReportWallTime: number;
+    lastReportCtxTime: number;
   },
-  nowWall: number,
+  nowCtx: number,
   speed: number,
   duration: number,
   outputLatencySeconds = 0,
 ) {
   return page.evaluate(
-    async ([state, nowWall, speed, duration, outputLatencySeconds]) => {
+    async ([state, nowCtx, speed, duration, outputLatencySeconds]) => {
       const mod = await import("/src/components/player/useAudioEngine.ts");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (mod as any).resolvePlaybackPosition(state, nowWall, speed, duration, outputLatencySeconds);
+      return (mod as any).resolvePlaybackPosition(state, nowCtx, speed, duration, outputLatencySeconds);
     },
-    [state, nowWall, speed, duration, outputLatencySeconds] as const,
+    [state, nowCtx, speed, duration, outputLatencySeconds] as const,
   );
 }
 
@@ -51,10 +60,10 @@ async function resolve(
 
 test("before the worklet's first position report arrives, position extrapolates from the play/seek anchor", async ({ page }) => {
   const state = {
-    playStartWallTime: 0,
+    playStartCtxTime: 0,
     playStartPosition: 2,
     lastReportPositionSeconds: null,
-    lastReportWallTime: 0,
+    lastReportCtxTime: 0,
   };
 
   const result = await resolve(page, state, 0.5, 1, 1000);
@@ -67,45 +76,46 @@ test("once a real position report has arrived, it — not the play-start anchor 
   // at this point) — simulating the time-stretcher having actually consumed
   // source material slightly faster than nominal over that window.
   const state = {
-    playStartWallTime: 0,
+    playStartCtxTime: 0,
     playStartPosition: 0,
     lastReportPositionSeconds: 3.0,
-    lastReportWallTime: 1.0,
+    lastReportCtxTime: 1.0,
   };
 
   const result = await resolve(page, state, 1.0, 1, 1000);
-  // At the instant the report arrived (nowWall === lastReportWallTime), the
+  // At the instant the report arrived (nowCtx === lastReportCtxTime), the
   // position must equal the report exactly — not the stale play-start-based
   // estimate (which would have been 1.0).
   expect(result.position).toBeCloseTo(3.0, 5);
 });
 
-test("position interpolates smoothly via wall-clock time since the last report, not since play start", async ({ page }) => {
+test("position interpolates smoothly via the audio clock since the last report, not since play start", async ({ page }) => {
   const state = {
-    playStartWallTime: 0,
+    playStartCtxTime: 0,
     playStartPosition: 0,
     lastReportPositionSeconds: 3.0,
-    lastReportWallTime: 1.0,
+    lastReportCtxTime: 1.0,
   };
 
-  // 40ms have passed since the last report (at wall time 1.0), well within
-  // the ~58ms report interval — the position should advance by exactly that
-  // much, anchored to the report, not to play start 1.04s ago.
+  // 40ms of audio-clock time have passed since the last report (at ctx time
+  // 1.0), well within the ~58ms report interval — the position should
+  // advance by exactly that much, anchored to the report, not to play start
+  // 1.04s ago.
   const result = await resolve(page, state, 1.04, 1, 1000);
   expect(result.position).toBeCloseTo(3.04, 2);
 });
 
 test("a later report snaps the interpolation to the new ground truth instead of compounding drift", async ({ page }) => {
-  // First report: 3.0s at wall time 1.0. Interpolating naively to wall time
+  // First report: 3.0s at ctx time 1.0. Interpolating naively to ctx time
   // 1.058 (report interval) would predict 3.058s, but the *next* real report
   // says 3.05s instead (the stretcher ran a hair slower than nominal that
   // window). The next resolve() call must reflect the new report's anchor,
   // not keep compounding forward from the first.
   const afterSecondReport = {
-    playStartWallTime: 0,
+    playStartCtxTime: 0,
     playStartPosition: 0,
     lastReportPositionSeconds: 3.05,
-    lastReportWallTime: 1.058,
+    lastReportCtxTime: 1.058,
   };
 
   const result = await resolve(page, afterSecondReport, 1.058, 1, 1000);
@@ -114,19 +124,19 @@ test("a later report snaps the interpolation to the new ground truth instead of 
 
 test("position is clamped to duration and never negative", async ({ page }) => {
   const state = {
-    playStartWallTime: 0,
+    playStartCtxTime: 0,
     playStartPosition: 0,
     lastReportPositionSeconds: 9.9,
-    lastReportWallTime: 0,
+    lastReportCtxTime: 0,
   };
   const overDuration = await resolve(page, state, 5, 1, 10);
   expect(overDuration.position).toBe(10);
 
   const beforeReport = {
-    playStartWallTime: 5,
+    playStartCtxTime: 5,
     playStartPosition: 0,
     lastReportPositionSeconds: null,
-    lastReportWallTime: 0,
+    lastReportCtxTime: 0,
   };
   const beforePlayStart = await resolve(page, beforeReport, 0, 1, 10);
   expect(beforePlayStart.position).toBe(0);
@@ -144,8 +154,8 @@ test("position is clamped to duration and never negative", async ({ page }) => {
 
 test("outputLatencySeconds advances the reported position by that amount", async ({ page }) => {
   const state = {
-    playStartWallTime: 0, playStartPosition: 0,
-    lastReportPositionSeconds: 2, lastReportWallTime: 2,
+    playStartCtxTime: 0, playStartPosition: 0,
+    lastReportPositionSeconds: 2, lastReportCtxTime: 2,
   };
   const withoutLatency = await resolve(page, state, 2, 1, 1000, 0);
   const withLatency = await resolve(page, state, 2, 1, 1000, 0.05);
@@ -153,11 +163,11 @@ test("outputLatencySeconds advances the reported position by that amount", async
 });
 
 test("outputLatencySeconds compensation scales with playback speed, like elapsed time does", async ({ page }) => {
-  // nowWall === lastReportWallTime, so elapsed time is zero and the only
+  // nowCtx === lastReportCtxTime, so elapsed time is zero and the only
   // contribution to position beyond the report itself is the latency term.
   const state = {
-    playStartWallTime: 5, playStartPosition: 0,
-    lastReportPositionSeconds: 0, lastReportWallTime: 5,
+    playStartCtxTime: 5, playStartPosition: 0,
+    lastReportPositionSeconds: 0, lastReportCtxTime: 5,
   };
   const atDoubleSpeed = await resolve(page, state, 5, 2, 1000, 0.05);
   const atNormalSpeed = await resolve(page, state, 5, 1, 1000, 0.05);
@@ -167,8 +177,8 @@ test("outputLatencySeconds compensation scales with playback speed, like elapsed
 
 test("defaults to zero compensation when outputLatencySeconds is omitted (existing callers unaffected)", async ({ page }) => {
   const state = {
-    playStartWallTime: 0, playStartPosition: 0,
-    lastReportPositionSeconds: 2, lastReportWallTime: 2,
+    playStartCtxTime: 0, playStartPosition: 0,
+    lastReportPositionSeconds: 2, lastReportCtxTime: 2,
   };
   const omitted = await resolve(page, state, 2, 1, 1000);
   const explicitZero = await resolve(page, state, 2, 1, 1000, 0);

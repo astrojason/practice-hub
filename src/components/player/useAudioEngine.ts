@@ -138,23 +138,35 @@ function estimatedOutputLatencySeconds(ctx: AudioContext | null): number {
 // The fix: the worklet already knows its real position (it posts one back to
 // the main thread roughly every ~58ms — see soundtouchWorkletProcessor.js's
 // POSITION_REPORT_INTERVAL_QUANTA) — so use that as the anchor instead.
-// performance.now() only interpolates *within* the gap since the last real
-// report, never substitutes for it. Any drift between the assumed `speed`
-// and the stretcher's true local throughput can therefore only ever
+// AudioContext.currentTime only interpolates *within* the gap since the last
+// real report, never substitutes for it. Any drift between the assumed
+// `speed` and the stretcher's true local throughput can therefore only ever
 // accumulate for one ~58ms report interval before the next report corrects
 // it, instead of compounding for the whole track.
+//
+// The report — and every anchor here — is measured on AudioContext.currentTime,
+// not performance.now(). An earlier version used performance.now() at the
+// moment each worklet postMessage was *received* on the main thread as the
+// report's timestamp; postMessage delivery has its own scheduling jitter
+// (worse under any main-thread load), so an accurate position paired with a
+// jittery receipt-time timestamp produced a visibly vibrating cursor —
+// snapping slightly forward or backward on every ~58ms report. The worklet
+// now tags each report with the audio-thread's own `currentTime` (the same
+// continuous, sample-accurate clock AudioContext.currentTime reads on the
+// main thread), so comparing it against a fresh ctx.currentTime read here
+// carries none of that message-passing noise.
 
 export interface PlaybackClockState {
   // Fallback anchor used only until the worklet's first position report
   // arrives after a play/seek (a brief, unavoidable startup gap — the
   // report is asynchronous).
-  playStartWallTime: number;
+  playStartCtxTime: number;
   playStartPosition: number;
   // The worklet's real, ground-truth position (PitchShifterWorklet's
-  // lastReportedPositionSeconds/lastReportedWallTime) — null until the
+  // lastReportedPositionSeconds/lastReportedContextTime) — null until the
   // first report arrives or after a seek invalidates the previous one.
   lastReportPositionSeconds: number | null;
-  lastReportWallTime: number;
+  lastReportCtxTime: number;
 }
 
 export interface PlaybackClockResult {
@@ -163,7 +175,7 @@ export interface PlaybackClockResult {
 
 export function resolvePlaybackPosition(
   state: PlaybackClockState,
-  nowWall: number,
+  nowCtx: number,
   speed: number,
   duration: number,
   // Advances the reported position by the audio stack's own estimated
@@ -176,8 +188,8 @@ export function resolvePlaybackPosition(
 ): PlaybackClockResult {
   const hasReport = state.lastReportPositionSeconds !== null;
   const anchorPosition = hasReport ? state.lastReportPositionSeconds! : state.playStartPosition;
-  const anchorWallTime = hasReport ? state.lastReportWallTime : state.playStartWallTime;
-  const elapsed = Math.max(0, nowWall - anchorWallTime);
+  const anchorCtxTime = hasReport ? state.lastReportCtxTime : state.playStartCtxTime;
+  const elapsed = Math.max(0, nowCtx - anchorCtxTime);
 
   const position = Math.min(duration, Math.max(0, anchorPosition + elapsed * speed + outputLatencySeconds * speed));
   return { position };
@@ -196,7 +208,7 @@ interface EngineRef {
   duration: number;
   pendingSrc: string | null;
   _pausedAt: number;
-  playStartWallTime: number;
+  playStartCtxTime: number;
   playStartPosition: number;
   // Control values mirrored here for rAF access
   speed: number;
@@ -230,7 +242,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     duration: 0,
     pendingSrc: null,
     _pausedAt: 0,
-    playStartWallTime: 0,
+    playStartCtxTime: 0,
     playStartPosition: 0,
     speed: 1.0,
     loopEnabled: true,
@@ -313,7 +325,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     }
 
     eng.ctx.resume();
-    eng.playStartWallTime = performance.now() / 1000;
+    eng.playStartCtxTime = eng.ctx.currentTime;
     eng.playStartPosition = eng._pausedAt;
     setIsPlaying(true);
     setCurrentTime(eng._pausedAt);
@@ -326,12 +338,12 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       // with each other even when each individually looks reasonable.
       const clock = resolvePlaybackPosition(
         {
-          playStartWallTime: eng.playStartWallTime,
+          playStartCtxTime: eng.playStartCtxTime,
           playStartPosition: eng.playStartPosition,
           lastReportPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
-          lastReportWallTime: eng.shifter?.lastReportedWallTime ?? 0,
+          lastReportCtxTime: eng.shifter?.lastReportedContextTime ?? 0,
         },
-        performance.now() / 1000,
+        eng.ctx!.currentTime,
         eng.speed,
         eng.duration,
         estimatedOutputLatencySeconds(eng.ctx),
@@ -545,12 +557,12 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     if (!eng.ctx || eng.raf === null || !eng.duration) return eng._pausedAt;
     const result = resolvePlaybackPosition(
       {
-        playStartWallTime: eng.playStartWallTime,
+        playStartCtxTime: eng.playStartCtxTime,
         playStartPosition: eng.playStartPosition,
         lastReportPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
-        lastReportWallTime: eng.shifter?.lastReportedWallTime ?? 0,
+        lastReportCtxTime: eng.shifter?.lastReportedContextTime ?? 0,
       },
-      performance.now() / 1000,
+      eng.ctx.currentTime,
       eng.speed,
       eng.duration,
       estimatedOutputLatencySeconds(eng.ctx),

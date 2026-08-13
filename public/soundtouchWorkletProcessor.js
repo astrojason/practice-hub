@@ -680,10 +680,9 @@ class WorkletBufferSource {
 // The Web Audio spec fixes the render quantum at 128 frames — process() is
 // called once per quantum and must return exactly that many frames.
 const QUANTUM_FRAMES = 128;
-// Position updates are throttled (not sent every ~2.9ms quantum) since the
-// cursor's actual accuracy comes from ctx.currentTime tracking the audio
-// thread tightly now, not from high-frequency position messages — those
-// only matter for seek/UI-sync precision. ~20 quanta is ~60ms at 44.1kHz.
+// Position updates are throttled (not sent every ~2.9ms quantum) — the main
+// thread only needs a periodic ground-truth checkpoint, not a message per
+// render quantum. ~20 quanta is ~60ms at 44.1kHz.
 const POSITION_REPORT_INTERVAL_QUANTA = 20;
 
 class SoundTouchProcessor extends AudioWorkletProcessor {
@@ -748,7 +747,19 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
     this._quantaSinceReport++;
     if (this._quantaSinceReport >= POSITION_REPORT_INTERVAL_QUANTA) {
       this._quantaSinceReport = 0;
-      this.port.postMessage({ type: "position", sourcePosition: this._filter.sourcePosition });
+      // `currentTime` here is the AudioWorkletGlobalScope global — the same
+      // continuous audio-clock timeline AudioContext.currentTime reads on
+      // the main thread, sample-accurate. Tagging the report with it (not
+      // with a main-thread wall-clock timestamp taken at message-receipt
+      // time) means the anchor is immune to postMessage delivery jitter —
+      // the main thread only needs to know "this source position corresponds
+      // to this point on the shared audio clock," not "when did this message
+      // physically arrive."
+      this.port.postMessage({
+        type: "position",
+        sourcePosition: this._filter.sourcePosition,
+        contextTime: currentTime,
+      });
     }
 
     return true;
