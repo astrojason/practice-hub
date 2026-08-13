@@ -42,6 +42,15 @@ export interface LayoutOptions {
    * laying the whole song out as one continuously-growing horizontal strip.
    */
   pageWidthPx: number;
+  /**
+   * Minimum horizontal space any single beat gets, regardless of its
+   * duration. Pure time-proportional spacing (pixelsPerMs alone) compresses
+   * fast passages (16ths, 32nds) illegibly close together — a run of 16th
+   * notes at a normal tempo can be a few px apart, nowhere near enough room
+   * for a fret number. This floor keeps every beat's fret label legible;
+   * beats slower than the floor are unaffected (still pure time-proportional).
+   */
+  minBeatWidthPx: number;
 }
 
 export const defaultLayoutOptions: LayoutOptions = {
@@ -49,6 +58,7 @@ export const defaultLayoutOptions: LayoutOptions = {
   barGapPx: 24,
   notationTranspositionSemitones: 0,
   pageWidthPx: 900,
+  minBeatWidthPx: 32,
 };
 
 export type Accidental = "sharp" | "flat" | null;
@@ -69,6 +79,8 @@ export interface NoteGlyph {
 export interface BeatGlyph {
   beat: alphaTab.model.Beat;
   x: number;
+  /** Actual rendered width of this beat's slot — may exceed its natural time-proportional width (see LayoutOptions.minBeatWidthPx). */
+  renderedWidthPx: number;
   startMs: number;
   durationMs: number;
   isRest: boolean;
@@ -120,18 +132,34 @@ function findBarForTime(layout: TrackLayout, timeMs: number): BarLayout | undefi
   return bar;
 }
 
+function findBeatForTime(layout: TrackLayout, timeMs: number): { bar: BarLayout; beat: BeatGlyph } | undefined {
+  const bar = findBarForTime(layout, timeMs);
+  if (!bar || bar.beats.length === 0) return bar ? { bar, beat: undefined as unknown as BeatGlyph } : undefined;
+  let beat = bar.beats[0];
+  for (const b of bar.beats) {
+    if (b.startMs > timeMs) break;
+    beat = b;
+  }
+  return { bar, beat };
+}
+
 /**
  * Maps a global playback time to its x position *within its line*. This is
  * the deterministic function that replaces alphaTab's event-driven cursor
- * relay (see TabCursor.tsx) — layout is time-proportional within each bar,
- * with a constant per-bar offset (gapOffsetPx, reset at each line wrap)
- * added at each bar boundary, so x is piecewise-linear in time rather than a
- * single global linear function.
+ * relay (see TabCursor.tsx). Layout is time-proportional at the top level
+ * (bar-to-bar, line-to-line), but individual beats slower than
+ * minBeatWidthPx get padded wider than their raw time-proportional slot —
+ * so within a beat, x interpolates across that beat's *actual rendered*
+ * width rather than assuming a single global pixelsPerMs scale throughout.
  */
 export function timeToX(layout: TrackLayout, timeMs: number): number {
-  const bar = findBarForTime(layout, timeMs);
-  if (!bar) return 0;
-  return (timeMs - bar.lineStartMs) * layout.pixelsPerMs + bar.gapOffsetPx;
+  const found = findBeatForTime(layout, timeMs);
+  if (!found) return 0;
+  const { bar, beat } = found;
+  if (!beat) return (timeMs - bar.lineStartMs) * layout.pixelsPerMs + bar.gapOffsetPx;
+  if (beat.durationMs <= 0) return beat.x;
+  const progress = Math.min(1, Math.max(0, (timeMs - beat.startMs) / beat.durationMs));
+  return beat.x + progress * beat.renderedWidthPx;
 }
 
 /** Maps a global playback time to the 0-based line (staff system) it falls on. */
@@ -212,6 +240,7 @@ export function buildTrackLayout(
   let beamGroupCounter = 0;
   let x = 0;
   let gapOffset = 0; // cumulative bar-gap px inserted so far *within the current line* — see timeToX
+  let slack = 0; // cumulative extra px inserted so far *within the current line* by minBeatWidthPx padding
   let lastBarEndMs = 0;
   let lineIndex = 0;
   let lineStartMs = 0; // startMs of the current line's first bar — see BarLayout.lineStartMs
@@ -220,23 +249,27 @@ export function buildTrackLayout(
     const masterBar = score.masterBars[bar.index];
     const voice = bar.voices[0];
 
-    // Estimate this bar's content width (first pass over just its
-    // boundaries, not full note layout) to decide whether it fits on the
-    // current line before committing to it. Real layout below reuses the
-    // same beatTiming lookups.
+    // Compute this bar's actual rendered width (summing each beat's
+    // max(natural, minBeatWidthPx) slot, not just the raw time span) to
+    // decide whether it fits on the current line before committing to it.
+    // Must match the real per-beat computation below exactly, or a bar full
+    // of fast (padded) notes could be placed wider than the wrap decision
+    // assumed and overflow the page.
     if (voice.beats.length > 0) {
       const firstTiming = beatTiming.get(voice.beats[0].id);
-      const last = voice.beats[voice.beats.length - 1];
-      const lastTiming = beatTiming.get(last.id);
       const barStart = firstTiming?.startMs ?? lastBarEndMs;
-      const barEnd = (lastTiming?.startMs ?? barStart) + (lastTiming?.durationMs ?? 0);
-      const barWidthPx = (barEnd - barStart) * options.pixelsPerMs;
+      let barWidthPx = 0;
+      for (const beat of voice.beats) {
+        const durationMs = beatTiming.get(beat.id)?.durationMs ?? 0;
+        barWidthPx += Math.max(durationMs * options.pixelsPerMs, options.minBeatWidthPx);
+      }
       // Always keep at least one bar per line (avoid dropping/looping on a
       // bar wider than the whole page).
       if (x > 0 && x + barWidthPx + options.barGapPx > lineBudgetPx) {
         lineIndex++;
         x = 0;
         gapOffset = 0;
+        slack = 0;
         lineStartMs = barStart;
       }
     }
@@ -250,19 +283,23 @@ export function buildTrackLayout(
     let barStartMs = lastBarEndMs;
 
     // First pass: build glyphs with time-proportional x (relative to the
-    // current line's start time, plus the constant per-bar gap offset), so
-    // beat.x stays consistent with bar.xStart/xEnd and restarts near 0 on
-    // each new line — without the line-relative offset, beats past the
-    // first bar would land to the left of their own bar line (or, pre-
-    // pagination, drift further with every subsequent bar in the song).
+    // current line's start time, plus the constant per-bar gap offset, plus
+    // any slack accumulated from earlier fast beats padded up to
+    // minBeatWidthPx), so beat.x stays consistent with bar.xStart/xEnd and
+    // restarts near 0 on each new line — without the line-relative offset,
+    // beats past the first bar would land to the left of their own bar line
+    // (or, pre-pagination, drift further with every subsequent bar).
     for (const beat of voice.beats) {
       const timing = beatTiming.get(beat.id);
       const startMs = timing?.startMs ?? 0;
       const durationMs = timing?.durationMs ?? 0;
       if (beatGlyphs.length === 0) barStartMs = startMs;
       lastBarEndMs = Math.max(lastBarEndMs, startMs + durationMs);
-      const beatX = (startMs - barLineStartMs) * options.pixelsPerMs + barGapOffset;
-      x = Math.max(x, beatX + durationMs * options.pixelsPerMs);
+      const naturalWidthPx = durationMs * options.pixelsPerMs;
+      const renderedWidthPx = Math.max(naturalWidthPx, options.minBeatWidthPx);
+      const beatX = (startMs - barLineStartMs) * options.pixelsPerMs + barGapOffset + slack;
+      slack += renderedWidthPx - naturalWidthPx;
+      x = Math.max(x, beatX + renderedWidthPx);
 
       const notes: NoteGlyph[] = beat.notes.map((note) => {
         const { step, accidental } = notationStepFor(
@@ -284,6 +321,7 @@ export function buildTrackLayout(
       beatGlyphs.push({
         beat,
         x: beatX,
+        renderedWidthPx,
         startMs,
         durationMs,
         isRest: beat.isRest,

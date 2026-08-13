@@ -322,3 +322,50 @@ test("timeToLine reports which line a given playback time falls on", async ({ pa
   // not a large cumulative value from earlier lines.
   expect(r.xAtBar1Start).toBeLessThan(10);
 });
+
+// ─── minBeatWidthPx: fast passages don't compress into illegibility ───────────
+
+test("beats faster than minBeatWidthPx are padded to at least that width, not spaced by raw time alone", async ({ page }) => {
+  // 16th notes at 120bpm are 125ms apart -> 125*0.16=20px of raw time-
+  // proportional spacing, well under the legibility floor.
+  const layout = await layoutFromTex(page, "\\tempo 120 . 1.1.16 1.1.16 1.1.16 1.1.16 |");
+  const beats = layout.bars[0].beats;
+  const minBeatWidthPx = 32; // defaultLayoutOptions.minBeatWidthPx
+  for (let i = 1; i < beats.length; i++) {
+    expect(beats[i].x - beats[i - 1].x).toBeGreaterThanOrEqual(minBeatWidthPx - 0.01);
+  }
+});
+
+test("beats slower than minBeatWidthPx keep pure time-proportional spacing (unpadded)", async ({ page }) => {
+  // Quarter notes at 120bpm are 500ms apart -> 500*0.16=80px, comfortably
+  // above the 32px floor, so no padding should be applied.
+  const layout = await layoutFromTex(page, "\\tempo 120 . 1.1 1.1 1.1 1.1 |");
+  const beats = layout.bars[0].beats;
+  const pixelsPerMs = 0.16;
+  for (let i = 1; i < beats.length; i++) {
+    expect(beats[i].x - beats[i - 1].x).toBeCloseTo(500 * pixelsPerMs, 3);
+  }
+});
+
+test("timeToX interpolates across a padded beat's actual rendered width, not its tiny natural width", async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const gpScore = await import("/src/lib/gpScore.ts");
+    const tabLayout = await import("/src/lib/tabLayout.ts");
+    const tex = "\\tempo 120 . 1.1.16 1.1.16 1.1.16 1.1.16 |";
+    const score = gpScore.alphaTab.importer.ScoreLoader.loadAlphaTex(tex);
+    const timing = gpScore.buildBeatTiming(score);
+    const layout = tabLayout.buildTrackLayout(score, 0, timing);
+    const beat0 = layout.bars[0].beats[0];
+    const midMs = beat0.startMs + beat0.durationMs / 2;
+    return {
+      x0: tabLayout.timeToX(layout, beat0.startMs),
+      xMid: tabLayout.timeToX(layout, midMs),
+      xNext: tabLayout.timeToX(layout, layout.bars[0].beats[1].startMs),
+      renderedWidthPx: beat0.renderedWidthPx,
+    };
+  });
+  expect(r.renderedWidthPx).toBeCloseTo(32, 3); // padded up from the 20px natural width
+  // Midpoint of the beat should land halfway across its *rendered* slot.
+  expect(r.xMid - r.x0).toBeCloseTo(r.renderedWidthPx / 2, 1);
+  expect(r.xNext - r.x0).toBeCloseTo(r.renderedWidthPx, 3);
+});
