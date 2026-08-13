@@ -44,7 +44,7 @@ The loop region is also shown as a highlighted band on the progress bar.
 
 ## Audio offset
 
-If the notation cursor drifts ahead of or behind the audio, use the **Offset** control (in milliseconds, next to the loaded file name) to nudge the cursor forward or back until it lines up.
+The cursor position is computed directly from the same timing used to lay out the notation, so it shouldn't drift over the course of a track. If it's still consistently a touch ahead of or behind what you hear — typically genuine audio-output-device latency — use the **Offset** control (in milliseconds, next to the loaded file name) to nudge the cursor forward or back until it lines up.
 
 ## Debug console
 

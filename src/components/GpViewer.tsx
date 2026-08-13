@@ -1,25 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as alphaTab from "@coderline/alphatab";
+import type * as alphaTab from "@coderline/alphatab";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useAudioEngine } from "./player/useAudioEngine";
 import { ErrorModal } from "./ErrorModal";
-import { loadScoreFromFile, buildBeatTiming } from "../lib/gpScore";
+import { loadScoreFromFile, buildBeatTiming, type BeatTiming } from "../lib/gpScore";
 import { buildTrackLayout, defaultLayoutOptions, type TrackLayout } from "../lib/tabLayout";
 import { TabCanvas } from "./tab/TabCanvas";
 import { TabCursor } from "./tab/TabCursor";
 import { computeStaffMetrics } from "./tab/tabGeometry";
-
-// alphaTab's default worker factory uses importScripts() inside a blob worker,
-// which silently fails under Tauri's tauri:// custom protocol. Re-initialize
-// with direct URL workers so the synthesis worker actually starts.
-{
-  const workerUrl  = new URL('/alphaTab.min.js', location.href).href;
-  const workletUrl = new URL('/alphaTab.worklet.min.mjs', location.href).href;
-  alphaTab.Environment.initializeMain(
-    (_settings: alphaTab.Settings, _name: string) => new Worker(workerUrl),
-    (ctx: AudioContext, _settings: alphaTab.Settings) => ctx.audioWorklet.addModule(workletUrl),
-  );
-}
 
 interface Props {
   filePath: string;
@@ -33,11 +21,9 @@ interface PitchState {
   tabSemitones: number;
   linked: boolean;
   audioFilePath: string | null;
-  audioOffsetMs: number; // positive = advance cursor ahead of audio (fixes "cursor behind"); negative = delay cursor
+  audioOffsetMs: number; // manual escape hatch for genuine output-device latency
 }
 
-
-const FILE_SERVER = "http://127.0.0.1:17865";
 
 function pitchKey(filePath: string) {
   return `gp-viewer-shifts:${filePath}`;
@@ -129,12 +115,8 @@ function fmtTime(s: number): string {
 // ─── Main viewer component ────────────────────────────────────────────────────
 
 export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const newRendererScrollRef = useRef<HTMLDivElement>(null);
-  const updateTimerRef = useRef<number>(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,26 +142,12 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const audioOffsetMsRef = useRef(pitch.audioOffsetMs ?? 0);
   const [audioState, audioActions] = useAudioEngine();
   const audioActionsRef = useRef(audioActions);
-  const audioStateRef = useRef(audioState);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
 
-  // alphaTab MIDI player state
-  const [atReady, setAtReady] = useState(false);
-  const [atPlaying, setAtPlaying] = useState(false);
-  const [atCurrentTime, setAtCurrentTime] = useState(0); // ms
-  const [atEndTime, setAtEndTime] = useState(0);         // ms
-
-  // Custom renderer preview (phases 1-3 of the rewrite — see the plan doc).
-  // Additive only: doesn't touch the alphaTab rendering/cursor path above.
-  // Toggled on manually for visual comparison until the cursor (phase 4) and
-  // feature parity (phase 5) land, at which point this replaces alphaTab
-  // entirely instead of sitting behind a toggle.
   const scoreRef = useRef<alphaTab.model.Score | null>(null);
-  const beatTimingRef = useRef<Map<number, { startMs: number; durationMs: number }> | null>(null);
-  const [newLayout, setNewLayout] = useState<TrackLayout | null>(null);
-  const [newRendererError, setNewRendererError] = useState<string | null>(null);
-  const [showNewRenderer, setShowNewRenderer] = useState(false);
+  const beatTimingRef = useRef<Map<number, BeatTiming> | null>(null);
+  const [layout, setLayout] = useState<TrackLayout | null>(null);
 
   const addLog = useCallback((level: string, ...args: unknown[]) => {
     const msg = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
@@ -239,198 +207,65 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   // Keep refs in sync so handler callbacks always read fresh values without closure capture
   useEffect(() => {
     audioActionsRef.current = audioActions;
-    audioStateRef.current = audioState;
     audioOffsetMsRef.current = pitch.audioOffsetMs ?? 0;
   });
 
-  // Sync atEndTime from audio duration so the progress bar shows correct length before play
+  // Parse the file and build the initial layout. alphaTab is used here only
+  // as a standalone GP/MusicXML parser (gpScore.ts) — no renderer, player,
+  // or worker involved.
   useEffect(() => {
-    if (audioState.duration > 0) setAtEndTime(audioState.duration * 1000);
-  }, [audioState.duration]);
-
-  // If the audio engine stops externally, clear the position update interval
-  useEffect(() => {
-    if (!audioState.isPlaying) cancelAnimationFrame(updateTimerRef.current);
-  }, [audioState.isPlaying]);
-
-  // Initialize alphaTab once per filePath
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
+    let cancelled = false;
     setLoading(true);
     setError(null);
     setTrackNames([]);
     setTitle(null);
     setArtist(null);
     setTempo(null);
-    setSelectedTrack(loadView(filePath).value.selectedTrack);
-    setAtReady(false);
-    setAtPlaying(false);
-    setAtCurrentTime(0);
-    setAtEndTime(0);
-    cancelAnimationFrame(updateTimerRef.current);
-
-    const settings = new alphaTab.Settings();
-    settings.core.useWorkers = false;
-    settings.core.fontDirectory = "/font/";
-    settings.core.scriptFile = `${window.location.origin}/alphaTab.min.js`;
-    // Use our audio engine as the audio source; alphaTab only drives the cursor
-    settings.player.playerMode = alphaTab.PlayerMode.EnabledExternalMedia;
-    if (bodyRef.current) settings.player.scrollElement = bodyRef.current;
-
-    const api = new alphaTab.AlphaTabApi(el, settings);
-    apiRef.current = api;
-
-    addLog("INFO", `AT init: playerMode=${api.settings.player.playerMode} scriptFile=${api.settings.core.scriptFile}`);
-
-    // Wire audio engine as the external media source
-    const output = api.player?.output as alphaTab.synth.IExternalMediaSynthOutput | undefined;
-    if (output) {
-      output.handler = {
-        get backingTrackDuration() {
-          const offsetMs = audioOffsetMsRef.current;
-          // offsetMs > 0 means cursor is shown ahead of the raw audio position,
-          // so the effective tab duration = audio duration + offsetMs
-          return Math.max(0, audioStateRef.current.duration * 1000 + offsetMs);
-        },
-        get playbackRate() {
-          return audioStateRef.current.speed;
-        },
-        set playbackRate(v: number) {
-          audioActionsRef.current.setSpeed(v);
-        },
-        get masterVolume() { return 1; },
-        set masterVolume(_v: number) {},
-        seekTo(ms: number) {
-          const offsetMs = audioOffsetMsRef.current;
-          // tab position ms → audio position ms - offsetMs (clamp to 0)
-          audioActionsRef.current.seek(Math.max(0, ms - offsetMs) / 1000);
-        },
-        play() {
-          audioActionsRef.current.play();
-          cancelAnimationFrame(updateTimerRef.current);
-          const rafTick = () => {
-            const offsetMs = audioOffsetMsRef.current;
-            // positive offsetMs advances cursor ahead of audio position
-            const ms = audioActionsRef.current.getCurrentTime() * 1000 + offsetMs;
-            output.updatePosition(Math.max(0, ms));
-            updateTimerRef.current = requestAnimationFrame(rafTick);
-          };
-          updateTimerRef.current = requestAnimationFrame(rafTick);
-        },
-        pause() {
-          audioActionsRef.current.pause();
-          cancelAnimationFrame(updateTimerRef.current);
-        },
-      };
-      addLog("INFO", "AT external media handler installed");
-    } else {
-      addLog("WARN", "AT player output not available — external media handler not installed");
-    }
-
-    api.scoreLoaded.on((score: alphaTab.model.Score) => {
-      addLog("INFO", `scoreLoaded: ${score.title}`);
-      setTitle(score.title || null);
-      setArtist(score.artist || null);
-      const roundedTempo = Math.round(score.tempo);
-      setTempo(roundedTempo);
-      setTargetTempo((prev) => prev ?? roundedTempo);
-      setTrackNames(score.tracks.map((t: alphaTab.model.Track) => t.name));
-      const stored = loadPitch(filePath).value;
-      if (stored.tabSemitones !== 0) {
-        api.settings.notation.transpositionPitches = Array(score.tracks.length).fill(stored.tabSemitones);
-        api.updateSettings();
-      }
-      setLoading(false);
-    });
-
-    api.error.on((err: Error) => {
-      addLog("AT_ERR", err.message);
-      setError(err.message);
-      setLoading(false);
-    });
-
-    api.playerReady.on(() => {
-      setAtReady(true);
-      addLog("INFO", "AT player ready");
-    });
-
-    api.midiLoaded.on(() => {
-      // midiLoaded fires even in external media mode — alphaTab still generates MIDI for cursor timing
-      setAtReady(true);
-      addLog("INFO", "AT MIDI loaded");
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (api as any).midiLoadFailed?.on?.((err: Error) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      addLog("ERR", `AT MIDI load failed: ${msg}`);
-      setError(`MIDI load failed: ${msg}`);
-    });
-
-    api.playerStateChanged.on((args: alphaTab.synth.PlayerStateChangedEventArgs) => {
-      setAtPlaying(args.state === alphaTab.synth.PlayerState.Playing);
-      if (args.stopped) setAtCurrentTime(0);
-      addLog("INFO", `AT state: ${args.state} stopped:${args.stopped}`);
-    });
-
-    api.playerPositionChanged.on((args: alphaTab.synth.PositionChangedEventArgs) => {
-      setAtCurrentTime(args.currentTime);
-      if (args.endTime > 0) setAtEndTime(args.endTime);
-    });
-
-    api.playerFinished.on(() => {
-      setAtPlaying(false);
-      setAtCurrentTime(0);
-      cancelAnimationFrame(updateTimerRef.current);
-      addLog("INFO", "AT player finished");
-    });
-
-    const url = `${FILE_SERVER}/asset?path=${encodeURIComponent(filePath)}`;
-    api.load(url);
-
-    return () => {
-      cancelAnimationFrame(updateTimerRef.current);
-      api.destroy();
-      apiRef.current = null;
-    };
-  }, [filePath, addLog]);
-
-  // Load the same file through the custom parser/layout pipeline, in
-  // parallel with alphaTab, for the new-renderer preview toggle.
-  useEffect(() => {
-    let cancelled = false;
+    setLayout(null);
     scoreRef.current = null;
     beatTimingRef.current = null;
-    setNewLayout(null);
-    setNewRendererError(null);
+
+    const initialTrack = loadView(filePath).value.selectedTrack;
+    const initialTabSemitones = loadPitch(filePath).value.tabSemitones ?? 0;
+    setSelectedTrack(initialTrack);
+
     loadScoreFromFile(filePath)
       .then((score) => {
         if (cancelled) return;
         scoreRef.current = score;
         beatTimingRef.current = buildBeatTiming(score);
-        const trackIndex = loadView(filePath).value.selectedTrack;
-        setNewLayout(buildTrackLayout(
-          score,
-          Math.min(trackIndex, score.tracks.length - 1),
-          beatTimingRef.current,
-          { ...defaultLayoutOptions, notationTranspositionSemitones: pitch.tabSemitones },
-        ));
+        setTitle(score.title || null);
+        setArtist(score.artist || null);
+        const roundedTempo = Math.round(score.tempo);
+        setTempo(roundedTempo);
+        setTargetTempo((prev) => prev ?? roundedTempo);
+        setTrackNames(score.tracks.map((t) => t.name));
+        addLog("INFO", `scoreLoaded: ${score.title}`);
+
+        const trackIndex = Math.min(initialTrack, score.tracks.length - 1);
+        setLayout(buildTrackLayout(score, trackIndex, beatTimingRef.current, {
+          ...defaultLayoutOptions,
+          notationTranspositionSemitones: initialTabSemitones,
+        }));
+        setLoading(false);
       })
       .catch((err) => {
         if (cancelled) return;
-        setNewRendererError(err instanceof Error ? err.message : String(err));
+        const msg = err instanceof Error ? err.message : String(err);
+        addLog("ERR", msg);
+        setError(msg);
+        setLoading(false);
       });
+
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath]);
+  }, [filePath, addLog]);
 
-  // Re-run the custom layout when track selection or tab transposition changes.
+  // Re-run the layout when track selection or tab transposition changes.
   useEffect(() => {
     if (!scoreRef.current || !beatTimingRef.current) return;
     if (selectedTrack >= scoreRef.current.tracks.length) return;
-    setNewLayout(buildTrackLayout(
+    setLayout(buildTrackLayout(
       scoreRef.current,
       selectedTrack,
       beatTimingRef.current,
@@ -438,17 +273,6 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTrack, pitch.tabSemitones]);
-
-  // Apply tab transposition when tabSemitones changes (after initial load).
-  // updateSettings() alone doesn't re-render; render() is required.
-  useEffect(() => {
-    const api = apiRef.current;
-    if (!api || loading || !api.score) return;
-    const count = api.score.tracks.length;
-    api.settings.notation.transpositionPitches = Array(count).fill(pitch.tabSemitones);
-    api.updateSettings();
-    api.render();
-  }, [pitch.tabSemitones, loading]);
 
   // Persist view state (track, tempo, loop) per file
   useEffect(() => {
@@ -474,14 +298,6 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTempo, tempo]);
 
-  // Switch displayed track
-  useEffect(() => {
-    const api = apiRef.current;
-    if (!api || loading || !api.score) return;
-    const track = api.score.tracks[selectedTrack];
-    if (track) api.renderTracks([track]);
-  }, [selectedTrack, loading]);
-
   // Escape key
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -498,7 +314,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   // manual escape hatch (e.g. genuine output-device latency) but should need
   // little/no adjustment now that layout position and cursor position come
   // from the same timeToX mapping.
-  const getNewRendererTimeMs = useCallback(() => {
+  const getCurrentTimeMs = useCallback(() => {
     return audioActionsRef.current.getCurrentTime() * 1000 + audioOffsetMsRef.current;
   }, []);
 
@@ -528,19 +344,18 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     audioActions.pause();
   }
 
-  function handleAtProgressClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (atEndTime <= 0) return;
+  function handleProgressClick(e: React.MouseEvent<HTMLDivElement>) {
+    const endMs = audioState.duration * 1000;
+    if (endMs <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const seekMs = ratio * atEndTime;
-    audioActionsRef.current.seek(seekMs / 1000);
-    // Update alphaTab cursor immediately to the new position
-    const o = apiRef.current?.player?.output as alphaTab.synth.IExternalMediaSynthOutput | undefined;
-    o?.updatePosition(seekMs);
+    audioActionsRef.current.seek((ratio * endMs) / 1000);
   }
 
   const filename = filePath.split("/").pop() ?? filePath;
   const audioLoadLabel = audioFilename ?? "Load audio";
+  const atCurrentTime = audioState.currentTime * 1000;
+  const atEndTime = audioState.duration * 1000;
 
   return (
     <div className="gp-viewer" ref={backdropRef} onClick={handleBackdropClick}>
@@ -670,32 +485,32 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           </div>
         </div>
 
-        {/* Unified player bar — audio engine drives playback; alphaTab tracks cursor */}
+        {/* Unified player bar */}
         <div className="gp-at-player">
           <span className="gp-at-label">Play</span>
-          {!atReady ? (
-            <span className="gp-at-loading">Initializing…</span>
+          {!layout ? (
+            <span className="gp-at-loading">Loading tab…</span>
           ) : audioState.status !== "ready" ? (
             <span className="gp-at-loading">Load audio file to enable playback</span>
           ) : (
             <>
               <button
                 className="gp-at-play"
-                onClick={() => apiRef.current?.playPause()}
-                title={atPlaying ? "Pause" : "Play"}
+                onClick={() => (audioState.isPlaying ? audioActions.pause() : audioActions.play())}
+                title={audioState.isPlaying ? "Pause" : "Play"}
               >
-                {atPlaying ? "⏸" : "▶"}
+                {audioState.isPlaying ? "⏸" : "▶"}
               </button>
               <button
                 className="gp-at-stop"
-                onClick={() => { apiRef.current?.stop(); audioActions.pause(); audioActionsRef.current.seek(0); }}
+                onClick={() => { audioActions.pause(); audioActionsRef.current.seek(0); }}
                 title="Stop"
               >
                 ⏹
               </button>
               <div
                 className="gp-at-progress"
-                onClick={handleAtProgressClick}
+                onClick={handleProgressClick}
                 title="Click to seek"
               >
                 <div
@@ -822,7 +637,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         </div>
 
         {/* Body */}
-        <div className="gp-viewer-body" ref={bodyRef}>
+        <div className="gp-viewer-body">
           {loading && !error && (
             <div className="gp-viewer-spinner">
               <div className="loading-spinner" />
@@ -831,45 +646,28 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           {!loading && error && (
             <p className="gp-viewer-error">Failed to load: {error}</p>
           )}
-          {showNewRenderer ? (
-            newRendererError ? (
-              <p className="gp-viewer-error">New renderer failed to load: {newRendererError}</p>
-            ) : newLayout ? (
-              <div ref={newRendererScrollRef} className="gp-tab-canvas-scroll">
-                <div className="gp-tab-canvas-inner">
-                  <TabCanvas layout={newLayout} className="gp-tab-canvas" />
-                  <TabCursor
-                    layout={newLayout}
-                    getCurrentTimeMs={getNewRendererTimeMs}
-                    scrollContainerRef={newRendererScrollRef}
-                    height={computeStaffMetrics(newLayout.stringCount).canvasHeight}
-                  />
-                </div>
+          {!loading && !error && layout && (
+            <div ref={scrollContainerRef} className="gp-tab-canvas-scroll">
+              <div className="gp-tab-canvas-inner">
+                <TabCanvas layout={layout} className="gp-tab-canvas" />
+                <TabCursor
+                  layout={layout}
+                  getCurrentTimeMs={getCurrentTimeMs}
+                  scrollContainerRef={scrollContainerRef}
+                  height={computeStaffMetrics(layout.stringCount).canvasHeight}
+                />
               </div>
-            ) : (
-              <div className="gp-viewer-spinner">
-                <div className="loading-spinner" />
-              </div>
-            )
-          ) : (
-            <div ref={containerRef} className="gp-alphatab-container" />
+            </div>
           )}
         </div>
 
         {/* Debug console */}
         <div className="gp-debug-bar">
-          <button
-            className="gp-new-renderer-toggle"
-            onClick={() => setShowNewRenderer((v) => !v)}
-            title="Preview the custom tab renderer (in development)"
-          >
-            {showNewRenderer ? "alphaTab view" : "New renderer (preview)"}
-          </button>
           <button className="gp-debug-toggle" onClick={() => setShowDebug((v) => !v)}>
             {showDebug ? "▲ Debug" : "▼ Debug"} ({debugLogs.length})
           </button>
           <span className="gp-debug-state">
-            audio:{audioState.status} | playing:{audioState.isPlaying ? "✓" : "✗"} | at:{atReady ? (atPlaying ? "▶" : "⏸") : "…"}
+            audio:{audioState.status} | playing:{audioState.isPlaying ? "✓" : "✗"} | tab:{layout ? "✓" : "…"}
           </span>
           {showDebug && (
             <button className="gp-debug-clear" onClick={() => setDebugLogs([])}>Clear</button>

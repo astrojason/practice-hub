@@ -3056,17 +3056,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   pointer-events: none;
 }
 
-/* ── alphaTab container ──────────────────────────────────────────────────── */
-
-.gp-alphatab-container {
-  width: 100%;
-  min-height: 200px;
-  background: #ffffff;
-  border-radius: var(--r-sm);
-  position: relative;
-}
-
-/* ── custom renderer preview (phases 1-4 of the rewrite) ─────────────────── */
+/* ── custom tab renderer (TabCanvas/TabCursor) ────────────────────────────── */
 
 .gp-tab-canvas-scroll {
   width: 100%;
@@ -3082,30 +3072,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 
 .gp-tab-canvas {
   display: block;
-}
-
-/* ── alphaTab native player cursors ─────────────────────────────────────── */
-
-/* Bar highlight — the whole-bar background block */
-.at-cursor-bar {
-  background: rgba(255, 210, 0, 0.18);
-}
-
-/* Beat cursor — the thin vertical line that tracks playback */
-.at-cursor-beat {
-  background: rgba(124, 106, 247, 0.85);
-  width: 3px;
-}
-
-/* Active-note highlight (SVG fill/stroke) */
-.at-highlight * {
-  fill: #7c6af7;
-  stroke: #7c6af7;
-}
-
-/* Selection range overlay */
-.at-selection > div {
-  background: rgba(124, 106, 247, 0.12);
 }
 
 /* ── Debug console ── */

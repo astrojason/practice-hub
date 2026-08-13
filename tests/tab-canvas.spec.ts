@@ -33,11 +33,11 @@ const mockCatalogSongs = { songs: [], total: 0, page: 1, limit: 100 };
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 //
-// Phase 3 of the custom tab renderer: TabCanvas.tsx is wired into GpViewer.tsx
-// behind a "New renderer (preview)" toggle (additive — alphaTab's own
-// rendering/cursor is untouched). Unlike tests/gp-viewer.spec.ts, this file
-// serves the *real* fixture bytes from the file-server route so the new
-// parser/layout/render pipeline gets exercised end to end.
+// The custom tab renderer (TabCanvas.tsx + TabCursor.tsx) is GpViewer's only
+// rendering path — alphaTab is used solely as a file-format parser
+// (gpScore.ts). Unlike tests/gp-viewer.spec.ts, this file serves the *real*
+// fixture bytes from the file-server route so the parser/layout/render
+// pipeline gets exercised end to end.
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -115,12 +115,11 @@ async function openViewer(page: import("@playwright/test").Page) {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-test("the new-renderer toggle shows a populated tab canvas for a real GP file", async ({ page }) => {
+test("the tab canvas renders populated for a real GP file", async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
 
   await openViewer(page);
-  await page.locator(".gp-new-renderer-toggle").click();
 
   const canvas = page.locator('[data-testid="tab-canvas"]');
   await expect(canvas).toBeVisible();
@@ -141,7 +140,6 @@ test("the new-renderer toggle shows a populated tab canvas for a real GP file", 
 
 test("the cursor mounts and sits at the deterministic x position for the current playback time", async ({ page }) => {
   await openViewer(page);
-  await page.locator(".gp-new-renderer-toggle").click();
 
   const cursor = page.locator('[data-testid="tab-cursor"]');
   await expect(cursor).toBeAttached();
@@ -167,19 +165,8 @@ test("the cursor mounts and sits at the deterministic x position for the current
   expect(cursorX).toBeCloseTo(expectedX, 3);
 });
 
-test("the new-renderer toggle switches back to the alphaTab view", async ({ page }) => {
-  await openViewer(page);
-  await page.locator(".gp-new-renderer-toggle").click();
-  await expect(page.locator('[data-testid="tab-canvas"]')).toBeVisible();
-
-  await page.locator(".gp-new-renderer-toggle").click();
-  await expect(page.locator('[data-testid="tab-canvas"]')).not.toBeVisible();
-  await expect(page.locator(".gp-alphatab-container")).toBeVisible();
-});
-
 test("the tab canvas actually draws non-background pixels (something was rendered)", async ({ page }) => {
   await openViewer(page);
-  await page.locator(".gp-new-renderer-toggle").click();
   const canvas = page.locator('[data-testid="tab-canvas"]');
   await expect(canvas).toBeVisible();
 
@@ -212,7 +199,6 @@ test("a fixture with bends, hammer-ons, vibrato, dead notes, and palm mute rende
   );
 
   await openViewer(page);
-  await page.locator(".gp-new-renderer-toggle").click();
 
   const canvas = page.locator('[data-testid="tab-canvas"]');
   await expect(canvas).toBeVisible();
