@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import type { PitchShifter } from "../../lib/soundtouch";
+import type { PitchShifterWorklet } from "../../lib/soundtouch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -185,7 +185,7 @@ export function resolvePlaybackPosition(
 interface EngineRef {
   ctx: AudioContext | null;
   buffer: AudioBuffer | null;
-  shifter: InstanceType<typeof PitchShifter> | null;
+  shifter: InstanceType<typeof PitchShifterWorklet> | null;
   gain: GainNode | null;
   raf: number | null;
   isHandlingLoop: boolean;
@@ -436,8 +436,13 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
         if (bpm) setDetectedBpm(bpm);
       });
 
-      const { PitchShifter: PS } = await import("../../lib/soundtouch.js") as { PitchShifter: typeof PitchShifter };
-      eng.shifter = new PS(eng.ctx, decoded, 4096, () => {
+      const { PitchShifterWorklet: PS, loadSoundTouchWorklet } = await import("../../lib/soundtouch.js") as {
+        PitchShifterWorklet: typeof PitchShifterWorklet;
+        loadSoundTouchWorklet: (context: AudioContext) => Promise<void>;
+      };
+      await loadSoundTouchWorklet(eng.ctx);
+      if (eng.pendingSrc !== path) return;
+      eng.shifter = new PS(eng.ctx, decoded, () => {
         if (eng.isHandlingLoop) return;
         if (eng.loopEnabled) {
           eng._pausedAt = eng.loopStart ?? 0;
