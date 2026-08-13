@@ -1,12 +1,13 @@
 import { useRef, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useAuth } from "./hooks/useAuth";
 import { SignInScreen } from "./components/SignInScreen";
 import { SessionView } from "./components/SessionView";
 import { GpLibraryView } from "./components/GpLibraryView";
 import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
-import { GpViewer } from "./components/GpViewer";
 import { BrowseView } from "./components/BrowseView";
 import { Changelog } from "./components/Changelog";
+import { ErrorModal } from "./components/ErrorModal";
 
 type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog";
 
@@ -26,17 +27,14 @@ export function App() {
   const quoteRef = useRef(MUSIC_QUOTES[Math.floor(Math.random() * MUSIC_QUOTES.length)]);
   const [slowLoad, setSlowLoad] = useState(false);
   const [view, setView] = useState<AppView>("session");
-  const [gpViewerPath, setGpViewerPath] = useState<string | null>(null);
-  const [gpViewerAudioPath, setGpViewerAudioPath] = useState<string | undefined>(undefined);
+  const [gpOpenError, setGpOpenError] = useState<string | null>(null);
 
-  function openGpViewer(path: string, audioPath?: string) {
-    setGpViewerPath(path);
-    setGpViewerAudioPath(audioPath);
-  }
-
-  function closeGpViewer() {
-    setGpViewerPath(null);
-    setGpViewerAudioPath(undefined);
+  // Guitar Pro files open in the real Guitar Pro app (via the OS's default
+  // file-type handler) rather than an in-app viewer.
+  function openGpFile(path: string) {
+    invoke("open_with_default", { path }).catch((err) =>
+      setGpOpenError(err instanceof Error ? err.message : String(err))
+    );
   }
 
   useEffect(() => {
@@ -66,14 +64,7 @@ export function App() {
   }
 
   if (view === "gp-library") {
-    return (
-      <>
-        <GpLibraryView token={token} onBack={() => setView("session")} onGpView={openGpViewer} />
-        {gpViewerPath && (
-          <GpViewer filePath={gpViewerPath} initialAudioPath={gpViewerAudioPath} onClose={closeGpViewer} />
-        )}
-      </>
-    );
+    return <GpLibraryView token={token} onBack={() => setView("session")} />;
   }
 
   if (view === "calendar") {
@@ -97,12 +88,9 @@ export function App() {
         onCalendar={() => setView("calendar")}
         onBrowse={() => setView("browse")}
         onChangelog={() => setView("changelog")}
-        onGpView={openGpViewer}
-        isGpViewerActive={gpViewerPath !== null}
+        onGpView={openGpFile}
       />
-      {gpViewerPath && (
-        <GpViewer filePath={gpViewerPath} initialAudioPath={gpViewerAudioPath} onClose={closeGpViewer} />
-      )}
+      {gpOpenError && <ErrorModal error={gpOpenError} onDismiss={() => setGpOpenError(null)} />}
     </>
   );
 }

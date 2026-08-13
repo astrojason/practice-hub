@@ -22,12 +22,10 @@ interface LocalFolderResourceProps {
   name: string;
   folderPath: string;
   onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
-  onGpView?: (path: string, audioPath?: string) => void;
-  /** The song/exercise/study material's designated audio resource — the one that opens in the audio player. */
-  audioPath?: string;
+  onGpView?: (path: string) => void;
 }
 
-function LocalFolderResource({ name, folderPath, onOpenFile, onGpView, audioPath }: LocalFolderResourceProps) {
+function LocalFolderResource({ name, folderPath, onOpenFile, onGpView }: LocalFolderResourceProps) {
   const [files, setFiles] = useState<FolderEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -62,7 +60,7 @@ function LocalFolderResource({ name, folderPath, onOpenFile, onGpView, audioPath
               <button
                 key={f.path}
                 className="modal-resource-link modal-resource-link--local modal-resource-folder-file"
-                onClick={() => ft === "guitar_pro" ? onGpView?.(f.path, audioPath) : onOpenFile?.(f.path, ft)}
+                onClick={() => ft === "guitar_pro" ? onGpView?.(f.path) : onOpenFile?.(f.path, ft)}
               >
                 {f.filename}
               </button>
@@ -74,19 +72,13 @@ function LocalFolderResource({ name, folderPath, onOpenFile, onGpView, audioPath
   );
 }
 
-function findAudioPath(resources: Resource[] | undefined): string | undefined {
-  return resources?.find((r) =>
-    (r.type === "local_file" || !r.type) && fileTypeFromPath(r.url) === "audio"
-  )?.url;
-}
-
 interface Props {
   title: string;
   subtitle?: string;
   resources?: Resource[];
   onClose: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string, audioPath?: string) => void;
+  onGpView?: (path: string) => void;
   /** Called instead of onClose when a resource opens media, so callers can distinguish "hide while media plays" from an explicit close/cancel. Defaults to onClose. */
   onMediaOpen?: () => void;
   children: React.ReactNode;
@@ -128,8 +120,7 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                       name={r.name}
                       folderPath={r.url}
                       onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt); closeForMedia(); } : undefined}
-                      onGpView={onGpView ? (path, audioPath) => { onGpView(path, audioPath); closeForMedia(); } : undefined}
-                      audioPath={findAudioPath(resources)}
+                      onGpView={onGpView}
                     />
                   );
                 }
@@ -141,11 +132,14 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                       className="modal-resource-link modal-resource-link--local"
                       onClick={() => {
                         if (ft === "guitar_pro") {
-                          onGpView?.(r.url, findAudioPath(resources));
+                          // Opens in the OS's default app (Guitar Pro) — a
+                          // fire-and-forget external launch, not an in-app
+                          // overlay, so the session modal stays open.
+                          onGpView?.(r.url);
                         } else {
                           onOpenFile?.(r.url, ft);
+                          closeForMedia();
                         }
-                        closeForMedia();
                       }}
                     >
                       <FolderOpenIcon style={{ width: 11, height: 11 }} />
@@ -158,7 +152,7 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                     <button
                       key={r.url}
                       className="modal-resource-link modal-resource-link--local"
-                      onClick={() => { onGpView?.(r.url, findAudioPath(resources)); closeForMedia(); }}
+                      onClick={() => onGpView?.(r.url)}
                     >
                       <FolderOpenIcon style={{ width: 11, height: 11 }} />
                       {r.name}

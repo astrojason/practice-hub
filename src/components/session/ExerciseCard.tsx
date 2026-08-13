@@ -24,13 +24,12 @@ interface CardProps {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string, audioPath?: string) => void;
+  onGpView?: (path: string) => void;
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
   onStartSequential?: () => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
-  isGpViewerActive?: boolean;
   /** Collapse toggle for parent cards with children */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
@@ -62,7 +61,6 @@ function ExerciseSingleCard({
   onStartSequential,
   onOpenChat,
   isMediaActive,
-  isGpViewerActive,
   childrenCollapsed,
   onToggleChildren,
   onEntityEdited,
@@ -114,7 +112,6 @@ function ExerciseSingleCard({
       onStartSequential={onStartSequential}
       onOpenChat={onOpenChat}
       isMediaActive={isMediaActive}
-      isGpViewerActive={isGpViewerActive}
       childrenCollapsed={childrenCollapsed}
       onToggleChildren={onToggleChildren}
       editTitle={`Edit: ${exercise.name}`}
@@ -177,10 +174,9 @@ interface ExerciseCardProps {
   onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string, audioPath?: string) => void;
+  onGpView?: (path: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
-  isGpViewerActive?: boolean;
   onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
   onChildAdded?: (parentId: number, child: DashboardExercise) => void;
 }
@@ -202,7 +198,6 @@ export function ExerciseCard({
   onGpView,
   onOpenChat,
   isMediaActive,
-  isGpViewerActive,
   onEntityEdited,
   onChildAdded,
 }: ExerciseCardProps) {
@@ -233,7 +228,6 @@ export function ExerciseCard({
         onGpView={onGpView}
         onOpenChat={onOpenChat ? () => onOpenChat(exercise.id) : undefined}
         isMediaActive={isMediaActive}
-        isGpViewerActive={isGpViewerActive}
         childrenCollapsed={hasChildren ? childrenCollapsed : undefined}
         onToggleChildren={hasChildren ? () => setChildrenCollapsed((v) => !v) : undefined}
         onEntityEdited={onEntityEdited}
@@ -267,7 +261,6 @@ export function ExerciseCard({
             onGpView={onGpView}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}
-            isGpViewerActive={isGpViewerActive}
             isChild
             onEntityEdited={onEntityEdited}
           />

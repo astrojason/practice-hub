@@ -24,19 +24,6 @@ export interface AudioEngineState {
   detectedBpm: number | null;
 }
 
-// A point-in-time snapshot of the playback clock's raw inputs, exposed so a
-// consumer (GpViewer's on-screen debug panel) can log real numbers from the
-// actual runtime it's playing in — this app has repeatedly had bugs that
-// only reproduce under Tauri's packaged WKWebView, not the dev-server/
-// Chromium environment automated tests run against, so getting real values
-// out of the packaged app is often the only way to actually diagnose one.
-export interface AudioClockDebugSnapshot {
-  ctxCurrentTime: number;
-  lastReportedPositionSeconds: number | null;
-  lastReportedContextTime: number;
-  resolvedPositionSeconds: number;
-}
-
 export interface AudioEngineActions {
   loadFile: (path: string) => Promise<void>;
   play: () => void;
@@ -58,7 +45,6 @@ export interface AudioEngineActions {
   destroy: () => void;
   getContext: () => AudioContext | null;
   getCurrentTime: () => number;
-  getDebugSnapshot: () => AudioClockDebugSnapshot | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -164,9 +150,9 @@ function estimatedOutputLatencySeconds(ctx: AudioContext | null): number {
 // second clock.
 //
 // (The worklet still posts its position back periodically — see
-// soundtouchWorkletProcessor.js's POSITION_REPORT_INTERVAL_QUANTA — but only
-// as an optional diagnostic signal now, e.g. useAudioEngine's
-// getDebugSnapshot(); it no longer feeds this formula.)
+// soundtouchWorkletProcessor.js's POSITION_REPORT_INTERVAL_QUANTA — but it
+// no longer feeds this formula; lastReportedPositionSeconds/
+// lastReportedContextTime on PitchShifterWorklet are unused by this engine.)
 
 export interface PlaybackClockState {
   playStartCtxTime: number;
@@ -566,17 +552,6 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     return result.position;
   }, []);
 
-  const getDebugSnapshot = useCallback((): AudioClockDebugSnapshot | null => {
-    const eng = e.current;
-    if (!eng.ctx) return null;
-    return {
-      ctxCurrentTime: eng.ctx.currentTime,
-      lastReportedPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
-      lastReportedContextTime: eng.shifter?.lastReportedContextTime ?? 0,
-      resolvedPositionSeconds: getCurrentTime(),
-    };
-  }, [getCurrentTime]);
-
   // ── Assemble ────────────────────────────────────────────────────────────────
 
   const state: AudioEngineState = {
@@ -592,7 +567,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
     setPitch, setCountIn,
     setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
-    destroy, getContext, getCurrentTime, getDebugSnapshot,
+    destroy, getContext, getCurrentTime,
   };
 
   return [state, actions];

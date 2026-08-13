@@ -108,7 +108,6 @@ const otherTutorials = [
   { title: "Browse", heading: "Browse" },
   { title: "Sessions & Practice Timer", heading: "Sessions & the Practice Timer" },
   { title: "Metronome", heading: "Metronome" },
-  { title: "GP Viewer", heading: "Guitar Pro Viewer" },
 ];
 
 for (const { title, heading } of otherTutorials) {

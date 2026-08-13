@@ -28,14 +28,13 @@ Matched files show up in a table with song, artist, date, BPM, and a computed **
 - **Sort** by clicking any column header (Song, Artist, Date, Difficulty).
 - **Expand a row** (▸) to see the score breakdown across six axes — Speed, Fret, Picking, Rhythm, Technique, Stamina — each with a short description on hover.
 - **Override the score** by clicking the score itself and typing a new value (0–100). Overridden scores are tagged **manual** and always win over the computed one.
-- **Open the file** in Guitar Pro by clicking the filename.
-- **View the tab** in-app by clicking the ♩ icon — this opens the Guitar Pro Viewer (see its own tutorial for pitch, tempo, and looping controls).
+- **Open the file** in Guitar Pro by clicking the filename — this launches the real Guitar Pro app on your Mac.
 
 Rows are tagged **new** (first time scored) or **updated** (a newer file version was found since the last push).
 
 ## Unmatched files
 
-Files that couldn't be matched to a catalog song land in a separate **Unmatched** section, along with what artist/title the scanner parsed from the filename. From there you can open the file, view it, or **Dismiss** it so it stops showing up on future scans.
+Files that couldn't be matched to a catalog song land in a separate **Unmatched** section, along with what artist/title the scanner parsed from the filename. From there you can open the file in Guitar Pro or **Dismiss** it so it stops showing up on future scans.
 
 ## Force Rescan
 

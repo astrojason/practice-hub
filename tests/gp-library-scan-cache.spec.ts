@@ -39,9 +39,9 @@ const mockCatalogSongs = {
 // or not the user has confirmed/pushed it yet — and a previously-pushed,
 // unchanged file shouldn't keep reappearing in the "ready to push" queue.
 //
-// The store mock below is stateful (unlike gp-viewer.spec.ts's fixture, which
-// always returns "not found") so that a second scan in the same test can
-// observe what the first scan persisted.
+// The store mock below is stateful (unlike a fixture that always returns
+// "not found") so that a second scan in the same test can observe what the
+// first scan persisted.
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {

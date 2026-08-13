@@ -10,8 +10,8 @@ import { test, expect } from "@playwright/test";
 // 200-300ms-plausible, latency invisible to ctx.currentTime/outputLatency).
 //
 // Tested here in isolation, independent of useAudioEngine.ts, against a real
-// (if silent) decodable audio buffer — same buildSilentWav() approach as
-// tests/gp-viewer-space-shortcut.spec.ts.
+// (if silent) decodable audio buffer via the same buildSilentWav() approach
+// used elsewhere in this suite.
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");

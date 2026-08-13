@@ -3,7 +3,6 @@ import gpLibrary from "../../docs/tutorials/gp-library.md?raw";
 import browse from "../../docs/tutorials/browse.md?raw";
 import sessionsTimer from "../../docs/tutorials/sessions-timer.md?raw";
 import metronome from "../../docs/tutorials/metronome.md?raw";
-import gpViewer from "../../docs/tutorials/gp-viewer.md?raw";
 
 export interface Tutorial {
   id: string;
@@ -26,11 +25,6 @@ export const TUTORIALS: Tutorial[] = [
     id: "gp-library",
     title: "GP Library",
     content: gpLibrary,
-  },
-  {
-    id: "gp-viewer",
-    title: "GP Viewer",
-    content: gpViewer,
   },
   {
     id: "browse",

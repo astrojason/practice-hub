@@ -91,12 +91,11 @@ export interface ItemSessionCardProps {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string, audioPath?: string) => void;
+  onGpView?: (path: string) => void;
   /** When set, the play button starts a sequential child session instead of this item's own timer. */
   onStartSequential?: () => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
-  isGpViewerActive?: boolean;
   /** Collapse toggle for parent cards with children. */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
@@ -138,7 +137,6 @@ export function ItemSessionCard({
   onStartSequential,
   onOpenChat,
   isMediaActive,
-  isGpViewerActive,
   childrenCollapsed,
   onToggleChildren,
   editTitle,
@@ -159,20 +157,15 @@ export function ItemSessionCard({
   }, [isFormOpen]);
 
   useEffect(() => {
-    if (!(isMediaActive ?? false) && !(isGpViewerActive ?? false) && mediaWasOpenedRef.current) {
+    if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {
       setModalOpen(true);
       mediaWasOpenedRef.current = false;
     }
-  }, [isMediaActive, isGpViewerActive]);
+  }, [isMediaActive]);
 
   function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
     mediaWasOpenedRef.current = true;
     onOpenFile!(path, mediaType, itemKey);
-  }
-
-  function handleGpView(path: string, audioPath?: string) {
-    mediaWasOpenedRef.current = true;
-    onGpView!(path, audioPath);
   }
 
   function handleStart() {
@@ -303,7 +296,7 @@ export function ItemSessionCard({
           resources={resources}
           onClose={handleClose}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
-          onGpView={onGpView ? handleGpView : undefined}
+          onGpView={onGpView}
         >
           {isFormOpen ? (
             renderSessionForm({

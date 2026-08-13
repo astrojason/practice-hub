@@ -26,7 +26,7 @@ From a card you can:
 
 Once a timer is running, the card collapses to show just the elapsed time — click it to reopen the session panel, where you can add notes, see your last session, view a rating-history chart, **Pause**/**Resume**, **Stop & Save**, or **Cancel** (discards the timer entirely).
 
-Any resources attached to the item (links, YouTube, local audio/video/folders, Guitar Pro files) are listed at the top of the session panel — clicking one opens it in the appropriate place: the system browser for links, the in-app media player for audio/video, or the Guitar Pro Viewer for tabs.
+Any resources attached to the item (links, YouTube, local audio/video/folders, Guitar Pro files) are listed at the top of the session panel — clicking one opens it in the appropriate place: the system browser for links, the in-app media player for audio/video, or the real Guitar Pro app for tabs.
 
 ## Sequential sessions
 

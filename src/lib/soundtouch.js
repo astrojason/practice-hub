@@ -673,29 +673,11 @@ class PitchShifterWorklet {
   constructor(context, buffer, onEnd = noop) {
     this.duration = buffer.duration;
     this.sampleRate = context.sampleRate;
+    // Kept up to date by the worklet's periodic "position" reports (see
+    // soundtouchWorkletProcessor.js's POSITION_REPORT_INTERVAL_QUANTA) —
+    // needed so percentagePlayed (below) reflects real playback progress
+    // when pausing, not just wherever the last explicit seek left it.
     this._sourcePosition = 0;
-    // The worklet posts its real, ground-truth position back roughly every
-    // ~58ms (see soundtouchWorkletProcessor.js's
-    // POSITION_REPORT_INTERVAL_QUANTA). Position lookups anchor to this
-    // instead of extrapolating from playStart via a nominal speed
-    // multiplier — the SoundTouch time-stretcher processes audio in
-    // discrete windows and doesn't consume source samples at a perfectly
-    // linear elapsed-time * speed rate locally, only on average, so an
-    // estimate that never checks in against the real reports drifts. Null
-    // until the first report arrives (or is invalidated by a seek).
-    //
-    // The report is tagged with the audio-thread's own `currentTime` (the
-    // AudioWorkletGlobalScope global — the same continuous clock
-    // AudioContext.currentTime reads on the main thread), NOT a
-    // performance.now() timestamp taken when the postMessage is received.
-    // An earlier version used the receipt-time wall clock, which made the
-    // anchor jittery: postMessage delivery has its own scheduling latency
-    // (worse under any main-thread load), so an accurate position value
-    // paired with an inaccurate timestamp produced a visibly vibrating
-    // cursor. Reading both sides of the anchor from the same audio-clock
-    // timeline removes that jitter entirely.
-    this._lastReportPositionSeconds = null;
-    this._lastReportContextTime = 0;
     this._onEnd = onEnd;
     this._tempo = 1;
     this._pitch = 1;
@@ -720,8 +702,6 @@ class PitchShifterWorklet {
       const msg = event.data;
       if (msg.type === 'position') {
         this._sourcePosition = msg.sourcePosition;
-        this._lastReportPositionSeconds = msg.sourcePosition / this.sampleRate;
-        this._lastReportContextTime = msg.contextTime;
       } else if (msg.type === 'ended') {
         this._onEnd();
       }
@@ -733,20 +713,7 @@ class PitchShifterWorklet {
   }
   set percentagePlayed(perc) {
     this._sourcePosition = Math.trunc(perc * this.duration * this.sampleRate);
-    // Invalidate the report anchor — a report already in flight from before
-    // the seek would otherwise be trusted as ground truth for a position
-    // that's no longer current. The next real report (within ~58ms) becomes
-    // the new anchor; until then callers fall back to their own play/seek
-    // wall-clock anchor.
-    this._lastReportPositionSeconds = null;
     this._node.port.postMessage({ type: 'seek', sourcePosition: this._sourcePosition });
-  }
-
-  get lastReportedPositionSeconds() {
-    return this._lastReportPositionSeconds;
-  }
-  get lastReportedContextTime() {
-    return this._lastReportContextTime;
   }
 
   get tempo() {

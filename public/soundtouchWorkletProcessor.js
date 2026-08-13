@@ -747,19 +747,7 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
     this._quantaSinceReport++;
     if (this._quantaSinceReport >= POSITION_REPORT_INTERVAL_QUANTA) {
       this._quantaSinceReport = 0;
-      // `currentTime` here is the AudioWorkletGlobalScope global — the same
-      // continuous audio-clock timeline AudioContext.currentTime reads on
-      // the main thread, sample-accurate. Tagging the report with it (not
-      // with a main-thread wall-clock timestamp taken at message-receipt
-      // time) means the anchor is immune to postMessage delivery jitter —
-      // the main thread only needs to know "this source position corresponds
-      // to this point on the shared audio clock," not "when did this message
-      // physically arrive."
-      this.port.postMessage({
-        type: "position",
-        sourcePosition: this._filter.sourcePosition,
-        contextTime: currentTime,
-      });
+      this.port.postMessage({ type: "position", sourcePosition: this._filter.sourcePosition });
     }
 
     return true;

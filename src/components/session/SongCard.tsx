@@ -28,10 +28,9 @@ interface Props {
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
-  onGpView?: (path: string, audioPath?: string) => void;
+  onGpView?: (path: string) => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;
-  isGpViewerActive?: boolean;
   onEntityEdited?: (song: Song) => void;
 }
 
@@ -57,7 +56,6 @@ export function SongCard({
   onGpView,
   onOpenChat,
   isMediaActive,
-  isGpViewerActive,
   onEntityEdited,
 }: Props) {
   const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
@@ -101,7 +99,6 @@ export function SongCard({
       onGpView={onGpView}
       onOpenChat={onOpenChat}
       isMediaActive={isMediaActive}
-      isGpViewerActive={isGpViewerActive}
       editTitle={`Edit: ${song.name}`}
       renderSessionForm={({ initialNotes, timerElapsed, lastSession, onSubmit, onCancel }) => (
         <SongSessionForm

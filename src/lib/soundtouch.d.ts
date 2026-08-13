@@ -7,8 +7,6 @@ export class PitchShifterWorklet {
   tempo: number;
   pitch: number;
   percentagePlayed: number;
-  readonly lastReportedPositionSeconds: number | null;
-  readonly lastReportedContextTime: number;
   connect(node: AudioNode): void;
   disconnect(): void;
 }
