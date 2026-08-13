@@ -319,12 +319,31 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTempo, tempo]);
 
-  // Escape key
+  // Escape closes the viewer; Space toggles playback (matching MediaPlayer's
+  // own shortcut convention — see useShortcuts.ts). We always preventDefault
+  // on a handled Space press, which also suppresses the browser's native
+  // space-activates-the-focused-button behavior, so this still works
+  // correctly even when focus is lingering on some other button (e.g. right
+  // after clicking "Load audio") instead of being swallowed by it.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== " ") return;
+      const target = e.target as HTMLElement;
+      const isTyping =
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLInputElement && !["range", "checkbox"].includes(target.type)) ||
+        target.isContentEditable;
+      if (isTyping) return;
+      if (audioState.status !== "ready") return;
+      e.preventDefault();
+      if (audioState.isPlaying) audioActions.pause();
+      else audioActions.play();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, audioState.status, audioState.isPlaying]);
 
   function handleBackdropClick(e: React.MouseEvent) {
     if (e.target === backdropRef.current) onClose();
