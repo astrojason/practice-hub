@@ -1,4 +1,18 @@
 /*
+ * AudioWorkletProcessor wrapper around the SoundTouch/SimpleFilter DSP
+ * pipeline used by soundtouch.js's PitchShifterWorklet, driven from the
+ * audio rendering thread instead of the main thread.
+ *
+ * This file is served as a static, unprocessed asset from public/ and
+ * loaded via `new URL('/soundtouchWorkletProcessor.js', location.href)` —
+ * NOT bundled through Vite's `import.meta.url` mechanism. Vite's bundled
+ * worker/worklet chunk URLs don't reliably resolve under Tauri's `tauri://`
+ * production protocol (the same issue previously hit and fixed for
+ * alphaTab's worker loading in this codebase), so this module is kept
+ * fully self-contained — the SoundTouch DSP classes below are duplicated
+ * verbatim from src/lib/soundtouch.js rather than imported, since
+ * AudioWorkletGlobalScope has no bundler-relative module resolution here.
+ *
  * SoundTouch JS v0.2.1 audio processing library
  * Copyright (c) Olli Parviainen
  * Copyright (c) Ryan Berdeen
@@ -9,15 +23,6 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
 class FifoSampleBuffer {
@@ -212,8 +217,7 @@ class FilterSupport {
   get outputBuffer() {
     return this._pipe.outputBuffer;
   }
-  fillInputBuffer(
-  ) {
+  fillInputBuffer() {
     throw new Error('fillInputBuffer() not overridden');
   }
   fillOutputBuffer(numFrames = 0) {
@@ -642,98 +646,113 @@ class SoundTouch {
   }
 }
 
-// ─── AudioWorkletNode-backed pitch shifter ──────────────────────────────────────
+// ─── Worklet processor ───────────────────────────────────────────────────────
 //
-// Runs the SimpleFilter/SoundTouch DSP pipeline above inside an
-// AudioWorkletProcessor (soundtouchWorkletProcessor.js) on the audio
-// rendering thread, replacing an earlier ScriptProcessorNode-based
-// implementation. ScriptProcessorNode is a documented source of extra
-// (often 200-300ms-plausible) latency — bouncing audio through the main
-// thread with 2-3 buffer periods of headroom to avoid glitching — none of
-// which is visible to ctx.currentTime, outputLatency, or baseLatency,
-// since it's internal to the graph, not the path from the graph to the
-// speaker.
-
-const workletLoadedContexts = new WeakSet();
-
-async function loadSoundTouchWorklet(context) {
-  if (workletLoadedContexts.has(context)) return;
-  // Served as a static, unprocessed file from public/ and referenced via
-  // location.href — NOT Vite's import.meta.url-bundled-chunk mechanism,
-  // which doesn't reliably resolve under Tauri's tauri:// production
-  // protocol (falls through to the SPA's index.html, yielding a
-  // 'text/html' is not a valid JavaScript MIME type error). Matches the
-  // precedent already established for alphaTab's worker loading.
-  const url = new URL('/soundtouchWorkletProcessor.js', location.href).href;
-  await context.audioWorklet.addModule(url);
-  workletLoadedContexts.add(context);
+// AudioBuffer.getChannelData() isn't available inside the worklet global
+// scope (and AudioBuffer itself isn't structured-cloneable across the
+// port), so the main thread transfers plain Float32Array channel data
+// instead. This mirrors the old WebAudioBufferSource's extract() contract.
+class WorkletBufferSource {
+  constructor(left, right) {
+    this.left = left;
+    this.right = right;
+    this._position = 0;
+  }
+  get position() {
+    return this._position;
+  }
+  set position(value) {
+    this._position = value;
+  }
+  extract(target, numFrames = 0, position = 0) {
+    this.position = position;
+    const left = this.left;
+    const right = this.right;
+    let i = 0;
+    for (; i < numFrames; i++) {
+      target[i * 2] = left[i + position] ?? 0;
+      target[i * 2 + 1] = right[i + position] ?? 0;
+    }
+    return Math.min(numFrames, Math.max(0, left.length - position));
+  }
 }
 
-class PitchShifterWorklet {
-  constructor(context, buffer, onEnd = noop) {
-    this.duration = buffer.duration;
-    this.sampleRate = context.sampleRate;
-    this._sourcePosition = 0;
-    this._onEnd = onEnd;
-    this._tempo = 1;
-    this._pitch = 1;
+// The Web Audio spec fixes the render quantum at 128 frames — process() is
+// called once per quantum and must return exactly that many frames.
+const QUANTUM_FRAMES = 128;
+// Position updates are throttled (not sent every ~2.9ms quantum) since the
+// cursor's actual accuracy comes from ctx.currentTime tracking the audio
+// thread tightly now, not from high-frequency position messages — those
+// only matter for seek/UI-sync precision. ~20 quanta is ~60ms at 44.1kHz.
+const POSITION_REPORT_INTERVAL_QUANTA = 20;
 
-    const left = buffer.getChannelData(0);
-    const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
-    // Independent copies — buffer.getChannelData() views can't be
-    // transferred without corrupting the AudioBuffer the caller still owns.
-    const leftCopy = left.slice();
-    const rightCopy = right.slice();
+class SoundTouchProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    this._soundtouch = new SoundTouch();
+    this._filter = null;
+    this._scratch = new Float32Array(QUANTUM_FRAMES * 2);
+    this._quantaSinceReport = 0;
 
-    this._node = new AudioWorkletNode(context, 'soundtouch-processor', {
-      numberOfInputs: 0,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
-    this._node.port.postMessage(
-      { type: 'load', left: leftCopy, right: rightCopy },
-      [leftCopy.buffer, rightCopy.buffer],
-    );
-    this._node.port.onmessage = (event) => {
+    const opts = (options && options.processorOptions) || {};
+    if (opts.left && opts.right) {
+      this._load(opts.left, opts.right);
+    }
+
+    this.port.onmessage = (event) => {
       const msg = event.data;
-      if (msg.type === 'position') {
-        this._sourcePosition = msg.sourcePosition;
-      } else if (msg.type === 'ended') {
-        this._onEnd();
+      switch (msg.type) {
+        case "load":
+          this._load(msg.left, msg.right);
+          break;
+        case "tempo":
+          this._soundtouch.tempo = msg.value;
+          break;
+        case "pitch":
+          this._soundtouch.pitch = msg.value;
+          break;
+        case "seek":
+          if (this._filter) this._filter.sourcePosition = msg.sourcePosition;
+          break;
       }
     };
   }
 
-  get percentagePlayed() {
-    return 100 * this._sourcePosition / (this.duration * this.sampleRate);
-  }
-  set percentagePlayed(perc) {
-    this._sourcePosition = Math.trunc(perc * this.duration * this.sampleRate);
-    this._node.port.postMessage({ type: 'seek', sourcePosition: this._sourcePosition });
-  }
-
-  get tempo() {
-    return this._tempo;
-  }
-  set tempo(tempo) {
-    this._tempo = tempo;
-    this._node.port.postMessage({ type: 'tempo', value: tempo });
+  _load(left, right) {
+    const source = new WorkletBufferSource(left, right);
+    this._filter = new SimpleFilter(source, this._soundtouch, () => {
+      this.port.postMessage({ type: "ended" });
+    });
   }
 
-  get pitch() {
-    return this._pitch;
-  }
-  set pitch(pitch) {
-    this._pitch = pitch;
-    this._node.port.postMessage({ type: 'pitch', value: pitch });
-  }
+  process(_inputs, outputs) {
+    const output = outputs[0];
+    if (!this._filter || !output || output.length < 2) {
+      return true;
+    }
 
-  connect(toNode) {
-    this._node.connect(toNode);
-  }
-  disconnect() {
-    this._node.disconnect();
+    const framesExtracted = this._filter.extract(this._scratch, QUANTUM_FRAMES);
+    // Matches the old getWebAudioNode's onaudioprocess: extract() itself
+    // doesn't call onEnd — the caller must, when nothing more comes out.
+    if (framesExtracted === 0) {
+      this._filter.onEnd();
+    }
+
+    const left = output[0];
+    const right = output[1];
+    for (let i = 0; i < QUANTUM_FRAMES; i++) {
+      left[i] = i < framesExtracted ? this._scratch[i * 2] : 0;
+      right[i] = i < framesExtracted ? this._scratch[i * 2 + 1] : 0;
+    }
+
+    this._quantaSinceReport++;
+    if (this._quantaSinceReport >= POSITION_REPORT_INTERVAL_QUANTA) {
+      this._quantaSinceReport = 0;
+      this.port.postMessage({ type: "position", sourcePosition: this._filter.sourcePosition });
+    }
+
+    return true;
   }
 }
 
-export { AbstractFifoSamplePipe, PitchShifterWorklet, RateTransposer, SimpleFilter, SoundTouch, Stretch, loadSoundTouchWorklet };
+registerProcessor("soundtouch-processor", SoundTouchProcessor);
