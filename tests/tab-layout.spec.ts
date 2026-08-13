@@ -12,13 +12,17 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-async function layoutFromTex(page: import("@playwright/test").Page, tex: string) {
-  return page.evaluate(async (tex) => {
+async function layoutFromTex(
+  page: import("@playwright/test").Page,
+  tex: string,
+  options?: { notationTranspositionSemitones?: number },
+) {
+  return page.evaluate(async ({ tex, options }) => {
     const gpScore = await import("/src/lib/gpScore.ts");
     const tabLayout = await import("/src/lib/tabLayout.ts");
     const score = gpScore.alphaTab.importer.ScoreLoader.loadAlphaTex(tex);
     const timing = gpScore.buildBeatTiming(score);
-    const layout = tabLayout.buildTrackLayout(score, 0, timing);
+    const layout = tabLayout.buildTrackLayout(score, 0, timing, { ...tabLayout.defaultLayoutOptions, ...options });
     // Strip non-serializable alphaTab object references for the trip back to Node.
     return {
       totalWidth: layout.totalWidth,
@@ -46,7 +50,7 @@ async function layoutFromTex(page: import("@playwright/test").Page, tex: string)
         })),
       })),
     };
-  }, tex);
+  }, { tex, options });
 }
 
 // ─── Time-proportional x positions ─────────────────────────────────────────────
@@ -215,4 +219,35 @@ test("timeToX is monotonically non-decreasing as time advances, including across
   for (let i = 1; i < xs.length; i++) {
     expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
   }
+});
+
+// ─── Phase 5: notation-only tab transposition ──────────────────────────────────
+
+test("notationTranspositionSemitones shifts the notation staff pitch but leaves fret/string untouched", async ({ page }) => {
+  // E4 (realValue 64) at fret 0 string tex"1" (internal string 6, open high e).
+  const untransposed = await layoutFromTex(page, "\\tuning E4 B3 G3 D3 A2 E2 . 0.1 |");
+  const transposedUp2 = await layoutFromTex(page, "\\tuning E4 B3 G3 D3 A2 E2 . 0.1 |", { notationTranspositionSemitones: 2 });
+
+  const noteBefore = untransposed.bars[0].beats[0].notes[0];
+  const noteAfter = transposedUp2.bars[0].beats[0].notes[0];
+
+  // Fret/string are physical playing instructions — must not change.
+  expect(noteAfter.fret).toBe(noteBefore.fret);
+  expect(noteAfter.string).toBe(noteBefore.string);
+  expect(noteAfter.tabLineFromTop).toBe(noteBefore.tabLineFromTop);
+
+  // E4 + 2 semitones = F#4 -> same staff line as F (step1, a space above E)
+  // with a sharp, since realValue 66 falls on the sharp-spelling table's F# entry.
+  expect(noteBefore.notationStep).toBe(0);
+  expect(noteBefore.accidental).toBeNull();
+  expect(noteAfter.notationStep).toBe(1);
+  expect(noteAfter.accidental).toBe("sharp");
+});
+
+test("transposition of 0 semitones is a no-op", async ({ page }) => {
+  const a = await layoutFromTex(page, "\\tuning C4 . 0.1 3.1 |");
+  const b = await layoutFromTex(page, "\\tuning C4 . 0.1 3.1 |", { notationTranspositionSemitones: 0 });
+  expect(b.bars[0].beats.map((x) => x.notes[0].notationStep)).toEqual(
+    a.bars[0].beats.map((x) => x.notes[0].notationStep),
+  );
 });

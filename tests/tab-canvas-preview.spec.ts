@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = join(__dirname, "fixtures", "gp-score-fixture.gp");
+const ARTICULATIONS_FIXTURE_PATH = join(__dirname, "fixtures", "gp-articulations-fixture.gp");
 
 // ─── Mock fixtures ────────────────────────────────────────────────────────────
 
@@ -196,4 +197,39 @@ test("the tab canvas actually draws non-background pixels (something was rendere
     return false;
   });
   expect(hasInk).toBe(true);
+});
+
+// ─── Phase 5: articulation glyphs (bend, hammer/pull, vibrato, dead, palm mute) ─
+
+test("a fixture with bends, hammer-ons, vibrato, dead notes, and palm mute renders without throwing", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
+  page.on("pageerror", (err) => consoleErrors.push(String(err)));
+
+  const fixtureBytes = readFileSync(ARTICULATIONS_FIXTURE_PATH);
+  await page.route("**/127.0.0.1:17865/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/octet-stream", body: fixtureBytes })
+  );
+
+  await openViewer(page);
+  await page.locator(".gp-new-renderer-toggle").click();
+
+  const canvas = page.locator('[data-testid="tab-canvas"]');
+  await expect(canvas).toBeVisible();
+
+  const hasInk = await canvas.evaluate((el: HTMLCanvasElement) => {
+    const ctx = el.getContext("2d")!;
+    const data = ctx.getImageData(0, 0, el.width, el.height).data;
+    for (let i = 0; i < data.length; i += 4) {
+      const dr = Math.abs(data[i] - 26);
+      const dg = Math.abs(data[i + 1] - 26);
+      const db = Math.abs(data[i + 2] - 36);
+      if (data[i + 3] > 0 && (dr > 20 || dg > 20 || db > 20)) return true;
+    }
+    return false;
+  });
+  expect(hasInk).toBe(true);
+
+  const newRendererErrors = consoleErrors.filter((e) => /TabCanvas|tabLayout|tabGeometry|gpScore|TabCursor/i.test(e));
+  expect(newRendererErrors).toEqual([]);
 });

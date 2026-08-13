@@ -27,11 +27,20 @@ import type { BeatTiming } from "./gpScore";
 export interface LayoutOptions {
   pixelsPerMs: number;
   barGapPx: number;
+  /**
+   * Shifts the standard-notation staff's pitch spelling by N semitones,
+   * matching alphaTab's own notation.transpositionPitches behavior: this is
+   * a notation-display transposition only. Tab fret/string numbers are
+   * physical playing instructions and are never altered by it — replaces
+   * the old GpViewer's per-track api.settings.notation.transpositionPitches.
+   */
+  notationTranspositionSemitones: number;
 }
 
 export const defaultLayoutOptions: LayoutOptions = {
   pixelsPerMs: 0.12,
   barGapPx: 24,
+  notationTranspositionSemitones: 0,
 };
 
 export type Accidental = "sharp" | "flat" | null;
@@ -201,7 +210,11 @@ export function buildTrackLayout(
       x = Math.max(x, beatX + durationMs * options.pixelsPerMs);
 
       const notes: NoteGlyph[] = beat.notes.map((note) => {
-        const { step, accidental } = notationStepFor(note.realValue, bar.clef, masterBar.keySignature);
+        const { step, accidental } = notationStepFor(
+          note.realValue + options.notationTranspositionSemitones,
+          bar.clef,
+          masterBar.keySignature,
+        );
         return {
           note,
           notationStep: step,

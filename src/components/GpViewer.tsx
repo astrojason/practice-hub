@@ -4,7 +4,7 @@ import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useAudioEngine } from "./player/useAudioEngine";
 import { ErrorModal } from "./ErrorModal";
 import { loadScoreFromFile, buildBeatTiming } from "../lib/gpScore";
-import { buildTrackLayout, type TrackLayout } from "../lib/tabLayout";
+import { buildTrackLayout, defaultLayoutOptions, type TrackLayout } from "../lib/tabLayout";
 import { TabCanvas } from "./tab/TabCanvas";
 import { TabCursor } from "./tab/TabCursor";
 import { computeStaffMetrics } from "./tab/tabGeometry";
@@ -411,21 +411,33 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         scoreRef.current = score;
         beatTimingRef.current = buildBeatTiming(score);
         const trackIndex = loadView(filePath).value.selectedTrack;
-        setNewLayout(buildTrackLayout(score, Math.min(trackIndex, score.tracks.length - 1), beatTimingRef.current));
+        setNewLayout(buildTrackLayout(
+          score,
+          Math.min(trackIndex, score.tracks.length - 1),
+          beatTimingRef.current,
+          { ...defaultLayoutOptions, notationTranspositionSemitones: pitch.tabSemitones },
+        ));
       })
       .catch((err) => {
         if (cancelled) return;
         setNewRendererError(err instanceof Error ? err.message : String(err));
       });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath]);
 
-  // Re-run the custom layout when track selection changes.
+  // Re-run the custom layout when track selection or tab transposition changes.
   useEffect(() => {
     if (!scoreRef.current || !beatTimingRef.current) return;
     if (selectedTrack >= scoreRef.current.tracks.length) return;
-    setNewLayout(buildTrackLayout(scoreRef.current, selectedTrack, beatTimingRef.current));
-  }, [selectedTrack]);
+    setNewLayout(buildTrackLayout(
+      scoreRef.current,
+      selectedTrack,
+      beatTimingRef.current,
+      { ...defaultLayoutOptions, notationTranspositionSemitones: pitch.tabSemitones },
+    ));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrack, pitch.tabSemitones]);
 
   // Apply tab transposition when tabSemitones changes (after initial load).
   // updateSettings() alone doesn't re-render; render() is required.

@@ -21,8 +21,10 @@ import {
 // - Beams are drawn as a single connecting line regardless of note duration
 //   (no distinct double-beam for sixteenths).
 // - Rests are simplified duration-agnostic markers, not full engraving glyphs.
-// - Bends/slides/hammer-ons/ties-across-bars-that-tie-to-nothing etc. are not
-//   drawn yet (phase 5).
+// - Bends are a generic hook glyph (not shaped by actual bendPoints values);
+//   vibrato/slides/hammer-pull/palm-mute are simplified single glyphs.
+// - Ties, hammer-ons/pull-offs, and slides only connect within a single bar
+//   — a phrase crossing a bar line won't draw its connector.
 
 // Canvas 2D fillStyle/strokeStyle can't resolve CSS custom properties (a
 // var(...) string is simply invalid and silently falls back to black) —
@@ -205,7 +207,7 @@ function drawBeat(ctx: CanvasRenderingContext2D, beat: BeatGlyph, metrics: Retur
 
     // Tab fret number, with a background clear so the string line doesn't cross it
     const ty = tabY(note.tabLineFromTop, metrics);
-    const label = String(note.fret);
+    const label = note.note.isDead ? "x" : note.note.isGhost ? `(${note.fret})` : String(note.fret);
     ctx.font = "11px sans-serif";
     const w = ctx.measureText(label).width;
     ctx.fillStyle = BG;
@@ -215,6 +217,98 @@ function drawBeat(ctx: CanvasRenderingContext2D, beat: BeatGlyph, metrics: Retur
     ctx.fillText(label, x, ty + 4);
     ctx.textAlign = "left";
   }
+}
+
+function drawArticulations(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], metrics: ReturnType<typeof computeStaffMetrics>) {
+  for (let i = 0; i < beats.length; i++) {
+    const beat = beats[i];
+    if (beat.isRest) continue;
+
+    // Palm mute: a small label under the tab staff. v1 marks every muted
+    // beat individually rather than drawing a spanning bracket over a run.
+    if (beat.beat.isPalmMute) {
+      ctx.fillStyle = MUTED;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("PM", beat.x + LEFT_MARGIN_PX, metrics.tabStaffBottomY + 14);
+      ctx.textAlign = "left";
+    }
+
+    for (const note of beat.notes) {
+      const x = beat.x + LEFT_MARGIN_PX;
+      const y = notationY(note.notationStep, metrics);
+
+      // Bend: a short upward hook above the notehead.
+      if (note.note.hasBend) {
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + 3, y - 6);
+        ctx.quadraticCurveTo(x + 10, y - 16, x + 4, y - 20);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + 1, y - 18);
+        ctx.lineTo(x + 4, y - 20);
+        ctx.lineTo(x + 6, y - 16);
+        ctx.stroke();
+      }
+
+      // Vibrato: a small wavy line trailing the notehead.
+      if (note.note.vibrato !== alphaTab.model.VibratoType.None) {
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const vy = y + 10;
+        for (let s = 0; s < 4; s++) {
+          ctx.moveTo(x + 8 + s * 5, vy);
+          ctx.quadraticCurveTo(x + 8 + s * 5 + 2.5, vy - 3, x + 8 + s * 5 + 5, vy);
+        }
+        ctx.stroke();
+      }
+
+      // Hammer-on / pull-off: a slur from the origin note (in an earlier
+      // beat within this bar — cross-bar connections are a v1 gap, same as
+      // ties below) to this note.
+      if (note.note.hammerPullOrigin) {
+        for (let j = i - 1; j >= 0; j--) {
+          const originGlyph = beats[j].notes.find((n) => n.note === note.note.hammerPullOrigin);
+          if (!originGlyph) continue;
+          const x1 = beats[j].x + LEFT_MARGIN_PX + 6;
+          const y1 = notationY(originGlyph.notationStep, metrics);
+          const dir = notationStepMidpointDir(originGlyph.notationStep, note.notationStep);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.quadraticCurveTo((x1 + x) / 2, Math.min(y1, y) + dir * 8, x - 6, y);
+          ctx.stroke();
+          break;
+        }
+      }
+
+      // Slide: a diagonal line from this note toward the next beat's note
+      // on the same string.
+      if (note.note.slideOutType !== alphaTab.model.SlideOutType.None && i + 1 < beats.length) {
+        const nextGlyph = beats[i + 1].notes.find((n) => n.string === note.string);
+        if (nextGlyph) {
+          const x2 = beats[i + 1].x + LEFT_MARGIN_PX - 6;
+          const y2 = notationY(nextGlyph.notationStep, metrics);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.moveTo(x + 7, y);
+          ctx.lineTo(x2 - 2, y2);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+}
+
+const MIDDLE_STAFF_STEP = 4; // middle line of a 5-line staff, in the 0=bottom-line scheme (matches tabLayout.ts)
+
+function notationStepMidpointDir(stepA: number, stepB: number): -1 | 1 {
+  return (stepA + stepB) / 2 > MIDDLE_STAFF_STEP ? 1 : -1;
 }
 
 function drawTies(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], metrics: ReturnType<typeof computeStaffMetrics>) {
@@ -268,6 +362,7 @@ export function TabCanvas({ layout, className }: Props) {
       drawBeamsAndStems(ctx, bar.beats, metrics);
       for (const beat of bar.beats) drawBeat(ctx, beat, metrics);
       drawTies(ctx, bar.beats, metrics);
+      drawArticulations(ctx, bar.beats, metrics);
     }
     drawBarLines(ctx, layout, metrics);
   }, [layout]);
