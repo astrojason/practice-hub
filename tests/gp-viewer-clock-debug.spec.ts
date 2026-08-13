@@ -148,3 +148,15 @@ test("no clock diagnostics are logged while paused/idle", async ({ page }) => {
   const lines = page.locator(".gp-debug-line");
   await expect(lines.filter({ hasText: "[CLOCK]" })).toHaveCount(0);
 });
+
+test("the debug panel reports no audio sync points for a file that has none", async ({ page }) => {
+  // Regression check: opening a score without MasterBar.syncPoints (the
+  // fixture used throughout this suite has none) must not throw, and must
+  // fall back to using raw audio time — the behavior from before sync-point
+  // calibration support existed.
+  await openViewerWithAudio(page);
+
+  await page.locator(".gp-debug-toggle").click();
+  const lines = page.locator(".gp-debug-line");
+  await expect(lines.filter({ hasText: "audioSyncPoints: none found" })).toHaveCount(1);
+});

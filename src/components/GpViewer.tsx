@@ -3,7 +3,7 @@ import type * as alphaTab from "@coderline/alphatab";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useAudioEngine } from "./player/useAudioEngine";
 import { ErrorModal } from "./ErrorModal";
-import { loadScoreFromFile, buildBeatTiming, type BeatTiming } from "../lib/gpScore";
+import { loadScoreFromFile, buildBeatTiming, buildAudioSyncPoints, audioMsToTabMs, type BeatTiming, type AudioSyncPoint } from "../lib/gpScore";
 import { buildTrackLayout, defaultLayoutOptions, type TrackLayout } from "../lib/tabLayout";
 import { TabCanvas } from "./tab/TabCanvas";
 import { TabCursor, type TabCursorHandle } from "./tab/TabCursor";
@@ -146,6 +146,11 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   const scoreRef = useRef<alphaTab.model.Score | null>(null);
   const beatTimingRef = useRef<Map<number, BeatTiming> | null>(null);
+  // Calibration curve from the score's sync points (Guitar Pro's mechanism
+  // for aligning the tab to a real backing-track recording — see gpScore.ts)
+  // — null for files without sync points, in which case getCurrentTimeMs()
+  // uses raw audio time unchanged.
+  const syncPointsRef = useRef<AudioSyncPoint[] | null>(null);
   const [layout, setLayout] = useState<TrackLayout | null>(null);
   const [pageWidthPx, setPageWidthPx] = useState(defaultLayoutOptions.pageWidthPx);
   const pageWidthPxRef = useRef(pageWidthPx);
@@ -225,6 +230,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     setLayout(null);
     scoreRef.current = null;
     beatTimingRef.current = null;
+    syncPointsRef.current = null;
 
     const initialTrack = loadView(filePath).value.selectedTrack;
     const initialTabSemitones = loadPitch(filePath).value.tabSemitones ?? 0;
@@ -235,6 +241,10 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         if (cancelled) return;
         scoreRef.current = score;
         beatTimingRef.current = buildBeatTiming(score);
+        syncPointsRef.current = buildAudioSyncPoints(score);
+        addLog("INFO", syncPointsRef.current
+          ? `audioSyncPoints: ${syncPointsRef.current.length} calibration point(s) found — cursor calibrated to real audio time`
+          : "audioSyncPoints: none found — cursor uses raw audio time");
         setTitle(score.title || null);
         setArtist(score.artist || null);
         const roundedTempo = Math.round(score.tempo);
@@ -362,11 +372,17 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
 
   // Read directly from the audio engine's clock every frame — no relay
   // through an intermediary event/cursor system. audioOffsetMs is kept as a
-  // manual escape hatch (e.g. genuine output-device latency) but should need
-  // little/no adjustment now that layout position and cursor position come
-  // from the same timeToX mapping.
+  // manual escape hatch (e.g. genuine output-device latency), applied to the
+  // raw audio-clock reading before sync-point calibration. If the score has
+  // sync points (see gpScore.ts's buildAudioSyncPoints — Guitar Pro's own
+  // mechanism for aligning notation to a real backing-track recording, e.g.
+  // present in tabs sourced from Songsterr), the calibrated result is what
+  // reaches timeToX — otherwise raw audio time is used, unchanged from
+  // before sync-point support existed.
   const getCurrentTimeMs = useCallback(() => {
-    return audioActionsRef.current.getCurrentTime() * 1000 + audioOffsetMsRef.current;
+    const rawAudioMs = audioActionsRef.current.getCurrentTime() * 1000 + audioOffsetMsRef.current;
+    const syncPoints = syncPointsRef.current;
+    return syncPoints ? audioMsToTabMs(syncPoints, rawAudioMs) : rawAudioMs;
   }, []);
 
   // The single rAF loop driving the cursor. TabCursor no longer owns any
