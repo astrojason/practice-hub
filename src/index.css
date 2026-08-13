@@ -3058,16 +3058,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 
 /* ── custom tab renderer (TabCanvas/TabCursor) ────────────────────────────── */
 
+/* Paginated page: fixed width, grows vertically as bars wrap onto new staff
+   systems. The actual scrolling (vertical, page-like) happens on the
+   ancestor .gp-viewer-body, which already has overflow: auto and a bounded
+   height — this is just the positioning context for the absolute cursor. */
 .gp-tab-canvas-scroll {
-  width: 100%;
-  overflow-x: auto;
+  position: relative;
   border-radius: var(--r-sm);
   background: #1a1a24;
-}
-
-.gp-tab-canvas-inner {
-  position: relative;
-  display: inline-block;
 }
 
 .gp-tab-canvas {

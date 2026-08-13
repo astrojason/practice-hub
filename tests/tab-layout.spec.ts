@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 async function layoutFromTex(
   page: import("@playwright/test").Page,
   tex: string,
-  options?: { notationTranspositionSemitones?: number },
+  options?: { notationTranspositionSemitones?: number; pageWidthPx?: number },
 ) {
   return page.evaluate(async ({ tex, options }) => {
     const gpScore = await import("/src/lib/gpScore.ts");
@@ -25,12 +25,15 @@ async function layoutFromTex(
     const layout = tabLayout.buildTrackLayout(score, 0, timing, { ...tabLayout.defaultLayoutOptions, ...options });
     // Strip non-serializable alphaTab object references for the trip back to Node.
     return {
-      totalWidth: layout.totalWidth,
+      pageWidth: layout.pageWidth,
+      lineCount: layout.lineCount,
       stringCount: layout.stringCount,
       bars: layout.bars.map((bar) => ({
         index: bar.index,
         xStart: bar.xStart,
         xEnd: bar.xEnd,
+        line: bar.line,
+        startMs: bar.startMs,
         keySignature: bar.keySignature,
         beats: bar.beats.map((b) => ({
           x: b.x,
@@ -72,7 +75,10 @@ test("a second bar starts after the first bar's content plus the bar gap", async
   const layout = await layoutFromTex(page, "\\tempo 120 . 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 |");
   expect(layout.bars).toHaveLength(2);
   expect(layout.bars[1].xStart).toBeGreaterThan(layout.bars[0].beats[3].x);
-  expect(layout.totalWidth).toBeGreaterThan(layout.bars[1].xStart);
+  // Both tiny bars comfortably fit on one line at the default page width.
+  expect(layout.bars[0].line).toBe(0);
+  expect(layout.bars[1].line).toBe(0);
+  expect(layout.pageWidth).toBeGreaterThan(layout.bars[1].xEnd);
 });
 
 test("a later bar's own beats never land to the left of that bar's xStart (regression: gap offset must propagate into beat.x)", async ({ page }) => {
@@ -250,4 +256,69 @@ test("transposition of 0 semitones is a no-op", async ({ page }) => {
   expect(b.bars[0].beats.map((x) => x.notes[0].notationStep)).toEqual(
     a.bars[0].beats.map((x) => x.notes[0].notationStep),
   );
+});
+
+// ─── Pagination: multi-line layout instead of one long horizontal strip ───────
+
+const THREE_BAR_TEX = "\\tempo 120 . 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 |";
+
+test("bars wrap onto a new line once they'd exceed the configured page width", async ({ page }) => {
+  // Each bar is ~240px of content + 24px gap. A 400px page (250px budget
+  // after margins) fits exactly one such bar per line.
+  const layout = await layoutFromTex(page, THREE_BAR_TEX, { pageWidthPx: 400 });
+  expect(layout.bars.map((b) => b.line)).toEqual([0, 1, 2]);
+  expect(layout.lineCount).toBe(3);
+});
+
+test("a bar's x resets relative to its own line after wrapping, instead of continuing the previous line's cumulative offset", async ({ page }) => {
+  const layout = await layoutFromTex(page, THREE_BAR_TEX, { pageWidthPx: 400 });
+  expect(layout.bars[1].line).toBe(1);
+  // Without wrapping this would start around 264px (bar0's xEnd); with
+  // wrapping it must restart near 0 on its own line.
+  expect(layout.bars[1].xStart).toBeLessThan(10);
+  expect(layout.bars[1].beats[0].x).toBeLessThan(10);
+});
+
+test("bars that fit comfortably stay on line 0 and don't wrap", async ({ page }) => {
+  const layout = await layoutFromTex(page, THREE_BAR_TEX, { pageWidthPx: 2000 });
+  expect(layout.bars.map((b) => b.line)).toEqual([0, 0, 0]);
+  expect(layout.lineCount).toBe(1);
+});
+
+test("pageWidth is the fixed configured value, independent of how many bars/lines the song needs", async ({ page }) => {
+  const short = await layoutFromTex(page, "\\tempo 120 . 1.1 1.1 1.1 1.1 |", { pageWidthPx: 700 });
+  const long = await layoutFromTex(page, THREE_BAR_TEX, { pageWidthPx: 700 });
+  expect(short.pageWidth).toBe(700);
+  expect(long.pageWidth).toBe(700);
+  expect(long.lineCount).toBeGreaterThanOrEqual(short.lineCount);
+});
+
+test("a lone bar wider than the page still gets placed (never dropped or infinite-looped)", async ({ page }) => {
+  const layout = await layoutFromTex(page, THREE_BAR_TEX, { pageWidthPx: 50 });
+  expect(layout.bars).toHaveLength(3);
+  expect(layout.bars.map((b) => b.line)).toEqual([0, 1, 2]);
+});
+
+test("timeToLine reports which line a given playback time falls on", async ({ page }) => {
+  const r = await page.evaluate(async ({ tex, pageWidthPx }) => {
+    const gpScore = await import("/src/lib/gpScore.ts");
+    const tabLayout = await import("/src/lib/tabLayout.ts");
+    const score = gpScore.alphaTab.importer.ScoreLoader.loadAlphaTex(tex);
+    const timing = gpScore.buildBeatTiming(score);
+    const layout = tabLayout.buildTrackLayout(score, 0, timing, { ...tabLayout.defaultLayoutOptions, pageWidthPx });
+    const bars = layout.bars;
+    return {
+      lineAtBar0: tabLayout.timeToLine(layout, bars[0].startMs),
+      lineAtBar1: tabLayout.timeToLine(layout, bars[1].startMs),
+      lineAtBar2: tabLayout.timeToLine(layout, bars[2].startMs),
+      xAtBar1Start: tabLayout.timeToX(layout, bars[1].startMs),
+    };
+  }, { tex: THREE_BAR_TEX, pageWidthPx: 400 });
+
+  expect(r.lineAtBar0).toBe(0);
+  expect(r.lineAtBar1).toBe(1);
+  expect(r.lineAtBar2).toBe(2);
+  // x is line-local, so the start of a wrapped line's first bar is near 0,
+  // not a large cumulative value from earlier lines.
+  expect(r.xAtBar1Start).toBeLessThan(10);
 });

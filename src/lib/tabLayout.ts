@@ -1,5 +1,6 @@
 import * as alphaTab from "@coderline/alphatab";
 import type { BeatTiming } from "./gpScore";
+import { LEFT_MARGIN_PX, RIGHT_PADDING_PX } from "../components/tab/tabGeometry";
 
 // ─── Pure layout engine ────────────────────────────────────────────────────────
 //
@@ -35,12 +36,19 @@ export interface LayoutOptions {
    * the old GpViewer's per-track api.settings.notation.transpositionPitches.
    */
   notationTranspositionSemitones: number;
+  /**
+   * Fixed width of the rendered page, in px. Bars wrap onto a new staff
+   * system (line) once they'd exceed it, like real sheet music, instead of
+   * laying the whole song out as one continuously-growing horizontal strip.
+   */
+  pageWidthPx: number;
 }
 
 export const defaultLayoutOptions: LayoutOptions = {
   pixelsPerMs: 0.12,
   barGapPx: 24,
   notationTranspositionSemitones: 0,
+  pageWidthPx: 900,
 };
 
 export type Accidental = "sharp" | "flat" | null;
@@ -79,8 +87,12 @@ export interface BarLayout {
   xEnd: number;
   /** This bar's first beat's startMs (or the previous bar's end, if this bar has no beats). */
   startMs: number;
-  /** Cumulative bar-gap pixels inserted before this bar — see TrackLayout.pixelsPerMs / timeToX. */
+  /** Cumulative bar-gap pixels inserted before this bar, *within its line* — see timeToX. */
   gapOffsetPx: number;
+  /** startMs of the first bar on this bar's line — subtracted before applying pixelsPerMs, so x restarts near 0 on each new line. */
+  lineStartMs: number;
+  /** 0-based staff system (page row) this bar is drawn on. */
+  line: number;
   clef: alphaTab.model.Clef;
   keySignature: number;
   timeSignatureNumerator: number;
@@ -90,26 +102,41 @@ export interface BarLayout {
 
 export interface TrackLayout {
   bars: BarLayout[];
-  totalWidth: number;
+  /** Fixed page width (options.pageWidthPx echoed back), independent of song length. */
+  pageWidth: number;
+  /** Total number of staff systems (page rows) the song wrapped onto. */
+  lineCount: number;
   stringCount: number;
   pixelsPerMs: number;
 }
 
-/**
- * Maps a global playback time to its x position in this layout. This is the
- * deterministic function that replaces alphaTab's event-driven cursor relay
- * (see TabCursor.tsx) — layout is time-proportional *within* each bar, with a
- * constant per-bar offset (gapOffsetPx) added at each bar boundary, so x is
- * piecewise-linear in time rather than a single global linear function.
- */
-export function timeToX(layout: TrackLayout, timeMs: number): number {
-  if (layout.bars.length === 0) return 0;
+function findBarForTime(layout: TrackLayout, timeMs: number): BarLayout | undefined {
+  if (layout.bars.length === 0) return undefined;
   let bar = layout.bars[0];
   for (const b of layout.bars) {
     if (b.startMs > timeMs) break;
     bar = b;
   }
-  return timeMs * layout.pixelsPerMs + bar.gapOffsetPx;
+  return bar;
+}
+
+/**
+ * Maps a global playback time to its x position *within its line*. This is
+ * the deterministic function that replaces alphaTab's event-driven cursor
+ * relay (see TabCursor.tsx) — layout is time-proportional within each bar,
+ * with a constant per-bar offset (gapOffsetPx, reset at each line wrap)
+ * added at each bar boundary, so x is piecewise-linear in time rather than a
+ * single global linear function.
+ */
+export function timeToX(layout: TrackLayout, timeMs: number): number {
+  const bar = findBarForTime(layout, timeMs);
+  if (!bar) return 0;
+  return (timeMs - bar.lineStartMs) * layout.pixelsPerMs + bar.gapOffsetPx;
+}
+
+/** Maps a global playback time to the 0-based line (staff system) it falls on. */
+export function timeToLine(layout: TrackLayout, timeMs: number): number {
+  return findBarForTime(layout, timeMs)?.line ?? 0;
 }
 
 // ─── Pitch spelling ────────────────────────────────────────────────────────────
@@ -181,32 +208,60 @@ export function buildTrackLayout(
   const stringCount = staff.tuning.length;
 
   const bars: BarLayout[] = [];
+  const lineBudgetPx = options.pageWidthPx - LEFT_MARGIN_PX - RIGHT_PADDING_PX;
   let beamGroupCounter = 0;
   let x = 0;
-  let gapOffset = 0; // cumulative bar-gap px inserted so far — see timeToX
+  let gapOffset = 0; // cumulative bar-gap px inserted so far *within the current line* — see timeToX
   let lastBarEndMs = 0;
+  let lineIndex = 0;
+  let lineStartMs = 0; // startMs of the current line's first bar — see BarLayout.lineStartMs
 
   for (const bar of staff.bars) {
     const masterBar = score.masterBars[bar.index];
+    const voice = bar.voices[0];
+
+    // Estimate this bar's content width (first pass over just its
+    // boundaries, not full note layout) to decide whether it fits on the
+    // current line before committing to it. Real layout below reuses the
+    // same beatTiming lookups.
+    if (voice.beats.length > 0) {
+      const firstTiming = beatTiming.get(voice.beats[0].id);
+      const last = voice.beats[voice.beats.length - 1];
+      const lastTiming = beatTiming.get(last.id);
+      const barStart = firstTiming?.startMs ?? lastBarEndMs;
+      const barEnd = (lastTiming?.startMs ?? barStart) + (lastTiming?.durationMs ?? 0);
+      const barWidthPx = (barEnd - barStart) * options.pixelsPerMs;
+      // Always keep at least one bar per line (avoid dropping/looping on a
+      // bar wider than the whole page).
+      if (x > 0 && x + barWidthPx + options.barGapPx > lineBudgetPx) {
+        lineIndex++;
+        x = 0;
+        gapOffset = 0;
+        lineStartMs = barStart;
+      }
+    }
+
     const xStart = x;
     const barGapOffset = gapOffset;
+    const barLine = lineIndex;
+    const barLineStartMs = lineStartMs;
 
-    // A bar may have multiple voices; v1 renders voice 0 only.
-    const voice = bar.voices[0];
     const beatGlyphs: BeatGlyph[] = [];
     let barStartMs = lastBarEndMs;
 
-    // First pass: build glyphs with time-proportional x (plus the constant
-    // per-bar gap offset, so beat.x stays consistent with bar.xStart/xEnd —
-    // without this, beats past the first bar would land to the left of
-    // their own bar line, drifting further with every subsequent bar).
+    // First pass: build glyphs with time-proportional x (relative to the
+    // current line's start time, plus the constant per-bar gap offset), so
+    // beat.x stays consistent with bar.xStart/xEnd and restarts near 0 on
+    // each new line — without the line-relative offset, beats past the
+    // first bar would land to the left of their own bar line (or, pre-
+    // pagination, drift further with every subsequent bar in the song).
     for (const beat of voice.beats) {
       const timing = beatTiming.get(beat.id);
       const startMs = timing?.startMs ?? 0;
       const durationMs = timing?.durationMs ?? 0;
       if (beatGlyphs.length === 0) barStartMs = startMs;
       lastBarEndMs = Math.max(lastBarEndMs, startMs + durationMs);
-      const beatX = startMs * options.pixelsPerMs + barGapOffset;
+      const beatX = (startMs - barLineStartMs) * options.pixelsPerMs + barGapOffset;
       x = Math.max(x, beatX + durationMs * options.pixelsPerMs);
 
       const notes: NoteGlyph[] = beat.notes.map((note) => {
@@ -263,6 +318,8 @@ export function buildTrackLayout(
       xEnd,
       startMs: barStartMs,
       gapOffsetPx: barGapOffset,
+      lineStartMs: barLineStartMs,
+      line: barLine,
       clef: bar.clef,
       keySignature: masterBar.keySignature,
       timeSignatureNumerator: masterBar.timeSignatureNumerator,
@@ -273,5 +330,11 @@ export function buildTrackLayout(
     gapOffset += options.barGapPx;
   }
 
-  return { bars, totalWidth: x, stringCount, pixelsPerMs: options.pixelsPerMs };
+  return {
+    bars,
+    pageWidth: options.pageWidthPx,
+    lineCount: bars.length > 0 ? bars[bars.length - 1].line + 1 : 0,
+    stringCount,
+    pixelsPerMs: options.pixelsPerMs,
+  };
 }

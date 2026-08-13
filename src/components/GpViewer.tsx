@@ -7,7 +7,6 @@ import { loadScoreFromFile, buildBeatTiming, type BeatTiming } from "../lib/gpSc
 import { buildTrackLayout, defaultLayoutOptions, type TrackLayout } from "../lib/tabLayout";
 import { TabCanvas } from "./tab/TabCanvas";
 import { TabCursor } from "./tab/TabCursor";
-import { computeStaffMetrics } from "./tab/tabGeometry";
 
 interface Props {
   filePath: string;
@@ -116,7 +115,7 @@ function fmtTime(s: number): string {
 
 export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const backdropRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +147,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const scoreRef = useRef<alphaTab.model.Score | null>(null);
   const beatTimingRef = useRef<Map<number, BeatTiming> | null>(null);
   const [layout, setLayout] = useState<TrackLayout | null>(null);
+  const [pageWidthPx, setPageWidthPx] = useState(defaultLayoutOptions.pageWidthPx);
 
   const addLog = useCallback((level: string, ...args: unknown[]) => {
     const msg = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
@@ -246,6 +246,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         setLayout(buildTrackLayout(score, trackIndex, beatTimingRef.current, {
           ...defaultLayoutOptions,
           notationTranspositionSemitones: initialTabSemitones,
+          pageWidthPx: bodyRef.current?.clientWidth || defaultLayoutOptions.pageWidthPx,
         }));
         setLoading(false);
       })
@@ -261,7 +262,8 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath, addLog]);
 
-  // Re-run the layout when track selection or tab transposition changes.
+  // Re-run the layout when track selection, tab transposition, or the
+  // available page width (e.g. window resize) changes.
   useEffect(() => {
     if (!scoreRef.current || !beatTimingRef.current) return;
     if (selectedTrack >= scoreRef.current.tracks.length) return;
@@ -269,10 +271,29 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
       scoreRef.current,
       selectedTrack,
       beatTimingRef.current,
-      { ...defaultLayoutOptions, notationTranspositionSemitones: pitch.tabSemitones },
+      { ...defaultLayoutOptions, notationTranspositionSemitones: pitch.tabSemitones, pageWidthPx },
     ));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTrack, pitch.tabSemitones]);
+  }, [selectedTrack, pitch.tabSemitones, pageWidthPx]);
+
+  // Track the viewer body's width so the page reflows on window resize,
+  // debounced to avoid rebuilding layout on every intermediate resize frame.
+  useEffect(() => {
+    let timer: number | undefined;
+    function measure() {
+      const width = bodyRef.current?.clientWidth;
+      if (width) setPageWidthPx(width);
+    }
+    function onResize() {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(measure, 150);
+    }
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // Persist view state (track, tempo, loop) per file
   useEffect(() => {
@@ -637,7 +658,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         </div>
 
         {/* Body */}
-        <div className="gp-viewer-body">
+        <div className="gp-viewer-body" ref={bodyRef}>
           {loading && !error && (
             <div className="gp-viewer-spinner">
               <div className="loading-spinner" />
@@ -647,16 +668,13 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
             <p className="gp-viewer-error">Failed to load: {error}</p>
           )}
           {!loading && !error && layout && (
-            <div ref={scrollContainerRef} className="gp-tab-canvas-scroll">
-              <div className="gp-tab-canvas-inner">
-                <TabCanvas layout={layout} className="gp-tab-canvas" />
-                <TabCursor
-                  layout={layout}
-                  getCurrentTimeMs={getCurrentTimeMs}
-                  scrollContainerRef={scrollContainerRef}
-                  height={computeStaffMetrics(layout.stringCount).canvasHeight}
-                />
-              </div>
+            <div className="gp-tab-canvas-scroll">
+              <TabCanvas layout={layout} className="gp-tab-canvas" />
+              <TabCursor
+                layout={layout}
+                getCurrentTimeMs={getCurrentTimeMs}
+                scrollContainerRef={bodyRef}
+              />
             </div>
           )}
         </div>

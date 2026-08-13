@@ -1,20 +1,21 @@
 import { useEffect, useRef } from "react";
 import * as alphaTab from "@coderline/alphatab";
-import type { TrackLayout, BeatGlyph } from "../../lib/tabLayout";
+import type { TrackLayout, BeatGlyph, BarLayout } from "../../lib/tabLayout";
 import {
   computeStaffMetrics,
   notationY,
   tabY,
+  lineTopY,
+  pageHeight,
   NOTATION_LINE_COUNT,
   LEFT_MARGIN_PX,
-  RIGHT_PADDING_PX,
 } from "./tabGeometry";
 
-// ─── Static dual-staff renderer ─────────────────────────────────────────────────
+// ─── Paginated dual-staff renderer ───────────────────────────────────────────────
 //
-// Phase 3 of the custom tab renderer: draws what tabLayout.ts computed onto a
-// canvas. No playback/cursor here (phase 4) — this only has to look like
-// recognizable tab + standard notation for a fixture score.
+// Draws what tabLayout.ts computed onto a canvas: a fixed-width page with
+// bars wrapped across multiple staff systems (lines), like real sheet music,
+// rather than one continuously-growing horizontal strip.
 //
 // v1 simplifications (see tabLayout.ts for the layout-side ones too):
 // - Key signature accidental positions are hardcoded for treble clef only.
@@ -24,7 +25,7 @@ import {
 // - Bends are a generic hook glyph (not shaped by actual bendPoints values);
 //   vibrato/slides/hammer-pull/palm-mute are simplified single glyphs.
 // - Ties, hammer-ons/pull-offs, and slides only connect within a single bar
-//   — a phrase crossing a bar line won't draw its connector.
+//   — a phrase crossing a bar or line boundary won't draw its connector.
 
 // Canvas 2D fillStyle/strokeStyle can't resolve CSS custom properties (a
 // var(...) string is simply invalid and silently falls back to black) —
@@ -47,7 +48,7 @@ function noteheadFilled(duration: alphaTab.model.Duration): boolean {
   return duration >= alphaTab.model.Duration.Quarter;
 }
 
-function drawStaffLines(ctx: CanvasRenderingContext2D, width: number, layout: TrackLayout, metrics: ReturnType<typeof computeStaffMetrics>) {
+function drawStaffLines(ctx: CanvasRenderingContext2D, width: number, stringCount: number, metrics: ReturnType<typeof computeStaffMetrics>) {
   ctx.strokeStyle = INK;
   ctx.lineWidth = 1;
   for (let i = 0; i < NOTATION_LINE_COUNT; i++) {
@@ -57,7 +58,7 @@ function drawStaffLines(ctx: CanvasRenderingContext2D, width: number, layout: Tr
     ctx.lineTo(width, y);
     ctx.stroke();
   }
-  for (let i = 0; i < layout.stringCount; i++) {
+  for (let i = 0; i < stringCount; i++) {
     const y = tabY(i, metrics) + 0.5;
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -87,10 +88,10 @@ function drawClefAndKey(ctx: CanvasRenderingContext2D, clef: alphaTab.model.Clef
   ctx.fillText("TAB", 4, metrics.tabStaffTopY + 4);
 }
 
-function drawBarLines(ctx: CanvasRenderingContext2D, layout: TrackLayout, metrics: ReturnType<typeof computeStaffMetrics>) {
+function drawBarLines(ctx: CanvasRenderingContext2D, bars: BarLayout[], metrics: ReturnType<typeof computeStaffMetrics>) {
   ctx.strokeStyle = INK;
   ctx.lineWidth = 1.5;
-  for (const bar of layout.bars) {
+  for (const bar of bars) {
     const x = bar.xEnd - 12 + LEFT_MARGIN_PX + 0.5;
     ctx.beginPath();
     ctx.moveTo(x, metrics.notationStaffTopY);
@@ -333,6 +334,15 @@ function drawTies(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], metrics: Re
   }
 }
 
+function groupBarsByLine(bars: BarLayout[]): BarLayout[][] {
+  const lines: BarLayout[][] = [];
+  for (const bar of bars) {
+    if (!lines[bar.line]) lines[bar.line] = [];
+    lines[bar.line].push(bar);
+  }
+  return lines;
+}
+
 export function TabCanvas({ layout, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -343,32 +353,44 @@ export function TabCanvas({ layout, className }: Props) {
     if (!ctx) return;
 
     const metrics = computeStaffMetrics(layout.stringCount);
-    const width = layout.totalWidth + LEFT_MARGIN_PX + RIGHT_PADDING_PX;
+    const width = layout.pageWidth;
+    const height = pageHeight(layout.lineCount, metrics);
     canvas.width = width;
-    canvas.height = metrics.canvasHeight;
+    canvas.height = height;
 
-    ctx.clearRect(0, 0, width, metrics.canvasHeight);
+    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = BG;
-    ctx.fillRect(0, 0, width, metrics.canvasHeight);
+    ctx.fillRect(0, 0, width, height);
 
-    drawStaffLines(ctx, width, layout, metrics);
+    const lines = groupBarsByLine(layout.bars);
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const lineBars = lines[lineIndex] ?? [];
+      const top = lineTopY(lineIndex, metrics);
+      ctx.save();
+      ctx.translate(0, top);
 
-    let lastKeySig: number | null = null;
-    for (const bar of layout.bars) {
-      if (bar.keySignature !== lastKeySig) {
-        drawClefAndKey(ctx, bar.clef, bar.keySignature, metrics);
-        lastKeySig = bar.keySignature;
+      drawStaffLines(ctx, width, layout.stringCount, metrics);
+      // Every staff system repeats its clef and key signature, matching
+      // standard engraving convention (not just once per key-signature
+      // change across the whole piece).
+      if (lineBars.length > 0) {
+        drawClefAndKey(ctx, lineBars[0].clef, lineBars[0].keySignature, metrics);
       }
-      drawBeamsAndStems(ctx, bar.beats, metrics);
-      for (const beat of bar.beats) drawBeat(ctx, beat, metrics);
-      drawTies(ctx, bar.beats, metrics);
-      drawArticulations(ctx, bar.beats, metrics);
+      for (const bar of lineBars) {
+        drawBeamsAndStems(ctx, bar.beats, metrics);
+        for (const beat of bar.beats) drawBeat(ctx, beat, metrics);
+        drawTies(ctx, bar.beats, metrics);
+        drawArticulations(ctx, bar.beats, metrics);
+      }
+      drawBarLines(ctx, lineBars, metrics);
+
+      ctx.restore();
     }
-    drawBarLines(ctx, layout, metrics);
   }, [layout]);
 
   const metrics = computeStaffMetrics(layout.stringCount);
-  const width = layout.totalWidth + LEFT_MARGIN_PX + RIGHT_PADDING_PX;
+  const width = layout.pageWidth;
+  const height = pageHeight(layout.lineCount, metrics);
 
   return (
     <canvas
@@ -376,7 +398,7 @@ export function TabCanvas({ layout, className }: Props) {
       className={className}
       data-testid="tab-canvas"
       width={width}
-      height={metrics.canvasHeight}
+      height={height}
     />
   );
 }

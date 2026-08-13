@@ -48,3 +48,30 @@ test("canvas height grows with string count and comfortably contains both staves
   expect(r7.m.canvasHeight).toBeGreaterThan(r6.m.canvasHeight);
   expect(r6.m.canvasHeight).toBeGreaterThan(r6.tabYLast);
 });
+
+// ─── Multi-line pagination ──────────────────────────────────────────────────────
+
+test("lineTopY stacks staff systems with a gap, line 0 at the top", async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const geo = await import("/src/components/tab/tabGeometry.ts");
+    const m = geo.computeStaffMetrics(6);
+    return { line0: geo.lineTopY(0, m), line1: geo.lineTopY(1, m), line2: geo.lineTopY(2, m), canvasHeight: m.canvasHeight };
+  });
+  expect(r.line0).toBe(0);
+  expect(r.line1).toBe(r.canvasHeight + 40); // LINE_GAP_PX
+  expect(r.line2 - r.line1).toBe(r.line1 - r.line0);
+});
+
+test("pageHeight stacks N lines with gaps between them but not trailing after the last", async ({ page }) => {
+  const r = await page.evaluate(async () => {
+    const geo = await import("/src/components/tab/tabGeometry.ts");
+    const m = geo.computeStaffMetrics(6);
+    return {
+      one: geo.pageHeight(1, m),
+      three: geo.pageHeight(3, m),
+      canvasHeight: m.canvasHeight,
+    };
+  });
+  expect(r.one).toBe(r.canvasHeight);
+  expect(r.three).toBe(r.canvasHeight * 3 + 40 * 2);
+});
