@@ -148,6 +148,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const beatTimingRef = useRef<Map<number, BeatTiming> | null>(null);
   const [layout, setLayout] = useState<TrackLayout | null>(null);
   const [pageWidthPx, setPageWidthPx] = useState(defaultLayoutOptions.pageWidthPx);
+  const pageWidthPxRef = useRef(pageWidthPx);
 
   const addLog = useCallback((level: string, ...args: unknown[]) => {
     const msg = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
@@ -246,7 +247,7 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
         setLayout(buildTrackLayout(score, trackIndex, beatTimingRef.current, {
           ...defaultLayoutOptions,
           notationTranspositionSemitones: initialTabSemitones,
-          pageWidthPx: bodyRef.current?.clientWidth || defaultLayoutOptions.pageWidthPx,
+          pageWidthPx: pageWidthPxRef.current,
         }));
         setLoading(false);
       })
@@ -276,23 +277,33 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTrack, pitch.tabSemitones, pageWidthPx]);
 
-  // Track the viewer body's width so the page reflows on window resize,
-  // debounced to avoid rebuilding layout on every intermediate resize frame.
+  // Keep a ref mirror of pageWidthPx so the file-load effect (which must NOT
+  // re-run on every resize — it resets title/artist/loading state) can still
+  // read the current value without needing it in its dependency array.
   useEffect(() => {
-    let timer: number | undefined;
-    function measure() {
-      const width = bodyRef.current?.clientWidth;
-      if (width) setPageWidthPx(width);
-    }
-    function onResize() {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(measure, 150);
-    }
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.clearTimeout(timer);
-    };
+    pageWidthPxRef.current = pageWidthPx;
+  }, [pageWidthPx]);
+
+  // Track the viewer body's actual rendered width via ResizeObserver rather
+  // than a one-shot clientWidth read + window "resize" listener: a plain
+  // clientWidth read can catch the element before its real native-window
+  // layout has settled (observed as bars collapsing to one-per-line in the
+  // packaged Tauri build, where layout timing differs from the dev/test
+  // Chromium environment), and "resize" only fires on the window itself, not
+  // on this element's own box changing for other reasons (e.g. the modal's
+  // flex layout settling after mount). ResizeObserver's callback fires
+  // immediately on observe() with the current, real size, and again
+  // whenever it actually changes — a single, more robust mechanism instead
+  // of two separate ad-hoc ones.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width && width > 0) setPageWidthPx(width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   // Persist view state (track, tempo, loop) per file

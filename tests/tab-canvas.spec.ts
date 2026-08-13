@@ -219,3 +219,32 @@ test("a fixture with bends, hammer-ons, vibrato, dead notes, and palm mute rende
   const newRendererErrors = consoleErrors.filter((e) => /TabCanvas|tabLayout|tabGeometry|gpScore|TabCursor/i.test(e));
   expect(newRendererErrors).toEqual([]);
 });
+
+// ─── Regression: page width must reflect the real, settled container size ─────
+
+test("bars that comfortably fit on one line stay on one line at a normal viewport width (regression: page width measurement)", async ({ page }) => {
+  // GpViewer previously only updated pageWidthPx via a window "resize"
+  // listener — never measured on mount — so the very first layout build used
+  // whatever was captured by a one-shot clientWidth read at an arbitrary
+  // point in the async load flow. In the packaged Tauri app (real native
+  // window, different layout timing than headless Chromium) this produced a
+  // page far narrower than the actual container, wrapping every bar onto its
+  // own line. A ResizeObserver on the body element (fires immediately with
+  // the real, settled size, not just on window resize) replaces both ad-hoc
+  // mechanisms — this asserts the fixture's two small bars land on a single
+  // line, not two, at a normal-sized viewport.
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await openViewer(page);
+
+  const canvas = page.locator('[data-testid="tab-canvas"]');
+  await expect(canvas).toBeVisible();
+
+  const height = await canvas.evaluate((el: HTMLCanvasElement) => el.height);
+  const expectedSingleLineHeight = await page.evaluate(async () => {
+    const geo = await import("/src/components/tab/tabGeometry.ts");
+    const metrics = geo.computeStaffMetrics(6);
+    return geo.pageHeight(1, metrics);
+  });
+
+  expect(height).toBe(expectedSingleLineHeight);
+});
