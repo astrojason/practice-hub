@@ -24,6 +24,19 @@ export interface AudioEngineState {
   detectedBpm: number | null;
 }
 
+// A point-in-time snapshot of the playback clock's raw inputs, exposed so a
+// consumer (GpViewer's on-screen debug panel) can log real numbers from the
+// actual runtime it's playing in — this app has repeatedly had bugs that
+// only reproduce under Tauri's packaged WKWebView, not the dev-server/
+// Chromium environment automated tests run against, so getting real values
+// out of the packaged app is often the only way to actually diagnose one.
+export interface AudioClockDebugSnapshot {
+  ctxCurrentTime: number;
+  lastReportedPositionSeconds: number | null;
+  lastReportedContextTime: number;
+  resolvedPositionSeconds: number;
+}
+
 export interface AudioEngineActions {
   loadFile: (path: string) => Promise<void>;
   play: () => void;
@@ -45,6 +58,7 @@ export interface AudioEngineActions {
   destroy: () => void;
   getContext: () => AudioContext | null;
   getCurrentTime: () => number;
+  getDebugSnapshot: () => AudioClockDebugSnapshot | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -121,52 +135,42 @@ function estimatedOutputLatencySeconds(ctx: AudioContext | null): number {
 // ─── Playback clock ────────────────────────────────────────────────────────────
 //
 // getCurrentTime() needs to report a smooth, sub-frame-accurate position that
-// actually tracks the audio, not just a plausible guess at it.
+// actually tracks the audio. AudioContext.currentTime is the single source of
+// truth for that: it's the Web Audio spec's own authoritative "how far into
+// this audio graph's timeline are we" value, sample-accurate, and identical
+// whether read from the main thread or the audio rendering thread.
 //
-// An earlier version of this anchored elapsed time to AudioContext.currentTime
-// and multiplied by the nominal playback `speed` to extrapolate position. That
-// works for an unprocessed AudioBufferSourceNode, but the SoundTouch
-// AudioWorkletNode is a real-time time-stretcher: it processes audio in
-// discrete windows (tens of ms each, WSOLA-style overlap-add) and only
-// consumes source samples at exactly `speed`x *on average* — locally the rate
-// wobbles a little window to window. An estimate that only ever extrapolates
-// from a single anchor, with nothing to check itself against, has no way to
-// notice or correct for that — it just drifts, which shows up as the cursor
-// visibly lagging, then jumping, then running ahead of what's actually
-// audible.
+// Two earlier versions of this instead anchored position to the SoundTouch
+// AudioWorkletNode's own periodically-posted position reports (reasoning
+// that the time-stretcher's real local throughput might not track
+// elapsed-time * speed exactly), first timestamping each report with
+// performance.now() at message-receipt time (which vibrated — postMessage
+// delivery jitter), then with the worklet's own currentTime (which still
+// left the cursor vibrating and lagging). Introducing that second, async
+// clock and reconciling it against ctx.currentTime was itself the source of
+// the instability — two independently-updating clocks driving the same
+// value will fight, no matter how carefully the reconciliation is done.
 //
-// The fix: the worklet already knows its real position (it posts one back to
-// the main thread roughly every ~58ms — see soundtouchWorkletProcessor.js's
-// POSITION_REPORT_INTERVAL_QUANTA) — so use that as the anchor instead.
-// AudioContext.currentTime only interpolates *within* the gap since the last
-// real report, never substitutes for it. Any drift between the assumed
-// `speed` and the stretcher's true local throughput can therefore only ever
-// accumulate for one ~58ms report interval before the next report corrects
-// it, instead of compounding for the whole track.
+// SoundTouch's own math confirms elapsed-time * speed is exact, not just an
+// approximation: SoundTouch.calculateEffectiveRateAndTempo() computes
+// `_tempo = virtualTempo / virtualPitch` and `_rate = virtualRate *
+// virtualPitch` — this app never sets `rate` (virtualRate stays 1), so the
+// net input:output frame ratio across the transposer+stretch pipeline is
+// `_rate * _tempo = virtualRate * virtualTempo = speed`, with virtualPitch
+// canceling out exactly. Pitch shifting doesn't affect playback duration at
+// all — it's fully decoupled from timing by construction, not just on
+// average. So a single elapsed-time * speed extrapolation from
+// AudioContext.currentTime, is correct, with no need to check it against a
+// second clock.
 //
-// The report — and every anchor here — is measured on AudioContext.currentTime,
-// not performance.now(). An earlier version used performance.now() at the
-// moment each worklet postMessage was *received* on the main thread as the
-// report's timestamp; postMessage delivery has its own scheduling jitter
-// (worse under any main-thread load), so an accurate position paired with a
-// jittery receipt-time timestamp produced a visibly vibrating cursor —
-// snapping slightly forward or backward on every ~58ms report. The worklet
-// now tags each report with the audio-thread's own `currentTime` (the same
-// continuous, sample-accurate clock AudioContext.currentTime reads on the
-// main thread), so comparing it against a fresh ctx.currentTime read here
-// carries none of that message-passing noise.
+// (The worklet still posts its position back periodically — see
+// soundtouchWorkletProcessor.js's POSITION_REPORT_INTERVAL_QUANTA — but only
+// as an optional diagnostic signal now, e.g. useAudioEngine's
+// getDebugSnapshot(); it no longer feeds this formula.)
 
 export interface PlaybackClockState {
-  // Fallback anchor used only until the worklet's first position report
-  // arrives after a play/seek (a brief, unavoidable startup gap — the
-  // report is asynchronous).
   playStartCtxTime: number;
   playStartPosition: number;
-  // The worklet's real, ground-truth position (PitchShifterWorklet's
-  // lastReportedPositionSeconds/lastReportedContextTime) — null until the
-  // first report arrives or after a seek invalidates the previous one.
-  lastReportPositionSeconds: number | null;
-  lastReportCtxTime: number;
 }
 
 export interface PlaybackClockResult {
@@ -186,12 +190,8 @@ export function resolvePlaybackPosition(
   // (cursor lagging behind what's heard) — see the call site.
   outputLatencySeconds = 0,
 ): PlaybackClockResult {
-  const hasReport = state.lastReportPositionSeconds !== null;
-  const anchorPosition = hasReport ? state.lastReportPositionSeconds! : state.playStartPosition;
-  const anchorCtxTime = hasReport ? state.lastReportCtxTime : state.playStartCtxTime;
-  const elapsed = Math.max(0, nowCtx - anchorCtxTime);
-
-  const position = Math.min(duration, Math.max(0, anchorPosition + elapsed * speed + outputLatencySeconds * speed));
+  const elapsed = Math.max(0, nowCtx - state.playStartCtxTime);
+  const position = Math.min(duration, Math.max(0, state.playStartPosition + elapsed * speed + outputLatencySeconds * speed));
   return { position };
 }
 
@@ -331,7 +331,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setCurrentTime(eng._pausedAt);
 
     const tick = () => {
-      // Use the same worklet-report-anchored position getCurrentTime()
+      // Use the same ctx.currentTime-anchored position getCurrentTime()
       // reports (see resolvePlaybackPosition above) rather than a separate
       // read of shifter.percentagePlayed — both must derive from the exact
       // same anchor or the progress bar and the tab cursor visibly disagree
@@ -340,8 +340,6 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
         {
           playStartCtxTime: eng.playStartCtxTime,
           playStartPosition: eng.playStartPosition,
-          lastReportPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
-          lastReportCtxTime: eng.shifter?.lastReportedContextTime ?? 0,
         },
         eng.ctx!.currentTime,
         eng.speed,
@@ -559,8 +557,6 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       {
         playStartCtxTime: eng.playStartCtxTime,
         playStartPosition: eng.playStartPosition,
-        lastReportPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
-        lastReportCtxTime: eng.shifter?.lastReportedContextTime ?? 0,
       },
       eng.ctx.currentTime,
       eng.speed,
@@ -569,6 +565,17 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     );
     return result.position;
   }, []);
+
+  const getDebugSnapshot = useCallback((): AudioClockDebugSnapshot | null => {
+    const eng = e.current;
+    if (!eng.ctx) return null;
+    return {
+      ctxCurrentTime: eng.ctx.currentTime,
+      lastReportedPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
+      lastReportedContextTime: eng.shifter?.lastReportedContextTime ?? 0,
+      resolvedPositionSeconds: getCurrentTime(),
+    };
+  }, [getCurrentTime]);
 
   // ── Assemble ────────────────────────────────────────────────────────────────
 
@@ -585,7 +592,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
     setPitch, setCountIn,
     setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
-    destroy, getContext, getCurrentTime,
+    destroy, getContext, getCurrentTime, getDebugSnapshot,
   };
 
   return [state, actions];

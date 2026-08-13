@@ -6,7 +6,7 @@ import { ErrorModal } from "./ErrorModal";
 import { loadScoreFromFile, buildBeatTiming, type BeatTiming } from "../lib/gpScore";
 import { buildTrackLayout, defaultLayoutOptions, type TrackLayout } from "../lib/tabLayout";
 import { TabCanvas } from "./tab/TabCanvas";
-import { TabCursor } from "./tab/TabCursor";
+import { TabCursor, type TabCursorHandle } from "./tab/TabCursor";
 
 interface Props {
   filePath: string;
@@ -369,6 +369,50 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
     return audioActionsRef.current.getCurrentTime() * 1000 + audioOffsetMsRef.current;
   }, []);
 
+  // The single rAF loop driving the cursor. TabCursor no longer owns any
+  // loop of its own — it's purely reactive, positioned imperatively via
+  // this ref (see TabCursorHandle) so pushing a new time doesn't trigger a
+  // React render on every frame. One loop reading AudioContext.currentTime
+  // (via getCurrentTimeMs -> useAudioEngine's getCurrentTime) and pushing
+  // the result to every consumer avoids the "two clocks" failure mode: two
+  // independently-scheduled rAF loops each reading the same continuously-
+  // advancing clock at slightly different callback times will disagree by a
+  // small, ever-shifting amount even when each is individually correct.
+  const cursorHandleRef = useRef<TabCursorHandle>(null);
+  useEffect(() => {
+    if (!layout) return;
+    let raf = 0;
+    const tick = () => {
+      cursorHandleRef.current?.setTimeMs(getCurrentTimeMs());
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [layout, getCurrentTimeMs]);
+
+  // Periodic playback-clock diagnostics into the on-screen debug panel.
+  // Cursor/audio-sync bugs reported from the packaged Tauri app haven't
+  // reproduced in the dev-server/Chromium environment automated tests run
+  // against (this codebase has repeated precedent for behavior that only
+  // shows up under WKWebView's production tauri:// runtime) — logging the
+  // clock's raw inputs here, visible in-app without needing devtools, is
+  // how to get real numbers from that environment instead of guessing.
+  useEffect(() => {
+    if (!audioState.isPlaying) return;
+    const interval = setInterval(() => {
+      const snap = audioActionsRef.current.getDebugSnapshot();
+      if (!snap) return;
+      addLog(
+        "CLOCK",
+        `ctx=${snap.ctxCurrentTime.toFixed(3)}`,
+        `report=${snap.lastReportedPositionSeconds === null ? "none" : snap.lastReportedPositionSeconds.toFixed(3)}`,
+        `reportCtx=${snap.lastReportedContextTime.toFixed(3)}`,
+        `resolved=${snap.resolvedPositionSeconds.toFixed(3)}`,
+      );
+    }, 500);
+    return () => clearInterval(interval);
+  }, [audioState.isPlaying, addLog]);
+
   function setAudioSemitones(n: number) {
     setPitch((p) => ({ ...p, audioSemitones: n, ...(p.linked ? { tabSemitones: n } : {}) }));
   }
@@ -701,8 +745,8 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
             <div className="gp-tab-canvas-scroll">
               <TabCanvas layout={layout} className="gp-tab-canvas" />
               <TabCursor
+                ref={cursorHandleRef}
                 layout={layout}
-                getCurrentTimeMs={getCurrentTimeMs}
                 scrollContainerRef={bodyRef}
               />
             </div>
