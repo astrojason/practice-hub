@@ -26,14 +26,15 @@ async function resolve(
   nowWall: number,
   speed: number,
   duration: number,
+  outputLatencySeconds = 0,
 ) {
   return page.evaluate(
-    async ([state, nowCtx, nowWall, speed, duration]) => {
+    async ([state, nowCtx, nowWall, speed, duration, outputLatencySeconds]) => {
       const mod = await import("/src/components/player/useAudioEngine.ts");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (mod as any).resolvePlaybackPosition(state, nowCtx, nowWall, speed, duration);
+      return (mod as any).resolvePlaybackPosition(state, nowCtx, nowWall, speed, duration, outputLatencySeconds);
     },
-    [state, nowCtx, nowWall, speed, duration] as const,
+    [state, nowCtx, nowWall, speed, duration, outputLatencySeconds] as const,
   );
 }
 
@@ -114,4 +115,47 @@ test("drift correction resets each time the audio clock ticks forward", async ({
   // 20ms interpolated since the last resync (0.12 - 0.10), not the full
   // 0.12s of wall-clock time since play start.
   expect(afterInterpolation.position).toBeCloseTo(0.11, 2);
+});
+
+// ─── Output latency compensation ───────────────────────────────────────────────
+//
+// AudioContext.outputLatency/baseLatency estimate the delay between the
+// graph processing audio and it actually reaching the output device. The
+// reported position advances by that amount so it tracks what's actually
+// audible right now, not merely what's been scheduled — this is the app's
+// documented, real-world direction for cursor/audio sync complaints (see
+// useAudioEngine.ts's estimatedOutputLatencySeconds and the audioOffsetMs
+// manual escape hatch it approximates automatically).
+
+test("outputLatencySeconds advances the reported position by that amount", async ({ page }) => {
+  const state = {
+    playStartCtxTime: 0, playStartWallTime: 0, playStartPosition: 0,
+    lastCtxSample: 0, lastCtxSampleWall: 0,
+  };
+  const withoutLatency = await resolve(page, state, 2, 2, 1, 1000, 0);
+  const withLatency = await resolve(page, state, 2, 2, 1, 1000, 0.05);
+  expect(withLatency.position - withoutLatency.position).toBeCloseTo(0.05, 5);
+});
+
+test("outputLatencySeconds compensation scales with playback speed, like elapsed time does", async ({ page }) => {
+  // nowCtx === playStartCtxTime, so elapsed time is zero and the only
+  // contribution to position is the latency term itself.
+  const state = {
+    playStartCtxTime: 5, playStartWallTime: 5, playStartPosition: 0,
+    lastCtxSample: 5, lastCtxSampleWall: 5,
+  };
+  const atDoubleSpeed = await resolve(page, state, 5, 5, 2, 1000, 0.05);
+  const atNormalSpeed = await resolve(page, state, 5, 5, 1, 1000, 0.05);
+  expect(atDoubleSpeed.position).toBeCloseTo(0.1, 5); // 0.05 * speed 2
+  expect(atNormalSpeed.position).toBeCloseTo(0.05, 5); // 0.05 * speed 1
+});
+
+test("defaults to zero compensation when outputLatencySeconds is omitted (existing callers unaffected)", async ({ page }) => {
+  const state = {
+    playStartCtxTime: 0, playStartWallTime: 0, playStartPosition: 0,
+    lastCtxSample: 0, lastCtxSampleWall: 0,
+  };
+  const omitted = await resolve(page, state, 2, 2, 1, 1000);
+  const explicitZero = await resolve(page, state, 2, 2, 1, 1000, 0);
+  expect(omitted.position).toBeCloseTo(explicitZero.position, 10);
 });

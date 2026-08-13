@@ -106,6 +106,18 @@ function pitchRatio(semitones: number, cents: number): number {
   return 2 ** (semitones / 12) * 2 ** (cents / 1200);
 }
 
+// outputLatency is the real, standardized (if not universally implemented)
+// estimate of the delay between the graph processing audio and it actually
+// reaching the output device — exactly the kind of per-device latency this
+// app's manual Offset control exists to compensate for, just automatic and
+// approximate rather than user-tuned. Falls back to baseLatency (the
+// AudioContext's own internal processing latency only, not the full device
+// path) where outputLatency isn't populated, then to 0.
+function estimatedOutputLatencySeconds(ctx: AudioContext | null): number {
+  if (!ctx) return 0;
+  return ctx.outputLatency || ctx.baseLatency || 0;
+}
+
 // ─── Playback clock ────────────────────────────────────────────────────────────
 //
 // getCurrentTime() needs to report a smooth, sub-frame-accurate position, but
@@ -145,6 +157,13 @@ export function resolvePlaybackPosition(
   nowWall: number,
   speed: number,
   duration: number,
+  // Advances the reported position by the audio stack's own estimated
+  // output latency (real, per-device seconds — see AudioContext.outputLatency
+  // below), so the reported "current position" tracks what's actually
+  // audible right now rather than what's merely been scheduled into the
+  // graph. Documented, real-world direction for this app's known symptom
+  // (cursor lagging behind what's heard) — see the call site.
+  outputLatencySeconds = 0,
 ): PlaybackClockResult {
   let lastCtxSample = state.lastCtxSample;
   let lastCtxSampleWall = state.lastCtxSampleWall;
@@ -157,7 +176,7 @@ export function resolvePlaybackPosition(
   const interpolation = Math.max(0, nowWall - lastCtxSampleWall);
   const elapsed = audioClockElapsed + interpolation;
 
-  const position = Math.min(duration, Math.max(0, state.playStartPosition + elapsed * speed));
+  const position = Math.min(duration, Math.max(0, state.playStartPosition + elapsed * speed + outputLatencySeconds * speed));
   return { position, lastCtxSample, lastCtxSampleWall };
 }
 
@@ -313,7 +332,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       // internal buffer first produces output, not from playStartCtxTime),
       // leaving the progress bar and the tab cursor visibly out of sync with
       // each other even when each individually looked reasonable.
-      const clock = resolvePlaybackPosition(eng, eng.ctx!.currentTime, performance.now() / 1000, eng.speed, eng.duration);
+      const clock = resolvePlaybackPosition(eng, eng.ctx!.currentTime, performance.now() / 1000, eng.speed, eng.duration, estimatedOutputLatencySeconds(eng.ctx));
       eng.lastCtxSample = clock.lastCtxSample;
       eng.lastCtxSampleWall = clock.lastCtxSampleWall;
       const t = clock.position;
@@ -524,6 +543,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       performance.now() / 1000,
       eng.speed,
       eng.duration,
+      estimatedOutputLatencySeconds(eng.ctx),
     );
     eng.lastCtxSample = result.lastCtxSample;
     eng.lastCtxSampleWall = result.lastCtxSampleWall;
