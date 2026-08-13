@@ -3,6 +3,9 @@ import * as alphaTab from "@coderline/alphatab";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useAudioEngine } from "./player/useAudioEngine";
 import { ErrorModal } from "./ErrorModal";
+import { loadScoreFromFile, buildBeatTiming } from "../lib/gpScore";
+import { buildTrackLayout, type TrackLayout } from "../lib/tabLayout";
+import { TabCanvas } from "./tab/TabCanvas";
 
 // alphaTab's default worker factory uses importScripts() inside a blob worker,
 // which silently fails under Tauri's tauri:// custom protocol. Re-initialize
@@ -163,6 +166,17 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
   const [atPlaying, setAtPlaying] = useState(false);
   const [atCurrentTime, setAtCurrentTime] = useState(0); // ms
   const [atEndTime, setAtEndTime] = useState(0);         // ms
+
+  // Custom renderer preview (phases 1-3 of the rewrite — see the plan doc).
+  // Additive only: doesn't touch the alphaTab rendering/cursor path above.
+  // Toggled on manually for visual comparison until the cursor (phase 4) and
+  // feature parity (phase 5) land, at which point this replaces alphaTab
+  // entirely instead of sitting behind a toggle.
+  const scoreRef = useRef<alphaTab.model.Score | null>(null);
+  const beatTimingRef = useRef<Map<number, { startMs: number; durationMs: number }> | null>(null);
+  const [newLayout, setNewLayout] = useState<TrackLayout | null>(null);
+  const [newRendererError, setNewRendererError] = useState<string | null>(null);
+  const [showNewRenderer, setShowNewRenderer] = useState(false);
 
   const addLog = useCallback((level: string, ...args: unknown[]) => {
     const msg = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
@@ -379,6 +393,36 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
       apiRef.current = null;
     };
   }, [filePath, addLog]);
+
+  // Load the same file through the custom parser/layout pipeline, in
+  // parallel with alphaTab, for the new-renderer preview toggle.
+  useEffect(() => {
+    let cancelled = false;
+    scoreRef.current = null;
+    beatTimingRef.current = null;
+    setNewLayout(null);
+    setNewRendererError(null);
+    loadScoreFromFile(filePath)
+      .then((score) => {
+        if (cancelled) return;
+        scoreRef.current = score;
+        beatTimingRef.current = buildBeatTiming(score);
+        const trackIndex = loadView(filePath).value.selectedTrack;
+        setNewLayout(buildTrackLayout(score, Math.min(trackIndex, score.tracks.length - 1), beatTimingRef.current));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setNewRendererError(err instanceof Error ? err.message : String(err));
+      });
+    return () => { cancelled = true; };
+  }, [filePath]);
+
+  // Re-run the custom layout when track selection changes.
+  useEffect(() => {
+    if (!scoreRef.current || !beatTimingRef.current) return;
+    if (selectedTrack >= scoreRef.current.tracks.length) return;
+    setNewLayout(buildTrackLayout(scoreRef.current, selectedTrack, beatTimingRef.current));
+  }, [selectedTrack]);
 
   // Apply tab transposition when tabSemitones changes (after initial load).
   // updateSettings() alone doesn't re-render; render() is required.
@@ -763,11 +807,30 @@ export function GpViewer({ filePath, onClose, initialAudioPath }: Props) {
           {!loading && error && (
             <p className="gp-viewer-error">Failed to load: {error}</p>
           )}
-          <div ref={containerRef} className="gp-alphatab-container" />
+          {showNewRenderer ? (
+            newRendererError ? (
+              <p className="gp-viewer-error">New renderer failed to load: {newRendererError}</p>
+            ) : newLayout ? (
+              <TabCanvas layout={newLayout} className="gp-tab-canvas" />
+            ) : (
+              <div className="gp-viewer-spinner">
+                <div className="loading-spinner" />
+              </div>
+            )
+          ) : (
+            <div ref={containerRef} className="gp-alphatab-container" />
+          )}
         </div>
 
         {/* Debug console */}
         <div className="gp-debug-bar">
+          <button
+            className="gp-new-renderer-toggle"
+            onClick={() => setShowNewRenderer((v) => !v)}
+            title="Preview the custom tab renderer (in development)"
+          >
+            {showNewRenderer ? "alphaTab view" : "New renderer (preview)"}
+          </button>
           <button className="gp-debug-toggle" onClick={() => setShowDebug((v) => !v)}>
             {showDebug ? "▲ Debug" : "▼ Debug"} ({debugLogs.length})
           </button>
