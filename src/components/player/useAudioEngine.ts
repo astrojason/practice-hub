@@ -306,7 +306,17 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setCurrentTime(eng._pausedAt);
 
     const tick = () => {
-      const t = (eng.shifter!.percentagePlayed / 100) * eng.duration;
+      // Use the same ctx-clock-anchored position getCurrentTime() reports
+      // (see resolvePlaybackPosition above) rather than shifter.percentagePlayed
+      // — the two could otherwise diverge (percentagePlayed only updates once
+      // per audio-processing callback and starts from whenever the shifter's
+      // internal buffer first produces output, not from playStartCtxTime),
+      // leaving the progress bar and the tab cursor visibly out of sync with
+      // each other even when each individually looked reasonable.
+      const clock = resolvePlaybackPosition(eng, eng.ctx!.currentTime, performance.now() / 1000, eng.speed, eng.duration);
+      eng.lastCtxSample = clock.lastCtxSample;
+      eng.lastCtxSampleWall = clock.lastCtxSampleWall;
+      const t = clock.position;
       setCurrentTime(t);
 
       if (eng.loopEnabled && !eng.isHandlingLoop && eng.duration > 0) {

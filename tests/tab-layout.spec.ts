@@ -61,7 +61,7 @@ async function layoutFromTex(
 test("beat x positions are time-proportional (pixelsPerMs * startMs)", async ({ page }) => {
   const layout = await layoutFromTex(page, "\\tempo 120 . 1.1 1.1 1.1 1.1 |");
   const beats = layout.bars[0].beats;
-  const pixelsPerMs = 0.12; // defaultLayoutOptions.pixelsPerMs
+  const pixelsPerMs = 0.16; // defaultLayoutOptions.pixelsPerMs
 
   expect(beats[0].x).toBeCloseTo(0, 3);
   expect(beats[1].x).toBeCloseTo(500 * pixelsPerMs, 3); // 500ms in at 120bpm
@@ -263,7 +263,7 @@ test("transposition of 0 semitones is a no-op", async ({ page }) => {
 const THREE_BAR_TEX = "\\tempo 120 . 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 | 1.1 1.1 1.1 1.1 |";
 
 test("bars wrap onto a new line once they'd exceed the configured page width", async ({ page }) => {
-  // Each bar is ~240px of content + 24px gap. A 400px page (250px budget
+  // Each bar is ~320px of content + 24px gap. A 400px page (235px budget
   // after margins) fits exactly one such bar per line.
   const layout = await layoutFromTex(page, THREE_BAR_TEX, { pageWidthPx: 400 });
   expect(layout.bars.map((b) => b.line)).toEqual([0, 1, 2]);
@@ -273,7 +273,7 @@ test("bars wrap onto a new line once they'd exceed the configured page width", a
 test("a bar's x resets relative to its own line after wrapping, instead of continuing the previous line's cumulative offset", async ({ page }) => {
   const layout = await layoutFromTex(page, THREE_BAR_TEX, { pageWidthPx: 400 });
   expect(layout.bars[1].line).toBe(1);
-  // Without wrapping this would start around 264px (bar0's xEnd); with
+  // Without wrapping this would start around 344px (bar0's xEnd); with
   // wrapping it must restart near 0 on its own line.
   expect(layout.bars[1].xStart).toBeLessThan(10);
   expect(layout.bars[1].beats[0].x).toBeLessThan(10);

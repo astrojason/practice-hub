@@ -69,30 +69,30 @@ function drawStaffLines(ctx: CanvasRenderingContext2D, width: number, stringCoun
 
 function drawClefAndKey(ctx: CanvasRenderingContext2D, clef: alphaTab.model.Clef, keySignature: number, metrics: ReturnType<typeof computeStaffMetrics>) {
   ctx.fillStyle = INK;
-  ctx.font = "40px serif";
+  ctx.font = "56px serif";
   ctx.textBaseline = "alphabetic";
   const clefGlyph = clef === alphaTab.model.Clef.F4 ? "\u{1D122}" : "\u{1D11E}";
-  ctx.fillText(clefGlyph, 8, notationY(4, metrics) + 14);
+  ctx.fillText(clefGlyph, 10, notationY(4, metrics) + 19);
 
-  ctx.font = "18px serif";
+  ctx.font = "24px serif";
   const steps = keySignature > 0 ? SHARP_KEY_STEPS.slice(0, keySignature) : FLAT_KEY_STEPS.slice(0, -keySignature);
   const glyph = keySignature > 0 ? "♯" : "♭";
-  let x = 42;
+  let x = 54;
   for (const step of steps) {
-    ctx.fillText(glyph, x, notationY(step, metrics) + 6);
-    x += 10;
+    ctx.fillText(glyph, x, notationY(step, metrics) + 8);
+    x += 13;
   }
 
   ctx.fillStyle = MUTED;
-  ctx.font = "11px sans-serif";
-  ctx.fillText("TAB", 4, metrics.tabStaffTopY + 4);
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText("TAB", 5, metrics.tabStaffTopY + 5);
 }
 
 function drawBarLines(ctx: CanvasRenderingContext2D, bars: BarLayout[], metrics: ReturnType<typeof computeStaffMetrics>) {
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 2;
   for (const bar of bars) {
-    const x = bar.xEnd - 12 + LEFT_MARGIN_PX + 0.5;
+    const x = bar.xEnd - 14 + LEFT_MARGIN_PX + 0.5;
     ctx.beginPath();
     ctx.moveTo(x, metrics.notationStaffTopY);
     ctx.lineTo(x, metrics.tabStaffBottomY);
@@ -109,7 +109,7 @@ function drawBeamsAndStems(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
   }
 
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.6;
 
   for (const beat of beats) {
     if (beat.isRest || beat.notes.length === 0) continue;
@@ -117,7 +117,7 @@ function drawBeamsAndStems(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
     const stemTip = beat.stemUp ? Math.max(...steps) + 7 : Math.min(...steps) - 7;
     const anchor = beat.stemUp ? Math.min(...steps) : Math.max(...steps);
     if (beat.duration === alphaTab.model.Duration.Whole) continue;
-    const x = beat.x + LEFT_MARGIN_PX + (beat.stemUp ? 4 : -4);
+    const x = beat.x + LEFT_MARGIN_PX + (beat.stemUp ? 5 : -5);
     ctx.beginPath();
     ctx.moveTo(x, notationY(anchor, metrics));
     ctx.lineTo(x, notationY(stemTip, metrics));
@@ -127,10 +127,10 @@ function drawBeamsAndStems(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
     if (beat.beamGroupId === null && beat.duration >= alphaTab.model.Duration.Eighth) {
       const flagCount = Math.log2(beat.duration / alphaTab.model.Duration.Quarter);
       for (let f = 0; f < flagCount; f++) {
-        const fy = notationY(stemTip, metrics) + (beat.stemUp ? 1 : -1) * f * 6;
+        const fy = notationY(stemTip, metrics) + (beat.stemUp ? 1 : -1) * f * 8;
         ctx.beginPath();
         ctx.moveTo(x, fy);
-        ctx.quadraticCurveTo(x + 10, fy + (beat.stemUp ? 8 : -8), x + 2, fy + (beat.stemUp ? 14 : -14));
+        ctx.quadraticCurveTo(x + 14, fy + (beat.stemUp ? 11 : -11), x + 3, fy + (beat.stemUp ? 19 : -19));
         ctx.stroke();
       }
     }
@@ -144,14 +144,14 @@ function drawBeamsAndStems(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
       const b = group[i];
       const steps = b.notes.map((n) => n.notationStep);
       const stemTip = stemUp ? Math.max(...steps) + 7 : Math.min(...steps) - 7;
-      const x = b.x + LEFT_MARGIN_PX + (stemUp ? 4 : -4);
+      const x = b.x + LEFT_MARGIN_PX + (stemUp ? 5 : -5);
       const y = notationY(stemTip, metrics);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.stroke();
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.6;
   }
 }
 
@@ -160,7 +160,7 @@ function drawBeat(ctx: CanvasRenderingContext2D, beat: BeatGlyph, metrics: Retur
 
   if (beat.isRest) {
     ctx.fillStyle = MUTED;
-    ctx.fillRect(x - 4, notationY(4, metrics) - 2, 8, 4);
+    ctx.fillRect(x - 6, notationY(4, metrics) - 3, 12, 6);
     return;
   }
 
@@ -170,21 +170,21 @@ function drawBeat(ctx: CanvasRenderingContext2D, beat: BeatGlyph, metrics: Retur
 
     // Ledger lines
     ctx.strokeStyle = INK;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.4;
     if (note.notationStep < 0) {
       for (let s = -2; s >= note.notationStep; s -= 2) {
         const ly = notationY(s, metrics);
         ctx.beginPath();
-        ctx.moveTo(x - 8, ly);
-        ctx.lineTo(x + 8, ly);
+        ctx.moveTo(x - 11, ly);
+        ctx.lineTo(x + 11, ly);
         ctx.stroke();
       }
     } else if (note.notationStep > 8) {
       for (let s = 10; s <= note.notationStep; s += 2) {
         const ly = notationY(s, metrics);
         ctx.beginPath();
-        ctx.moveTo(x - 8, ly);
-        ctx.lineTo(x + 8, ly);
+        ctx.moveTo(x - 11, ly);
+        ctx.lineTo(x + 11, ly);
         ctx.stroke();
       }
     }
@@ -192,30 +192,30 @@ function drawBeat(ctx: CanvasRenderingContext2D, beat: BeatGlyph, metrics: Retur
     // Notehead
     ctx.fillStyle = INK;
     ctx.beginPath();
-    ctx.ellipse(x, y, 5, 3.5, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(x, y, 7, 5, -0.3, 0, Math.PI * 2);
     if (filled) ctx.fill();
     else {
-      ctx.lineWidth = 1.3;
+      ctx.lineWidth = 1.8;
       ctx.stroke();
     }
 
     // Accidental
     if (note.accidental) {
       ctx.fillStyle = INK;
-      ctx.font = "14px sans-serif";
-      ctx.fillText(note.accidental === "sharp" ? "♯" : "♭", x - 16, y + 4);
+      ctx.font = "19px sans-serif";
+      ctx.fillText(note.accidental === "sharp" ? "♯" : "♭", x - 22, y + 6);
     }
 
     // Tab fret number, with a background clear so the string line doesn't cross it
     const ty = tabY(note.tabLineFromTop, metrics);
     const label = note.note.isDead ? "x" : note.note.isGhost ? `(${note.fret})` : String(note.fret);
-    ctx.font = "11px sans-serif";
+    ctx.font = "bold 16px sans-serif";
     const w = ctx.measureText(label).width;
     ctx.fillStyle = BG;
-    ctx.fillRect(x - w / 2 - 2, ty - 6, w + 4, 12);
+    ctx.fillRect(x - w / 2 - 3, ty - 9, w + 6, 18);
     ctx.fillStyle = INK;
     ctx.textAlign = "center";
-    ctx.fillText(label, x, ty + 4);
+    ctx.fillText(label, x, ty + 6);
     ctx.textAlign = "left";
   }
 }
@@ -229,9 +229,9 @@ function drawArticulations(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
     // beat individually rather than drawing a spanning bracket over a run.
     if (beat.beat.isPalmMute) {
       ctx.fillStyle = MUTED;
-      ctx.font = "9px sans-serif";
+      ctx.font = "bold 12px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("PM", beat.x + LEFT_MARGIN_PX, metrics.tabStaffBottomY + 14);
+      ctx.fillText("PM", beat.x + LEFT_MARGIN_PX, metrics.tabStaffBottomY + 20);
       ctx.textAlign = "left";
     }
 
@@ -242,27 +242,27 @@ function drawArticulations(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
       // Bend: a short upward hook above the notehead.
       if (note.note.hasBend) {
         ctx.strokeStyle = INK;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.moveTo(x + 3, y - 6);
-        ctx.quadraticCurveTo(x + 10, y - 16, x + 4, y - 20);
+        ctx.moveTo(x + 4, y - 9);
+        ctx.quadraticCurveTo(x + 14, y - 23, x + 6, y - 28);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(x + 1, y - 18);
-        ctx.lineTo(x + 4, y - 20);
-        ctx.lineTo(x + 6, y - 16);
+        ctx.moveTo(x + 1, y - 25);
+        ctx.lineTo(x + 6, y - 28);
+        ctx.lineTo(x + 9, y - 22);
         ctx.stroke();
       }
 
       // Vibrato: a small wavy line trailing the notehead.
       if (note.note.vibrato !== alphaTab.model.VibratoType.None) {
         ctx.strokeStyle = INK;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        const vy = y + 10;
+        const vy = y + 14;
         for (let s = 0; s < 4; s++) {
-          ctx.moveTo(x + 8 + s * 5, vy);
-          ctx.quadraticCurveTo(x + 8 + s * 5 + 2.5, vy - 3, x + 8 + s * 5 + 5, vy);
+          ctx.moveTo(x + 11 + s * 7, vy);
+          ctx.quadraticCurveTo(x + 11 + s * 7 + 3.5, vy - 4, x + 11 + s * 7 + 7, vy);
         }
         ctx.stroke();
       }
@@ -274,14 +274,14 @@ function drawArticulations(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
         for (let j = i - 1; j >= 0; j--) {
           const originGlyph = beats[j].notes.find((n) => n.note === note.note.hammerPullOrigin);
           if (!originGlyph) continue;
-          const x1 = beats[j].x + LEFT_MARGIN_PX + 6;
+          const x1 = beats[j].x + LEFT_MARGIN_PX + 8;
           const y1 = notationY(originGlyph.notationStep, metrics);
           const dir = notationStepMidpointDir(originGlyph.notationStep, note.notationStep);
           ctx.strokeStyle = INK;
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 1.4;
           ctx.beginPath();
           ctx.moveTo(x1, y1);
-          ctx.quadraticCurveTo((x1 + x) / 2, Math.min(y1, y) + dir * 8, x - 6, y);
+          ctx.quadraticCurveTo((x1 + x) / 2, Math.min(y1, y) + dir * 11, x - 8, y);
           ctx.stroke();
           break;
         }
@@ -292,13 +292,13 @@ function drawArticulations(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], me
       if (note.note.slideOutType !== alphaTab.model.SlideOutType.None && i + 1 < beats.length) {
         const nextGlyph = beats[i + 1].notes.find((n) => n.string === note.string);
         if (nextGlyph) {
-          const x2 = beats[i + 1].x + LEFT_MARGIN_PX - 6;
+          const x2 = beats[i + 1].x + LEFT_MARGIN_PX - 8;
           const y2 = notationY(nextGlyph.notationStep, metrics);
           ctx.strokeStyle = INK;
-          ctx.lineWidth = 1.3;
+          ctx.lineWidth = 1.8;
           ctx.beginPath();
-          ctx.moveTo(x + 7, y);
-          ctx.lineTo(x2 - 2, y2);
+          ctx.moveTo(x + 10, y);
+          ctx.lineTo(x2 - 3, y2);
           ctx.stroke();
         }
       }
@@ -314,7 +314,7 @@ function notationStepMidpointDir(stepA: number, stepB: number): -1 | 1 {
 
 function drawTies(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], metrics: ReturnType<typeof computeStaffMetrics>) {
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.4;
   for (let i = 1; i < beats.length; i++) {
     const cur = beats[i];
     const prev = beats[i - 1];
@@ -322,13 +322,13 @@ function drawTies(ctx: CanvasRenderingContext2D, beats: BeatGlyph[], metrics: Re
       if (!note.isTieDestination) continue;
       const prevNote = prev.notes.find((n) => n.string === note.string);
       if (!prevNote) continue;
-      const x1 = prev.x + LEFT_MARGIN_PX + 6;
-      const x2 = cur.x + LEFT_MARGIN_PX - 6;
+      const x1 = prev.x + LEFT_MARGIN_PX + 8;
+      const x2 = cur.x + LEFT_MARGIN_PX - 8;
       const y = notationY(note.notationStep, metrics);
       const dir = note.notationStep > 4 ? 1 : -1;
       ctx.beginPath();
       ctx.moveTo(x1, y);
-      ctx.quadraticCurveTo((x1 + x2) / 2, y + dir * 6, x2, y);
+      ctx.quadraticCurveTo((x1 + x2) / 2, y + dir * 8, x2, y);
       ctx.stroke();
     }
   }

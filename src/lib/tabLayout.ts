@@ -45,7 +45,7 @@ export interface LayoutOptions {
 }
 
 export const defaultLayoutOptions: LayoutOptions = {
-  pixelsPerMs: 0.12,
+  pixelsPerMs: 0.16,
   barGapPx: 24,
   notationTranspositionSemitones: 0,
   pageWidthPx: 900,

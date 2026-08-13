@@ -3,15 +3,18 @@
 // tests/tab-geometry.spec.ts) independent of what's inherently hard to
 // assert about a canvas's drawn pixels.
 
-export const NOTATION_STEP_PX = 5; // half a staff-line-spacing, per diatonic step
-export const NOTATION_TOP_MARGIN = 50; // room above the staff for ledger lines / high notes
+// Sized for legibility at typical viewing distance — tab is the primary
+// reading surface for guitarists, so generous spacing matters more here
+// than engraving density.
+export const NOTATION_STEP_PX = 7; // half a staff-line-spacing, per diatonic step
+export const NOTATION_TOP_MARGIN = 55; // room above the staff for ledger lines / high notes
 export const NOTATION_LINE_COUNT = 5;
-export const STAFF_GAP_PX = 30; // gap between notation staff bottom and tab staff top
-export const TAB_LINE_PX = 14;
-export const BOTTOM_PADDING_PX = 30;
-export const LEFT_MARGIN_PX = 90; // room for clef / key signature / time signature
+export const STAFF_GAP_PX = 36; // gap between notation staff bottom and tab staff top
+export const TAB_LINE_PX = 22;
+export const BOTTOM_PADDING_PX = 36;
+export const LEFT_MARGIN_PX = 105; // room for clef / key signature / time signature
 export const RIGHT_PADDING_PX = 60;
-export const LINE_GAP_PX = 40; // vertical gap between one staff system (line) and the next
+export const LINE_GAP_PX = 55; // vertical gap between one staff system (line) and the next
 
 export interface StaffMetrics {
   notationStaffTopY: number;
