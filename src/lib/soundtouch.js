@@ -642,67 +642,17 @@ class SoundTouch {
   }
 }
 
-class WebAudioBufferSource {
-  constructor(buffer) {
-    this.buffer = buffer;
-    this._position = 0;
-  }
-  get dualChannel() {
-    return this.buffer.numberOfChannels > 1;
-  }
-  get position() {
-    return this._position;
-  }
-  set position(value) {
-    this._position = value;
-  }
-  extract(target, numFrames = 0, position = 0) {
-    this.position = position;
-    let left = this.buffer.getChannelData(0);
-    let right = this.dualChannel ? this.buffer.getChannelData(1) : this.buffer.getChannelData(0);
-    let i = 0;
-    for (; i < numFrames; i++) {
-      target[i * 2] = left[i + position];
-      target[i * 2 + 1] = right[i + position];
-    }
-    return Math.min(numFrames, left.length - position);
-  }
-}
-
-const getWebAudioNode = function (context, filter, sourcePositionCallback = noop, bufferSize = 4096) {
-  const node = context.createScriptProcessor(bufferSize, 2, 2);
-  const samples = new Float32Array(bufferSize * 2);
-  node.onaudioprocess = event => {
-    let left = event.outputBuffer.getChannelData(0);
-    let right = event.outputBuffer.getChannelData(1);
-    let framesExtracted = filter.extract(samples, bufferSize);
-    sourcePositionCallback(filter.sourcePosition);
-    if (framesExtracted === 0) {
-      filter.onEnd();
-    }
-    let i = 0;
-    for (; i < framesExtracted; i++) {
-      left[i] = samples[i * 2];
-      right[i] = samples[i * 2 + 1];
-    }
-  };
-  return node;
-};
-
 // ─── AudioWorkletNode-backed pitch shifter ──────────────────────────────────────
 //
-// Same SimpleFilter/SoundTouch DSP pipeline as PitchShifter below, but run
-// inside an AudioWorkletProcessor (soundtouchWorkletProcessor.js) on the
-// audio rendering thread instead of a ScriptProcessorNode on the main
-// thread. ScriptProcessorNode is a documented source of extra (often
-// 200-300ms-plausible) latency — bouncing audio through the main thread
-// with 2-3 buffer periods of headroom to avoid glitching — none of which
-// is visible to ctx.currentTime, outputLatency, or baseLatency, since it's
-// internal to the graph, not the path from the graph to the speaker.
-//
-// Preserves PitchShifter's exact public surface (tempo/pitch setters,
-// percentagePlayed getter/setter, connect/disconnect) so useAudioEngine.ts
-// needs no changes beyond constructing this instead.
+// Runs the SimpleFilter/SoundTouch DSP pipeline above inside an
+// AudioWorkletProcessor (soundtouchWorkletProcessor.js) on the audio
+// rendering thread, replacing an earlier ScriptProcessorNode-based
+// implementation. ScriptProcessorNode is a documented source of extra
+// (often 200-300ms-plausible) latency — bouncing audio through the main
+// thread with 2-3 buffer periods of headroom to avoid glitching — none of
+// which is visible to ctx.currentTime, outputLatency, or baseLatency,
+// since it's internal to the graph, not the path from the graph to the
+// speaker.
 
 const workletLoadedContexts = new WeakSet();
 
@@ -780,98 +730,4 @@ class PitchShifterWorklet {
   }
 }
 
-const pad = function (n, width, z) {
-  z = z || '0';
-  n = n + '';
-  return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
-};
-const minsSecs = function (secs) {
-  const mins = Math.floor(secs / 60);
-  const seconds = secs - mins * 60;
-  return `${mins}:${pad(parseInt(seconds), 2)}`;
-};
-
-const onUpdate = function (sourcePosition) {
-  const currentTimePlayed = this.timePlayed;
-  const sampleRate = this.sampleRate;
-  this.sourcePosition = sourcePosition;
-  this.timePlayed = sourcePosition / sampleRate;
-  if (currentTimePlayed !== this.timePlayed) {
-    const timePlayed = new CustomEvent('play', {
-      detail: {
-        timePlayed: this.timePlayed,
-        formattedTimePlayed: this.formattedTimePlayed,
-        percentagePlayed: this.percentagePlayed
-      }
-    });
-    this._node.dispatchEvent(timePlayed);
-  }
-};
-class PitchShifter {
-  constructor(context, buffer, bufferSize, onEnd = noop) {
-    this._soundtouch = new SoundTouch();
-    const source = new WebAudioBufferSource(buffer);
-    this.timePlayed = 0;
-    this.sourcePosition = 0;
-    this._filter = new SimpleFilter(source, this._soundtouch, onEnd);
-    this._node = getWebAudioNode(context, this._filter, sourcePostion => onUpdate.call(this, sourcePostion), bufferSize);
-    this.tempo = 1;
-    this.rate = 1;
-    this.duration = buffer.duration;
-    this.sampleRate = context.sampleRate;
-    this.listeners = [];
-  }
-  get formattedDuration() {
-    return minsSecs(this.duration);
-  }
-  get formattedTimePlayed() {
-    return minsSecs(this.timePlayed);
-  }
-  get percentagePlayed() {
-    return 100 * this._filter.sourcePosition / (this.duration * this.sampleRate);
-  }
-  set percentagePlayed(perc) {
-    this._filter.sourcePosition = parseInt(perc * this.duration * this.sampleRate);
-    this.sourcePosition = this._filter.sourcePosition;
-    this.timePlayed = this.sourcePosition / this.sampleRate;
-  }
-  get node() {
-    return this._node;
-  }
-  set pitch(pitch) {
-    this._soundtouch.pitch = pitch;
-  }
-  set pitchSemitones(semitone) {
-    this._soundtouch.pitchSemitones = semitone;
-  }
-  set rate(rate) {
-    this._soundtouch.rate = rate;
-  }
-  set tempo(tempo) {
-    this._soundtouch.tempo = tempo;
-  }
-  connect(toNode) {
-    this._node.connect(toNode);
-  }
-  disconnect() {
-    this._node.disconnect();
-  }
-  on(eventName, cb) {
-    this.listeners.push({
-      name: eventName,
-      cb: cb
-    });
-    this._node.addEventListener(eventName, event => cb(event.detail));
-  }
-  off(eventName = null) {
-    let listeners = this.listeners;
-    if (eventName) {
-      listeners = listeners.filter(e => e.name === eventName);
-    }
-    listeners.forEach(e => {
-      this._node.removeEventListener(e.name, event => e.cb(event.detail));
-    });
-  }
-}
-
-export { AbstractFifoSamplePipe, PitchShifter, PitchShifterWorklet, RateTransposer, SimpleFilter, SoundTouch, Stretch, WebAudioBufferSource, getWebAudioNode, loadSoundTouchWorklet };
+export { AbstractFifoSamplePipe, PitchShifterWorklet, RateTransposer, SimpleFilter, SoundTouch, Stretch, loadSoundTouchWorklet };
