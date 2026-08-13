@@ -23,11 +23,11 @@ interface LocalFolderResourceProps {
   folderPath: string;
   onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
   onGpView?: (path: string, audioPath?: string) => void;
-  /** Used when this folder has no audio file of its own. */
-  fallbackAudioPath?: string;
+  /** The song/exercise/study material's designated audio resource — the one that opens in the audio player. */
+  audioPath?: string;
 }
 
-function LocalFolderResource({ name, folderPath, onOpenFile, onGpView, fallbackAudioPath }: LocalFolderResourceProps) {
+function LocalFolderResource({ name, folderPath, onOpenFile, onGpView, audioPath }: LocalFolderResourceProps) {
   const [files, setFiles] = useState<FolderEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -38,12 +38,6 @@ function LocalFolderResource({ name, folderPath, onOpenFile, onGpView, fallbackA
       .then((json) => setFiles(JSON.parse(json) as FolderEntry[]))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [expanded, files, folderPath]);
-
-  // Prefer an audio file sitting right next to the tab — that's the actual
-  // recording the folder was organized around — before falling back to a
-  // top-level resource elsewhere on the song/exercise.
-  const folderAudioPath = files?.find((f) => fileTypeFromPath(f.path) === "audio")?.path;
-  const audioPath = folderAudioPath ?? fallbackAudioPath;
 
   return (
     <div className="modal-resource-folder">
@@ -135,7 +129,7 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
                       folderPath={r.url}
                       onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt); closeForMedia(); } : undefined}
                       onGpView={onGpView ? (path, audioPath) => { onGpView(path, audioPath); closeForMedia(); } : undefined}
-                      fallbackAudioPath={findAudioPath(resources)}
+                      audioPath={findAudioPath(resources)}
                     />
                   );
                 }

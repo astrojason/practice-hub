@@ -8,15 +8,16 @@ const GP_FIXTURE = readFileSync(join(__dirname, "fixtures", "gp-score-fixture.gp
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 //
-// SessionModal already has a `findAudioPath(resources)` helper that resolves
-// an already-associated audio resource and passes it as GpViewer's
-// initialAudioPath — but only for the `local_file` and `guitar_pro` resource
-// branches. The `local_folder` branch (a folder holding both the tab and its
-// recording together, the most common real layout) called onGpView with no
-// audio path at all, forcing a manual "Load audio" click even when the
-// recording sits right next to the tab. This fixes that: a GP file opened
-// from within an expanded local folder should prefer an audio file from that
-// same folder listing, falling back to any top-level audio resource.
+// Each song can have a resource that is its designated audio recording — the
+// one that opens in the audio player, resolved via `findAudioPath(resources)`.
+// SessionModal already passed that resource as GpViewer's initialAudioPath
+// for the `local_file` and `guitar_pro` resource branches, but the
+// `local_folder` branch (a folder holding both the tab and other files
+// together) called onGpView with no audio path at all, forcing a manual
+// "Load audio" click even when the song's designated audio resource was
+// right there. This fixes that: a GP file opened from within an expanded
+// local folder now also uses the song's designated audio resource — not a
+// file inferred from the folder's own contents, which may not be it.
 
 const mockUser = {
   id: 1, firebase_uid: "test-uid", email: "test@example.com", display_name: "Test User",
@@ -90,16 +91,16 @@ async function openProjectSongModal(page: import("@playwright/test").Page) {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-test("opening a GP file from within an expanded local folder auto-loads an audio sibling from that same folder", async ({ page }) => {
+test("opening a GP file from within an expanded local folder auto-loads the song's designated audio resource", async ({ page }) => {
   await setUpCommon(page, [
     { path: "/local/folder/song.gp", filename: "song.gp" },
-    { path: "/local/folder/backing.mp3", filename: "backing.mp3" },
   ]);
   await page.route("**/user/dashboard**", (route) =>
     route.fulfill({
       status: 200, contentType: "application/json",
       body: JSON.stringify(dashboardWithProjectSong([
         { name: "Session Files", url: "/local/folder", type: "local_folder" },
+        { name: "Song Audio", url: "/other/song-audio.wav", type: "local_file" },
       ])),
     })
   );
@@ -110,19 +111,20 @@ test("opening a GP file from within an expanded local folder auto-loads an audio
   await page.locator(".modal-resource-folder-file", { hasText: "song.gp" }).click();
 
   await expect(page.locator(".gp-viewer")).toBeVisible();
-  await expect(page.locator(".gp-audio-load")).toContainText("backing.mp3");
+  await expect(page.locator(".gp-audio-load")).toContainText("song-audio.wav");
 });
 
-test("falls back to a top-level audio resource when the folder has no audio file of its own", async ({ page }) => {
+test("a decoy audio file sitting in the same local folder as the tab is ignored in favor of the song's designated audio resource", async ({ page }) => {
   await setUpCommon(page, [
     { path: "/local/folder/song.gp", filename: "song.gp" },
+    { path: "/local/folder/practice-take.mp3", filename: "practice-take.mp3" },
   ]);
   await page.route("**/user/dashboard**", (route) =>
     route.fulfill({
       status: 200, contentType: "application/json",
       body: JSON.stringify(dashboardWithProjectSong([
         { name: "Session Files", url: "/local/folder", type: "local_folder" },
-        { name: "Backing Track", url: "/other/backing.wav", type: "local_file" },
+        { name: "Song Audio", url: "/other/song-audio.wav", type: "local_file" },
       ])),
     })
   );
@@ -133,5 +135,6 @@ test("falls back to a top-level audio resource when the folder has no audio file
   await page.locator(".modal-resource-folder-file", { hasText: "song.gp" }).click();
 
   await expect(page.locator(".gp-viewer")).toBeVisible();
-  await expect(page.locator(".gp-audio-load")).toContainText("backing.wav");
+  await expect(page.locator(".gp-audio-load")).toContainText("song-audio.wav");
+  await expect(page.locator(".gp-audio-load")).not.toContainText("practice-take.mp3");
 });
