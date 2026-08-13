@@ -120,40 +120,49 @@ function estimatedOutputLatencySeconds(ctx: AudioContext | null): number {
 
 // ─── Playback clock ────────────────────────────────────────────────────────────
 //
-// getCurrentTime() needs to report a smooth, sub-frame-accurate position, but
-// performance.now() and the audio hardware clock (AudioContext.currentTime)
-// don't advance at exactly the same rate — real hardware clocks commonly
-// drift from the system timer by tens to hundreds of ppm. Extrapolating
-// purely from performance.now() since playback start (as before) lets that
-// mismatch compound for the entire track, so the reported position — and the
-// alphaTab cursor driven by it — drifts further from the actual audio the
-// longer a piece plays.
+// getCurrentTime() needs to report a smooth, sub-frame-accurate position that
+// actually tracks the audio, not just a plausible guess at it.
 //
-// The fix: treat ctx.currentTime as the source of truth for elapsed time,
-// and only use performance.now() to interpolate within the current buffer
-// period (ctx.currentTime only ticks once per ScriptProcessor callback,
-// ~93ms at 4096 samples). Every time ctx.currentTime advances, resync the
-// wall-clock anchor to it, so any rate mismatch between the two clocks can
-// only ever accumulate for one buffer period before self-correcting instead
-// of compounding for the whole track.
+// An earlier version of this anchored elapsed time to AudioContext.currentTime
+// and multiplied by the nominal playback `speed` to extrapolate position. That
+// works for an unprocessed AudioBufferSourceNode, but the SoundTouch
+// AudioWorkletNode is a real-time time-stretcher: it processes audio in
+// discrete windows (tens of ms each, WSOLA-style overlap-add) and only
+// consumes source samples at exactly `speed`x *on average* — locally the rate
+// wobbles a little window to window. An estimate that only ever extrapolates
+// from a single anchor, with nothing to check itself against, has no way to
+// notice or correct for that — it just drifts, which shows up as the cursor
+// visibly lagging, then jumping, then running ahead of what's actually
+// audible.
+//
+// The fix: the worklet already knows its real position (it posts one back to
+// the main thread roughly every ~58ms — see soundtouchWorkletProcessor.js's
+// POSITION_REPORT_INTERVAL_QUANTA) — so use that as the anchor instead.
+// performance.now() only interpolates *within* the gap since the last real
+// report, never substitutes for it. Any drift between the assumed `speed`
+// and the stretcher's true local throughput can therefore only ever
+// accumulate for one ~58ms report interval before the next report corrects
+// it, instead of compounding for the whole track.
 
 export interface PlaybackClockState {
-  playStartCtxTime: number;
+  // Fallback anchor used only until the worklet's first position report
+  // arrives after a play/seek (a brief, unavoidable startup gap — the
+  // report is asynchronous).
   playStartWallTime: number;
   playStartPosition: number;
-  lastCtxSample: number;
-  lastCtxSampleWall: number;
+  // The worklet's real, ground-truth position (PitchShifterWorklet's
+  // lastReportedPositionSeconds/lastReportedWallTime) — null until the
+  // first report arrives or after a seek invalidates the previous one.
+  lastReportPositionSeconds: number | null;
+  lastReportWallTime: number;
 }
 
 export interface PlaybackClockResult {
   position: number;
-  lastCtxSample: number;
-  lastCtxSampleWall: number;
 }
 
 export function resolvePlaybackPosition(
   state: PlaybackClockState,
-  nowCtx: number,
   nowWall: number,
   speed: number,
   duration: number,
@@ -165,19 +174,13 @@ export function resolvePlaybackPosition(
   // (cursor lagging behind what's heard) — see the call site.
   outputLatencySeconds = 0,
 ): PlaybackClockResult {
-  let lastCtxSample = state.lastCtxSample;
-  let lastCtxSampleWall = state.lastCtxSampleWall;
-  if (nowCtx > lastCtxSample) {
-    lastCtxSample = nowCtx;
-    lastCtxSampleWall = nowWall;
-  }
+  const hasReport = state.lastReportPositionSeconds !== null;
+  const anchorPosition = hasReport ? state.lastReportPositionSeconds! : state.playStartPosition;
+  const anchorWallTime = hasReport ? state.lastReportWallTime : state.playStartWallTime;
+  const elapsed = Math.max(0, nowWall - anchorWallTime);
 
-  const audioClockElapsed = lastCtxSample - state.playStartCtxTime;
-  const interpolation = Math.max(0, nowWall - lastCtxSampleWall);
-  const elapsed = audioClockElapsed + interpolation;
-
-  const position = Math.min(duration, Math.max(0, state.playStartPosition + elapsed * speed + outputLatencySeconds * speed));
-  return { position, lastCtxSample, lastCtxSampleWall };
+  const position = Math.min(duration, Math.max(0, anchorPosition + elapsed * speed + outputLatencySeconds * speed));
+  return { position };
 }
 
 // ─── Engine state stored in a single ref ─────────────────────────────────────
@@ -193,11 +196,8 @@ interface EngineRef {
   duration: number;
   pendingSrc: string | null;
   _pausedAt: number;
-  playStartCtxTime: number;
   playStartWallTime: number;
   playStartPosition: number;
-  lastCtxSample: number;
-  lastCtxSampleWall: number;
   // Control values mirrored here for rAF access
   speed: number;
   loopEnabled: boolean;
@@ -230,11 +230,8 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     duration: 0,
     pendingSrc: null,
     _pausedAt: 0,
-    playStartCtxTime: 0,
     playStartWallTime: 0,
     playStartPosition: 0,
-    lastCtxSample: 0,
-    lastCtxSampleWall: 0,
     speed: 1.0,
     loopEnabled: true,
     loopStart: null,
@@ -316,25 +313,29 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     }
 
     eng.ctx.resume();
-    eng.playStartCtxTime = eng.ctx.currentTime;
     eng.playStartWallTime = performance.now() / 1000;
     eng.playStartPosition = eng._pausedAt;
-    eng.lastCtxSample = eng.playStartCtxTime;
-    eng.lastCtxSampleWall = eng.playStartWallTime;
     setIsPlaying(true);
     setCurrentTime(eng._pausedAt);
 
     const tick = () => {
-      // Use the same ctx-clock-anchored position getCurrentTime() reports
-      // (see resolvePlaybackPosition above) rather than shifter.percentagePlayed
-      // — the two could otherwise diverge (percentagePlayed only updates once
-      // per audio-processing callback and starts from whenever the shifter's
-      // internal buffer first produces output, not from playStartCtxTime),
-      // leaving the progress bar and the tab cursor visibly out of sync with
-      // each other even when each individually looked reasonable.
-      const clock = resolvePlaybackPosition(eng, eng.ctx!.currentTime, performance.now() / 1000, eng.speed, eng.duration, estimatedOutputLatencySeconds(eng.ctx));
-      eng.lastCtxSample = clock.lastCtxSample;
-      eng.lastCtxSampleWall = clock.lastCtxSampleWall;
+      // Use the same worklet-report-anchored position getCurrentTime()
+      // reports (see resolvePlaybackPosition above) rather than a separate
+      // read of shifter.percentagePlayed — both must derive from the exact
+      // same anchor or the progress bar and the tab cursor visibly disagree
+      // with each other even when each individually looks reasonable.
+      const clock = resolvePlaybackPosition(
+        {
+          playStartWallTime: eng.playStartWallTime,
+          playStartPosition: eng.playStartPosition,
+          lastReportPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
+          lastReportWallTime: eng.shifter?.lastReportedWallTime ?? 0,
+        },
+        performance.now() / 1000,
+        eng.speed,
+        eng.duration,
+        estimatedOutputLatencySeconds(eng.ctx),
+      );
       const t = clock.position;
       setCurrentTime(t);
 
@@ -543,15 +544,17 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     const eng = e.current;
     if (!eng.ctx || eng.raf === null || !eng.duration) return eng._pausedAt;
     const result = resolvePlaybackPosition(
-      eng,
-      eng.ctx.currentTime,
+      {
+        playStartWallTime: eng.playStartWallTime,
+        playStartPosition: eng.playStartPosition,
+        lastReportPositionSeconds: eng.shifter?.lastReportedPositionSeconds ?? null,
+        lastReportWallTime: eng.shifter?.lastReportedWallTime ?? 0,
+      },
       performance.now() / 1000,
       eng.speed,
       eng.duration,
       estimatedOutputLatencySeconds(eng.ctx),
     );
-    eng.lastCtxSample = result.lastCtxSample;
-    eng.lastCtxSampleWall = result.lastCtxSampleWall;
     return result.position;
   }, []);
 

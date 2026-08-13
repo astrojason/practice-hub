@@ -674,6 +674,17 @@ class PitchShifterWorklet {
     this.duration = buffer.duration;
     this.sampleRate = context.sampleRate;
     this._sourcePosition = 0;
+    // The worklet posts its real, ground-truth position back roughly every
+    // ~58ms (see soundtouchWorkletProcessor.js's
+    // POSITION_REPORT_INTERVAL_QUANTA). Position lookups anchor to this
+    // instead of extrapolating from playStart via a nominal speed
+    // multiplier — the SoundTouch time-stretcher processes audio in
+    // discrete windows and doesn't consume source samples at a perfectly
+    // linear elapsed-time * speed rate locally, only on average, so an
+    // estimate that never checks in against the real reports drifts. Null
+    // until the first report arrives (or is invalidated by a seek).
+    this._lastReportPositionSeconds = null;
+    this._lastReportWallTime = 0;
     this._onEnd = onEnd;
     this._tempo = 1;
     this._pitch = 1;
@@ -698,6 +709,8 @@ class PitchShifterWorklet {
       const msg = event.data;
       if (msg.type === 'position') {
         this._sourcePosition = msg.sourcePosition;
+        this._lastReportPositionSeconds = msg.sourcePosition / this.sampleRate;
+        this._lastReportWallTime = performance.now() / 1000;
       } else if (msg.type === 'ended') {
         this._onEnd();
       }
@@ -709,7 +722,20 @@ class PitchShifterWorklet {
   }
   set percentagePlayed(perc) {
     this._sourcePosition = Math.trunc(perc * this.duration * this.sampleRate);
+    // Invalidate the report anchor — a report already in flight from before
+    // the seek would otherwise be trusted as ground truth for a position
+    // that's no longer current. The next real report (within ~58ms) becomes
+    // the new anchor; until then callers fall back to their own play/seek
+    // wall-clock anchor.
+    this._lastReportPositionSeconds = null;
     this._node.port.postMessage({ type: 'seek', sourcePosition: this._sourcePosition });
+  }
+
+  get lastReportedPositionSeconds() {
+    return this._lastReportPositionSeconds;
+  }
+  get lastReportedWallTime() {
+    return this._lastReportWallTime;
   }
 
   get tempo() {
