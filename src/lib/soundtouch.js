@@ -689,6 +689,97 @@ const getWebAudioNode = function (context, filter, sourcePositionCallback = noop
   return node;
 };
 
+// ─── AudioWorkletNode-backed pitch shifter ──────────────────────────────────────
+//
+// Same SimpleFilter/SoundTouch DSP pipeline as PitchShifter below, but run
+// inside an AudioWorkletProcessor (soundtouchWorkletProcessor.js) on the
+// audio rendering thread instead of a ScriptProcessorNode on the main
+// thread. ScriptProcessorNode is a documented source of extra (often
+// 200-300ms-plausible) latency — bouncing audio through the main thread
+// with 2-3 buffer periods of headroom to avoid glitching — none of which
+// is visible to ctx.currentTime, outputLatency, or baseLatency, since it's
+// internal to the graph, not the path from the graph to the speaker.
+//
+// Preserves PitchShifter's exact public surface (tempo/pitch setters,
+// percentagePlayed getter/setter, connect/disconnect) so useAudioEngine.ts
+// needs no changes beyond constructing this instead.
+
+const workletLoadedContexts = new WeakSet();
+
+async function loadSoundTouchWorklet(context) {
+  if (workletLoadedContexts.has(context)) return;
+  const url = new URL('./soundtouchWorkletProcessor.js', import.meta.url).href;
+  await context.audioWorklet.addModule(url);
+  workletLoadedContexts.add(context);
+}
+
+class PitchShifterWorklet {
+  constructor(context, buffer, onEnd = noop) {
+    this.duration = buffer.duration;
+    this.sampleRate = context.sampleRate;
+    this._sourcePosition = 0;
+    this._onEnd = onEnd;
+    this._tempo = 1;
+    this._pitch = 1;
+
+    const left = buffer.getChannelData(0);
+    const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
+    // Independent copies — buffer.getChannelData() views can't be
+    // transferred without corrupting the AudioBuffer the caller still owns.
+    const leftCopy = left.slice();
+    const rightCopy = right.slice();
+
+    this._node = new AudioWorkletNode(context, 'soundtouch-processor', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+    });
+    this._node.port.postMessage(
+      { type: 'load', left: leftCopy, right: rightCopy },
+      [leftCopy.buffer, rightCopy.buffer],
+    );
+    this._node.port.onmessage = (event) => {
+      const msg = event.data;
+      if (msg.type === 'position') {
+        this._sourcePosition = msg.sourcePosition;
+      } else if (msg.type === 'ended') {
+        this._onEnd();
+      }
+    };
+  }
+
+  get percentagePlayed() {
+    return 100 * this._sourcePosition / (this.duration * this.sampleRate);
+  }
+  set percentagePlayed(perc) {
+    this._sourcePosition = Math.trunc(perc * this.duration * this.sampleRate);
+    this._node.port.postMessage({ type: 'seek', sourcePosition: this._sourcePosition });
+  }
+
+  get tempo() {
+    return this._tempo;
+  }
+  set tempo(tempo) {
+    this._tempo = tempo;
+    this._node.port.postMessage({ type: 'tempo', value: tempo });
+  }
+
+  get pitch() {
+    return this._pitch;
+  }
+  set pitch(pitch) {
+    this._pitch = pitch;
+    this._node.port.postMessage({ type: 'pitch', value: pitch });
+  }
+
+  connect(toNode) {
+    this._node.connect(toNode);
+  }
+  disconnect() {
+    this._node.disconnect();
+  }
+}
+
 const pad = function (n, width, z) {
   z = z || '0';
   n = n + '';
@@ -783,4 +874,4 @@ class PitchShifter {
   }
 }
 
-export { AbstractFifoSamplePipe, PitchShifter, RateTransposer, SimpleFilter, SoundTouch, Stretch, WebAudioBufferSource, getWebAudioNode };
+export { AbstractFifoSamplePipe, PitchShifter, PitchShifterWorklet, RateTransposer, SimpleFilter, SoundTouch, Stretch, WebAudioBufferSource, getWebAudioNode, loadSoundTouchWorklet };
