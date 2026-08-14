@@ -53,6 +53,8 @@ interface Preset {
   pitchCents: number;
   regions: Region[];
   markers: WaveMarker[];
+  sequenceRegionIds?: string[];
+  sequenceLoop?: boolean;
   updatedAt: number;
 }
 
@@ -200,6 +202,26 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     onServerError: (msg) => showToast(msg, { icon: "⚠️", tone: "warning" }),
   });
 
+  // ── Region sequence playback ─────────────────────────────────────────────────
+  // Plays a chronologically-ordered walk through the checked regions, applying
+  // each region's own playbackSpeed as the playhead crosses into it.
+  const [sequenceLoop, setSequenceLoopLocal] = useState(false);
+  const sequenceLoopRef = useRef(false);
+  const [sequenceActive, setSequenceActiveState] = useState(false);
+  const sequenceActiveRef = useRef(false);
+  const [sequenceIndex, setSequenceIndexState] = useState(0);
+  const sequenceIndexRef = useRef(0);
+  const sequenceOrderRef = useRef<Region[]>([]);
+
+  const setSequenceActive = useCallback((v: boolean) => {
+    setSequenceActiveState(v);
+    sequenceActiveRef.current = v;
+  }, []);
+  const setSequenceIndex = useCallback((i: number) => {
+    setSequenceIndexState(i);
+    sequenceIndexRef.current = i;
+  }, []);
+
   // ── Toasts ──────────────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -248,6 +270,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   useEffect(() => { loopBreakEnabledRef.current = loopBreakEnabled; }, [loopBreakEnabled]);
   useEffect(() => { loopBreakAfterRef.current = loopBreakAfter; }, [loopBreakAfter]);
   useEffect(() => { loopBreakDurationRef.current = loopBreakDuration; }, [loopBreakDuration]);
+  useEffect(() => { sequenceLoopRef.current = sequenceLoop; }, [sequenceLoop]);
 
   // ── Active section linkage ────────────────────────────────────────────────────
   useEffect(() => {
@@ -303,6 +326,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       pitchCents,
       regions: regionState.regionsRef.current,
       markers: markerState.markersRef.current,
+      sequenceRegionIds: regionState.selectedIdsRef.current,
+      sequenceLoop: sequenceLoopRef.current,
       updatedAt: Date.now(),
     };
     try {
@@ -355,6 +380,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       markerState.loadMarkers([]);
       regionState.loadRegions([]);
       setRegionNameInput("");
+      setSequenceLoopLocal(false);
+      sequenceLoopRef.current = false;
       setPresetStatusText("Not saved");
       return;
     }
@@ -401,9 +428,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     }
     markerState.loadMarkers(preset.markers);
     regionState.loadRegions(preset.regions);
+    regionState.setSelectedIds(preset.sequenceRegionIds ?? []);
     setRegionNameInput("");
+    const seqLoop = Boolean(preset.sequenceLoop);
+    setSequenceLoopLocal(seqLoop);
+    sequenceLoopRef.current = seqLoop;
     setPresetStatusText("All changes saved");
-  }, [audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions]);
+  }, [audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions, regionState.setSelectedIds]);
 
   // ── Metronome ────────────────────────────────────────────────────────────────
 
@@ -432,6 +463,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
   useEffect(() => {
     metronome.stop();
+    sequenceOrderRef.current = [];
+    setSequenceActive(false);
+    setSequenceIndex(0);
     const preset = presetsRef.current[filePath];
     applyPreset(preset);
 
@@ -916,6 +950,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   };
 
   const applyRegion = (id: string) => {
+    if (sequenceActiveRef.current) stopSequence();
     if (regionState.activeRegionIdRef.current === id) {
       regionState.setActiveRegionId(null);
       setRegionNameInput("");
@@ -966,6 +1001,75 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     regionState.renameRegionAt(id, name);
     savePreset({ silent: true });
   };
+
+  // ── Region sequence playback ─────────────────────────────────────────────────
+
+  const seekTo = useCallback((t: number) => {
+    if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+    else audioActions.seek(t);
+  }, [isVideo, audioActions]);
+
+  const applySequenceStep = useCallback((region: Region) => {
+    seekTo(region.start);
+    applySpeed(region.playbackSpeed.toFixed(2));
+    setLoopIncreaseByLocal(region.speedIncreasePercent);
+    audioActions.setLoopIncreaseBy(region.speedIncreasePercent);
+    setLoopIncreaseAtLocal(region.speedIncreaseInterval);
+    audioActions.setLoopIncreaseAt(region.speedIncreaseInterval);
+    regionState.setActiveRegionId(region.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekTo, audioActions, regionState.setActiveRegionId]);
+
+  const stopSequence = useCallback(() => {
+    sequenceOrderRef.current = [];
+    setSequenceActive(false);
+    regionState.setActiveRegionId(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSequenceActive, regionState.setActiveRegionId]);
+
+  const startSequence = () => {
+    const selected = regionState.regionsRef.current.filter(r => regionState.selectedIdsRef.current.includes(r.id));
+    if (selected.length === 0) {
+      showToast("Select at least one region to build a sequence.", { icon: "⚠️", tone: "warning" });
+      return;
+    }
+    const order = [...selected].sort((a, b) => a.start - b.start);
+    sequenceOrderRef.current = order;
+    setSequenceIndex(0);
+    setSequenceActive(true);
+    setLoopEnabledLocal(false);
+    audioActions.setLoopEnabled(false);
+    applySequenceStep(order[0]);
+    if (isVideo) videoRef.current?.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
+    else audioActions.play();
+    showToast(`Sequence started · ${order.length} region${order.length !== 1 ? "s" : ""}.`, { icon: "▶" });
+    schedulePresetSave();
+  };
+
+  // Drives sequence advancement — fires on every currentTime update (seek or
+  // playback), same pattern as the canvas render effect below.
+  useEffect(() => {
+    if (!sequenceActiveRef.current || dur <= 0) return;
+    const order = sequenceOrderRef.current;
+    const current = order[sequenceIndexRef.current];
+    if (!current) return;
+    const EPS = 0.05;
+    if (currentTime < current.end - EPS) return;
+    const nextIndex = sequenceIndexRef.current + 1;
+    if (nextIndex < order.length) {
+      setSequenceIndex(nextIndex);
+      applySequenceStep(order[nextIndex]);
+    } else if (sequenceLoopRef.current) {
+      setSequenceIndex(0);
+      applySequenceStep(order[0]);
+    } else {
+      stopSequence();
+      if (isVideo) videoRef.current?.pause();
+      else audioActions.pause();
+      showToast("Sequence finished.", { icon: "🏁" });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, dur]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
@@ -1060,6 +1164,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         case "nudgeMarkerBack": markerState.nudgeSelected(-MARKER_NUDGE); break;
         case "nudgeMarkerForward": markerState.nudgeSelected(MARKER_NUDGE); break;
         case "addMarker": markerState.addMarkerFromCurrentTime(); break;
+        case "prevMarker": markerState.jumpToMarker("prev"); break;
+        case "nextMarker": markerState.jumpToMarker("next"); break;
         case "closePlayer": onClose(); break;
       }
     };
@@ -1346,6 +1452,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                     type="checkbox"
                     id="loopPlayback"
                     checked={loopEnabled}
+                    disabled={sequenceActive}
                     onChange={e => {
                       setLoopEnabledLocal(e.target.checked);
                       audioActions.setLoopEnabled(e.target.checked);
@@ -1532,6 +1639,14 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                         onClick={() => { if (!isEditing) applyRegion(region.id); }}
                         style={{ cursor: "pointer" }}
                       >
+                        <input
+                          type="checkbox"
+                          className="mp-region-select-checkbox"
+                          checked={regionState.selectedIds.includes(region.id)}
+                          onClick={e => e.stopPropagation()}
+                          onChange={() => regionState.toggleSelected(region.id)}
+                          title="Include in sequence"
+                        />
                         {isEditing ? (
                           <input
                             className="mp-region-name-input"
@@ -1580,6 +1695,38 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                 <p id="regionEmptyState" className="mp-empty-state">
                   Save loop settings to start a region list.
                 </p>
+              )}
+              {regionState.regions.length > 0 && (
+                <div className="mp-row mp-row--wrap">
+                  <button
+                    className="btn-ghost btn-xs"
+                    id="playSequenceBtn"
+                    onClick={sequenceActive ? stopSequence : startSequence}
+                    disabled={!sequenceActive && regionState.selectedIds.length === 0}
+                    title="Play checked regions in order, applying each region's speed"
+                  >
+                    {sequenceActive ? "⏹ Stop Sequence" : "▶ Play Sequence"}
+                  </button>
+                  <label className="media-player__checkbox-label">
+                    <input
+                      type="checkbox"
+                      id="sequenceLoopToggle"
+                      checked={sequenceLoop}
+                      disabled={sequenceActive}
+                      onChange={e => {
+                        setSequenceLoopLocal(e.target.checked);
+                        schedulePresetSave();
+                      }}
+                    />
+                    Loop sequence
+                  </label>
+                  {sequenceActive && (
+                    <span id="sequenceStatus" className="mp-marker-count">
+                      Playing {sequenceIndex + 1}/{sequenceOrderRef.current.length}
+                      {sequenceOrderRef.current[sequenceIndex]?.name ? ` · ${sequenceOrderRef.current[sequenceIndex].name}` : ""}
+                    </span>
+                  )}
+                </div>
               )}
             </section>
 

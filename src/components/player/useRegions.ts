@@ -50,10 +50,27 @@ export function useRegions({ token, songId, onServerError }: Options) {
   const regionsRef = useRef<Region[]>([]);
   const activeRegionIdRef = useRef<string | null>(null);
 
+  // Regions checked for sequence playback — separate from `activeRegionId`,
+  // which is the single region currently applied to the live loop controls.
+  const [selectedIds, setSelectedIdsState] = useState<string[]>([]);
+  const selectedIdsRef = useRef<string[]>([]);
+
   const setActiveRegionId = useCallback((id: string | null) => {
     setActiveRegionIdState(id);
     activeRegionIdRef.current = id;
   }, []);
+
+  const setSelectedIds = useCallback((ids: string[]) => {
+    setSelectedIdsState(ids);
+    selectedIdsRef.current = ids;
+  }, []);
+
+  const toggleSelected = useCallback((id: string) => {
+    const next = selectedIdsRef.current.includes(id)
+      ? selectedIdsRef.current.filter(x => x !== id)
+      : [...selectedIdsRef.current, id];
+    setSelectedIds(next);
+  }, [setSelectedIds]);
 
   const createRegion = useCallback(async (params: NewRegionParams): Promise<Region> => {
     let sectionId: number | undefined;
@@ -94,12 +111,13 @@ export function useRegions({ token, songId, onServerError }: Options) {
     setRegionsState(next);
     regionsRef.current = next;
     if (activeRegionIdRef.current === id) setActiveRegionId(null);
+    if (selectedIdsRef.current.includes(id)) setSelectedIds(selectedIdsRef.current.filter(x => x !== id));
     if (token && region?.section_id) {
       deleteSongSection(token, region.section_id).catch(err => {
         onServerError(`Failed to delete region from server: ${err instanceof Error ? err.message : String(err)}`);
       });
     }
-  }, [token, onServerError, setActiveRegionId]);
+  }, [token, onServerError, setActiveRegionId, setSelectedIds]);
 
   const renameRegionAt = useCallback((id: string, name: string) => {
     const region = regionsRef.current.find(r => r.id === id);
@@ -119,7 +137,8 @@ export function useRegions({ token, songId, onServerError }: Options) {
     setRegionsState(list);
     regionsRef.current = list;
     setActiveRegionId(null);
-  }, [setActiveRegionId]);
+    setSelectedIds([]);
+  }, [setActiveRegionId, setSelectedIds]);
 
   return {
     regions,
@@ -127,6 +146,10 @@ export function useRegions({ token, songId, onServerError }: Options) {
     activeRegionId,
     activeRegionIdRef,
     setActiveRegionId,
+    selectedIds,
+    selectedIdsRef,
+    setSelectedIds,
+    toggleSelected,
     createRegion,
     removeRegion,
     renameRegionAt,

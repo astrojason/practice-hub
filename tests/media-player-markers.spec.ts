@@ -42,6 +42,18 @@ const mockDashboard = {
   study_materials: [], chord: null, progression: null, interval: null,
 };
 
+// Clicking a seek button doesn't wait for React to commit the resulting
+// currentTime before the next click fires — firing several in a tight loop
+// can race ahead of state updates and under-count. Wait for the displayed
+// time to actually change after each click so cumulative seeks are reliable.
+async function clickAndSettle(button: import("@playwright/test").Locator, timeLabel: import("@playwright/test").Locator, times: number) {
+  for (let i = 0; i < times; i++) {
+    const before = await timeLabel.textContent();
+    await button.click();
+    await expect(timeLabel).not.toHaveText(before ?? "");
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => { localStorage.setItem("ph:refreshToken", "fake-refresh-token"); });
   await page.route("**/securetoken.googleapis.com/**", (route) =>
@@ -86,6 +98,80 @@ test("adding, renaming, navigating, and deleting waveform markers works without 
 
   await page.locator("#waveClearMarkersBtn").click();
   await expect(page.locator("#waveMarkerLabel")).toContainText("0 markers");
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("marker Prev/Next navigate relative to the current playhead, not a stale selection", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+  // Playback auto-starts on load — pause it so seeks below are the only thing
+  // moving the playhead (otherwise real-time drift makes the math flaky).
+  await page.locator('button[title="Pause"]').click();
+
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  const skipBackward = page.locator('button[title="Skip back 5%"]');
+  const label = page.locator("#waveMarkerLabel");
+  const timeLabel = page.locator(".media-player__time");
+
+  // M1 at t≈0.
+  await page.locator("#waveAddMarkerBtn").click();
+  await expect(label).toContainText("1 marker");
+
+  // M2 at t≈0.90 (6 × 5% of a 3s clip).
+  await clickAndSettle(skipForward, timeLabel, 6);
+  await page.locator("#waveAddMarkerBtn").click();
+  await expect(label).toContainText("2 markers");
+
+  // M3 at t≈1.80 — selection is now on M3 (the last-added marker).
+  await clickAndSettle(skipForward, timeLabel, 6);
+  await page.locator("#waveAddMarkerBtn").click();
+  await expect(label).toContainText("3/3 selected");
+
+  // Scrub back to t≈0.30 — strictly between M1 and M2 — without touching markers.
+  // Selection is still stale on M3, but the nearest marker AFTER the playhead is M2.
+  await clickAndSettle(skipBackward, timeLabel, 10);
+  await page.locator("#waveNextMarkerBtn").click();
+  await expect(label).toContainText("2/3 selected");
+
+  // Now scrub forward past M3 to t≈2.10, again without touching markers.
+  // Selection is stale on M2, but the nearest marker BEFORE the playhead is M3.
+  await clickAndSettle(skipForward, timeLabel, 8);
+  await page.locator("#wavePrevMarkerBtn").click();
+  await expect(label).toContainText("3/3 selected");
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("Alt+ArrowLeft/Right navigate markers via keyboard shortcuts", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+
+  await page.locator("#waveAddMarkerBtn").click();
+  await page.locator('button[title="Skip forward 5%"]').click();
+  await page.locator("#waveAddMarkerBtn").click();
+  await expect(page.locator("#waveMarkerLabel")).toContainText("2/2 selected");
+
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(page.locator("#waveMarkerLabel")).toContainText("1/2 selected");
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(page.locator("#waveMarkerLabel")).toContainText("2/2 selected");
+
+  // Shortcuts appear in the palette too.
+  await page.locator('button[title="Keyboard shortcuts"]').click();
+  const palette = page.locator(".mp-palette");
+  await expect(palette.locator(".mp-palette-item", { hasText: "Previous marker" }).locator(".mp-shortcut-key")).toHaveText("Alt+ArrowLeft");
+  await expect(palette.locator(".mp-palette-item", { hasText: "Next marker" }).locator(".mp-shortcut-key")).toHaveText("Alt+ArrowRight");
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });

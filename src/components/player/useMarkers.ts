@@ -57,10 +57,22 @@ export function useMarkers({ dur, currentTime, isVideo, videoRef, seekAudio, onC
   const jumpToMarker = useCallback((dir: "prev" | "next") => {
     const list = markersRef.current;
     if (!list.length) return;
-    let idx = selectedIdxRef.current;
-    if (idx === -1) idx = 0;
-    else if (dir === "next") idx = (idx + 1) % list.length;
-    else idx = (idx - 1 + list.length) % list.length;
+    // Navigate relative to the actual playhead, not the last-selected marker —
+    // a stale selectedIdx (e.g. after scrubbing away from it) would otherwise
+    // send Prev/Next to the wrong marker.
+    const t = currentTimeRef.current;
+    const EPS = 0.05;
+    let idx: number;
+    if (dir === "next") {
+      idx = list.findIndex(m => m.time > t + EPS);
+      if (idx === -1) idx = 0;
+    } else {
+      idx = -1;
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i].time < t - EPS) { idx = i; break; }
+      }
+      if (idx === -1) idx = list.length - 1;
+    }
     const marker = list[idx];
     setSelectedIdxState(idx);
     selectedIdxRef.current = idx;

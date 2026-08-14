@@ -25,6 +25,8 @@ export const defaultShortcuts: Record<string, string> = {
   nudgeLoopEndBackSmall: "Ctrl+ArrowUp",
   nudgeLoopEndForwardSmall: "Ctrl+ArrowDown",
   addMarker: "m",
+  prevMarker: "Alt+ArrowLeft",
+  nextMarker: "Alt+ArrowRight",
   closePlayer: "Escape",
 };
 
@@ -50,6 +52,8 @@ export const shortcutMeta: Record<string, { label: string; description: string }
   nudgeLoopEndBackSmall: { label: "Loop end −0.5s", description: "Nudge loop end back 0.5s" },
   nudgeLoopEndForwardSmall: { label: "Loop end +0.5s", description: "Nudge loop end forward 0.5s" },
   addMarker: { label: "Add marker", description: "Drop a marker at current playhead" },
+  prevMarker: { label: "Previous marker", description: "Jump to the nearest marker before the playhead" },
+  nextMarker: { label: "Next marker", description: "Jump to the nearest marker after the playhead" },
   closePlayer: { label: "Close player", description: "Close the media player" },
 };
 
