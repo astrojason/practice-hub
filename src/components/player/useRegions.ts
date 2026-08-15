@@ -131,6 +131,25 @@ export function useRegions({ token, songId, onServerError }: Options) {
     }
   }, [token, onServerError]);
 
+  /** Update an existing region's fields in place (e.g. new loop bounds from editing it). */
+  const updateRegionAt = useCallback((id: string, patch: Partial<Omit<Region, "id" | "createdAt" | "section_id">>) => {
+    const region = regionsRef.current.find(r => r.id === id);
+    const next = regionsRef.current.map(r => r.id === id ? { ...r, ...patch } : r);
+    setRegionsState(next);
+    regionsRef.current = next;
+    if (token && region?.section_id) {
+      const serverPatch: { name?: string; start_seconds?: number; end_seconds?: number } = {};
+      if (patch.name !== undefined) serverPatch.name = patch.name;
+      if (patch.start !== undefined) serverPatch.start_seconds = patch.start;
+      if (patch.end !== undefined) serverPatch.end_seconds = patch.end;
+      if (Object.keys(serverPatch).length > 0) {
+        updateSongSection(token, region.section_id, serverPatch).catch(err => {
+          onServerError(`Failed to update region on server: ${err instanceof Error ? err.message : String(err)}`);
+        });
+      }
+    }
+  }, [token, onServerError]);
+
   /** Replace the whole list — used when applying a stored preset. */
   const loadRegions = useCallback((next: Region[] | undefined) => {
     const list = Array.isArray(next) ? [...next] : [];
@@ -153,6 +172,7 @@ export function useRegions({ token, songId, onServerError }: Options) {
     createRegion,
     removeRegion,
     renameRegionAt,
+    updateRegionAt,
     loadRegions,
   };
 }

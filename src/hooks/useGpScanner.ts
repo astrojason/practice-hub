@@ -35,6 +35,9 @@ const DEFAULT_ROOT = "/Users/jasonsylvester/Documents/Sheet Music";
 // the second-to-last as the title (may itself contain hyphens), and
 // everything before that as the artist.
 
+// Exported for tests/gp-filename-parse.spec.ts, which loads this module and calls
+// it via `(mod as any).parseFilename(...)` — invisible to static analysis.
+// fallow-ignore-next-line unused-export
 export function parseFilename(filename: string): {
   artist: string;
   title: string;
@@ -103,7 +106,7 @@ function computeRawFingerprint(entries: GpFileEntry[]): string {
 // alongside the dated file we just parsed, prefer it as the resource
 // (path/filename/modified_ms/size_bytes), while keeping the parsed
 // artist/title/date (from the dated file) for version tracking.
-export function resolveUndatedResource(file: GpFileParsed, rawEntries: GpFileEntry[]): GpFileParsed {
+function resolveUndatedResource(file: GpFileParsed, rawEntries: GpFileEntry[]): GpFileParsed {
   const ext = file.filename.match(/\.[^.]+$/)?.[0] ?? "";
   const dateSuffix = `-${file.parsed_date}`;
   const stem = file.filename.slice(0, file.filename.length - ext.length);
@@ -127,15 +130,7 @@ export function resolveUndatedResource(file: GpFileParsed, rawEntries: GpFileEnt
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
-export type ScanStatus = "idle" | "scanning" | "analyzing" | "done" | "error";
-
-export interface GpScannerState {
-  rootPath: string;
-  scanResult: GpScanResult | null;
-  status: ScanStatus;
-  statusMessage: string;
-  progress: { current: number; total: number };
-}
+type ScanStatus = "idle" | "scanning" | "analyzing" | "done" | "error";
 
 export function useGpScanner(token: string) {
   const [rootPath, setRootPathState] = useState<string>(DEFAULT_ROOT);

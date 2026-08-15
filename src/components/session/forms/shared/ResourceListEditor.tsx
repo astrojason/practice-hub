@@ -8,7 +8,7 @@ export interface ResourceRow {
   type: string;
 }
 
-export function resourceUrlPlaceholder(type: string): string {
+function resourceUrlPlaceholder(type: string): string {
   if (type === "local_file" || type === "guitar_pro") return "/path/to/file";
   if (type === "local_folder") return "/path/to/folder";
   return "https://...";

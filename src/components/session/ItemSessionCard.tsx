@@ -19,7 +19,7 @@ import type { LastSessionData } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
 import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
 
-export function formatElapsed(seconds: number): string {
+function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
@@ -29,7 +29,7 @@ const STRUGGLING_ASPECTS = ["rhythm_rating", "lead_rating", "singing_rating"] as
 
 /** Returns true if, for songs, any aspect's last 3+ rated sessions are all Awful/Bad;
  * for exercises/study materials, if the last 3+ sessions overall are all Awful/Bad. */
-export function isStruggling(
+function isStruggling(
   sessions: AnySession[],
   entityType: "exercise" | "song" | "study_material",
 ): boolean {

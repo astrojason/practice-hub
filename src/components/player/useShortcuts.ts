@@ -3,7 +3,7 @@ import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLoca
 
 const SHORTCUT_KEY = "practicePlayerShortcuts";
 
-export const defaultShortcuts: Record<string, string> = {
+const defaultShortcuts: Record<string, string> = {
   increaseSpeed: "=",
   decreaseSpeed: "-",
   togglePlayPause: "Space",

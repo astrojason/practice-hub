@@ -11,8 +11,6 @@ import type {
   CreateExercisePayload,
   CreateStudyMaterialPayload,
   UserProfile,
-  UserSettings,
-  UpdateUserSettingsPayload,
   SongSessionPayload,
   SongSessionResponse,
   ExerciseSessionPayload,
@@ -61,25 +59,6 @@ export async function getUser(token: string): Promise<UserProfile> {
     headers: authHeaders(token),
   });
   return handleResponse<UserProfile>(response);
-}
-
-export async function getUserSettings(token: string): Promise<UserSettings> {
-  const response = await fetch(`${API_BASE_URL}/user/settings`, {
-    headers: authHeaders(token),
-  });
-  return handleResponse<UserSettings>(response);
-}
-
-export async function updateUserSettings(
-  token: string,
-  payload: UpdateUserSettingsPayload
-): Promise<UserSettings> {
-  const response = await fetch(`${API_BASE_URL}/user/settings`, {
-    method: "PUT",
-    headers: authHeaders(token),
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<UserSettings>(response);
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -208,13 +187,6 @@ export async function getExerciseCatalog(token: string): Promise<CatalogExercise
 }
 
 // ─── Quick Add catalog ────────────────────────────────────────────────────────
-
-export async function getOverdueSongs(token: string): Promise<Song[]> {
-  const response = await fetch(`${API_BASE_URL}/user-song-list/overdue`, {
-    headers: authHeaders(token),
-  });
-  return handleResponse<Song[]>(response);
-}
 
 export async function getCatalogSongs(
   token: string,
@@ -389,13 +361,6 @@ export async function getPracticePlans(token: string): Promise<{ plans: Practice
     headers: authHeaders(token),
   });
   return handleResponse<{ plans: PracticePlan[] }>(response);
-}
-
-export async function getActivePracticePlan(token: string): Promise<{ plan: PracticePlanWithEntries | null }> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan/active`, {
-    headers: authHeaders(token),
-  });
-  return handleResponse<{ plan: PracticePlanWithEntries | null }>(response);
 }
 
 export async function getPracticePlan(token: string, id: number): Promise<{ plan: PracticePlanWithEntries }> {

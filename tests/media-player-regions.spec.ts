@@ -84,3 +84,102 @@ test("saving, applying, renaming, and deleting a loop region works without crash
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
+
+test("editing a region's loop bounds and clicking Update Region changes it in place, without creating a duplicate", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+  await page.locator('button[title="Pause"]').click();
+
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  const setFromPlayhead = page.locator('button[title="Set from playhead"]');
+
+  // Region: 0 -> ~0.9s
+  await setFromPlayhead.first().click();
+  for (let i = 0; i < 6; i++) await skipForward.click();
+  await setFromPlayhead.nth(1).click();
+  await page.fill("#regionNameInput", "Verse");
+  await page.locator("#addRegionBtn").click();
+
+  const regionItem = page.locator(".mp-region-item", { hasText: "Verse" });
+  await expect(regionItem).toBeVisible();
+  const originalMeta = await regionItem.locator(".mp-region-meta").textContent();
+
+  // Apply it (seeks back to the region's start), then push the loop end further out.
+  await regionItem.click();
+  await expect(regionItem).toHaveClass(/is-active/);
+  for (let i = 0; i < 12; i++) await skipForward.click();
+  await setFromPlayhead.nth(1).click();
+
+  await expect(page.locator("#updateRegionBtn")).toBeVisible();
+  await page.locator("#updateRegionBtn").click();
+
+  // Still exactly one "Verse" region — updated in place, not duplicated.
+  await expect(page.locator(".mp-region-item", { hasText: "Verse" })).toHaveCount(1);
+  await expect(regionItem.locator(".mp-region-meta")).not.toHaveText(originalMeta ?? "");
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("the sequence checkbox sits immediately to the left of the region name, on the same row", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+
+  await page.locator('button[title="Set from playhead"]').first().click();
+  await page.locator('button[title="Skip forward 5%"]').click();
+  await page.locator('button[title="Set from playhead"]').nth(1).click();
+  await page.fill("#regionNameInput", "Verse");
+  await page.locator("#addRegionBtn").click();
+
+  const regionItem = page.locator(".mp-region-item", { hasText: "Verse" });
+  await expect(regionItem).toBeVisible();
+  const checkbox = regionItem.locator('input[type="checkbox"]');
+  const title = regionItem.locator(".mp-region-title");
+  const checkboxBox = await checkbox.boundingBox();
+  const titleBox = await title.boundingBox();
+  expect(checkboxBox).not.toBeNull();
+  expect(titleBox).not.toBeNull();
+
+  // Same row: vertical centers line up within a few pixels.
+  const checkboxCenterY = checkboxBox!.y + checkboxBox!.height / 2;
+  const titleCenterY = titleBox!.y + titleBox!.height / 2;
+  expect(Math.abs(checkboxCenterY - titleCenterY)).toBeLessThan(6);
+  // Checkbox to the left of the name.
+  expect(checkboxBox!.x).toBeLessThan(titleBox!.x);
+});
+
+test("the region list scrolls instead of growing unbounded once there are many regions", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+
+  await page.locator('button[title="Set from playhead"]').first().click();
+  await page.locator('button[title="Skip forward 5%"]').click();
+  await page.locator('button[title="Set from playhead"]').nth(1).click();
+
+  for (let i = 1; i <= 8; i++) {
+    await page.fill("#regionNameInput", `Region ${i}`);
+    await page.locator("#addRegionBtn").click();
+    await expect(page.locator(".mp-region-item", { hasText: `Region ${i}` })).toBeVisible();
+  }
+
+  const list = page.locator("#regionList");
+  const { scrollHeight, clientHeight, overflowY } = await list.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, overflowY: style.overflowY };
+  });
+  expect(overflowY).toMatch(/auto|scroll/);
+  expect(scrollHeight).toBeGreaterThan(clientHeight);
+});

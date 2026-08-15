@@ -109,16 +109,6 @@ export interface StudyMaterialSession {
   updated_timestamp: number;
 }
 
-export interface OpenSession {
-  id: number;
-  user_id: number;
-  rating: StudyRating | null;
-  seconds: number;
-  notes: string | null;
-  created_timestamp: number;
-  updated_timestamp: number;
-}
-
 // ─── Song sections ────────────────────────────────────────────────────────────
 
 export interface SongSection {
@@ -144,21 +134,6 @@ export interface UpdateSongSectionPayload {
   start_seconds?: number | null;
   end_seconds?: number | null;
   order?: number;
-}
-
-export interface SongSectionSession {
-  id: number;
-  song_session_id: number;
-  song_section_id: number;
-  seconds: number;
-  notes: string | null;
-  created_timestamp: number;
-}
-
-export interface SongSectionSessionPayload {
-  song_section_id: number;
-  seconds: number;
-  notes: string | null;
 }
 
 // ─── Song ─────────────────────────────────────────────────────────────────────
@@ -331,37 +306,6 @@ export interface UserProfile {
   max_days_no_review: number;
   min_days_between_reviews: number;
   num_songs_to_learn: number;
-}
-
-// ─── User settings (GET/PUT /user/settings) ───────────────────────────────────
-
-export interface UserSettings {
-  id: number;
-  firebase_uid: string;
-  uid: string;
-  email: string;
-  name: string | null;
-  picture: string | null;
-  created_timestamp: number;
-  updated_timestamp: number;
-  max_days_no_review: number;
-  min_days_between_reviews: number;
-  num_songs_to_learn: number;
-  primary_instrument: number | null;
-  days_scale_study: number;
-  total_time_practiced: number;
-  daily_minutes_goal: number;
-  is_admin: boolean;
-  timezone: string;
-  time_practiced_today?: number;
-}
-
-export interface UpdateUserSettingsPayload {
-  num_songs_to_learn?: number;
-  max_days_no_review?: number;
-  min_days_between_reviews?: number;
-  daily_minutes_goal?: number;
-  days_scale_study?: number;
 }
 
 // ─── Session POST payloads ────────────────────────────────────────────────────
@@ -608,43 +552,6 @@ export interface GpSeenEntry {
   dismissed: boolean;
   /** Whether this file's score/resource has been pushed to Instrumenta. */
   pushed: boolean;
-}
-
-// ─── GP tab viewer ────────────────────────────────────────────────────────────
-
-export interface GpViewNote {
-  string: number;        // 1-indexed: 1 = highest pitch string
-  fret: number;
-  techniques: string[];  // e.g. ["h"], ["p"], ["b"], ["pm"], ["x"], ["vib"], ["t"], ["harm"]
-}
-
-export interface GpViewBeat {
-  position: number;      // position within measure in beats (0 to beats_per_bar)
-  duration: number;      // duration in beats
-  is_rest: boolean;
-  notes: GpViewNote[];
-}
-
-export interface GpViewMeasure {
-  index: number;
-  time_sig: string;      // e.g. "4/4"
-  beats_per_bar: number;
-  beats: GpViewBeat[];
-}
-
-export interface GpViewTrack {
-  name: string;
-  instrument: string | null;
-  string_count: number;
-  bar_count: number;
-  measures: GpViewMeasure[];
-}
-
-export interface GpViewData {
-  title: string | null;
-  artist: string | null;
-  tempo_bpm: number;
-  tracks: GpViewTrack[];
 }
 
 // ─── Practice plan ────────────────────────────────────────────────────────────

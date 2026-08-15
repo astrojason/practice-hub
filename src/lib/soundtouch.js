@@ -740,4 +740,4 @@ class PitchShifterWorklet {
   }
 }
 
-export { AbstractFifoSamplePipe, PitchShifterWorklet, RateTransposer, SimpleFilter, SoundTouch, Stretch, loadSoundTouchWorklet };
+export { PitchShifterWorklet, loadSoundTouchWorklet };

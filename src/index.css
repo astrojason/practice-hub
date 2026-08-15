@@ -1764,6 +1764,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .mp-region-item {
@@ -1783,7 +1785,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   background: var(--accent-dim);
 }
 
+.mp-region-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mp-region-select-checkbox {
+  flex-shrink: 0;
+}
+
 .mp-region-title {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   font-weight: 500;
   color: var(--text);

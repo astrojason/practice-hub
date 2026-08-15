@@ -4,7 +4,7 @@ import { inferResourceType } from "../components/session/forms/shared/inferResou
 import type { DashboardData, DashboardExercise, DashboardStudyMaterial } from "../api/types";
 import type { SequentialChild } from "../components/session/SequentialSessionModal";
 
-export interface SequentialSessionState {
+interface SequentialSessionState {
   type: "exercise" | "study_material";
   parentId: number;
   parentName: string;

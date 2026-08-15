@@ -1,4 +1,8 @@
+## Bugs
+
 ## Features
+
+## Enhancements
 
 ### Ratings & Difficulty Engine — Phase 2 (all auto-population of difficulty)
 

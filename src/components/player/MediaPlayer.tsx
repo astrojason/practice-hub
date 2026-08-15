@@ -17,7 +17,7 @@ import { ErrorModal } from "../ErrorModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type PlayerMediaType = "audio" | "video";
+type PlayerMediaType = "audio" | "video";
 
 interface Props {
   filePath: string;
@@ -1002,6 +1002,31 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     savePreset({ silent: true });
   };
 
+  const updateActiveRegion = () => {
+    const id = regionState.activeRegionIdRef.current;
+    if (!id || dur <= 0) return;
+    const ls = parseTimeInput(loopStartInput, dur) ?? 0;
+    const le = parseTimeInput(loopEndInput, dur) ?? dur;
+    if (le <= ls) {
+      showToast("Loop end must be after loop start.", { icon: "⚠️", tone: "warning" });
+      return;
+    }
+    const existing = regionState.regionsRef.current.find(r => r.id === id);
+    const name = regionNameInput.trim() || existing?.name || "";
+    regionState.updateRegionAt(id, {
+      name,
+      start: ls,
+      end: le,
+      playbackSpeed: speedRef.current,
+      speedIncreasePercent: loopIncreaseBy,
+      speedIncreaseInterval: loopIncreaseAt,
+      increaseEnabled: loopIncreaseEnabled,
+    });
+    setPresetStatus("Region updated");
+    showToast(`Region "${name}" updated.`, { icon: "✏️" });
+    savePreset({ silent: true });
+  };
+
   // ── Region sequence playback ─────────────────────────────────────────────────
 
   const seekTo = useCallback((t: number) => {
@@ -1622,6 +1647,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                   onChange={e => setRegionNameInput(e.target.value)}
                 />
                 <button className="btn-ghost btn-xs" id="addRegionBtn" onClick={saveRegion} title="Save current loop as a new region">Save Region</button>
+                {regionState.activeRegionId && (
+                  <button className="btn-ghost btn-xs" id="updateRegionBtn" onClick={updateActiveRegion} title="Update the applied region with the current loop bounds, name, and speed">Update Region</button>
+                )}
               </div>
               {regionState.regions.length > 0 && (
                 <ul id="regionList" className="mp-region-list">
@@ -1639,39 +1667,41 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                         onClick={() => { if (!isEditing) applyRegion(region.id); }}
                         style={{ cursor: "pointer" }}
                       >
-                        <input
-                          type="checkbox"
-                          className="mp-region-select-checkbox"
-                          checked={regionState.selectedIds.includes(region.id)}
-                          onClick={e => e.stopPropagation()}
-                          onChange={() => regionState.toggleSelected(region.id)}
-                          title="Include in sequence"
-                        />
-                        {isEditing ? (
+                        <div className="mp-region-row">
                           <input
-                            className="mp-region-name-input"
-                            value={editingRegionName}
-                            autoFocus
+                            type="checkbox"
+                            className="mp-region-select-checkbox"
+                            checked={regionState.selectedIds.includes(region.id)}
                             onClick={e => e.stopPropagation()}
-                            onChange={e => setEditingRegionName(e.target.value)}
-                            onBlur={() => {
-                              renameRegion(region.id, editingRegionName.trim() || region.name);
-                              setEditingRegionId(null);
-                            }}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") {
+                            onChange={() => regionState.toggleSelected(region.id)}
+                            title="Include in sequence"
+                          />
+                          {isEditing ? (
+                            <input
+                              className="mp-region-name-input"
+                              value={editingRegionName}
+                              autoFocus
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setEditingRegionName(e.target.value)}
+                              onBlur={() => {
                                 renameRegion(region.id, editingRegionName.trim() || region.name);
                                 setEditingRegionId(null);
-                              } else if (e.key === "Escape") {
-                                setEditingRegionId(null);
-                              }
-                            }}
-                          />
-                        ) : (
-                          <div className="mp-region-title">
-                            {region.name || `Region ${idx + 1}`}
-                          </div>
-                        )}
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") {
+                                  renameRegion(region.id, editingRegionName.trim() || region.name);
+                                  setEditingRegionId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingRegionId(null);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div className="mp-region-title">
+                              {region.name || `Region ${idx + 1}`}
+                            </div>
+                          )}
+                        </div>
                         <div className="mp-region-meta">
                           {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{incStr}
                         </div>
