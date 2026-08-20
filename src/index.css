@@ -2684,3 +2684,28 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   border-bottom: 1px solid var(--border-dim);
   background: rgba(0, 0, 0, 0.2);
 }
+
+/* Always-visible, click-to-view-changelog version badge — pinned to the
+ * viewport so it stays reachable regardless of scroll position or which
+ * modal/overlay (e.g. the media player) is currently open on top of it. */
+.app-version-footer {
+  position: fixed;
+  bottom: 8px;
+  right: 10px;
+  z-index: 1000;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.app-version-footer:hover {
+  opacity: 1;
+  color: var(--text-dim);
+  border-color: var(--text-dim);
+}

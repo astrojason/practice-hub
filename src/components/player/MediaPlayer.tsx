@@ -12,7 +12,7 @@ import { useMetronomeEngine } from "./useMetronomeEngine";
 import { useMarkers, type WaveMarker } from "./useMarkers";
 import { useRegions, type Region } from "./useRegions";
 import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
-import { seekVideo } from "./videoSeek";
+import { seekVideo, getVideoTime } from "./videoSeek";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { ErrorModal } from "../ErrorModal";
 
@@ -186,7 +186,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   // ── Markers ─────────────────────────────────────────────────────────────────
   const markerState = useMarkers({
     dur,
-    getCurrentTime: () => isVideo ? (videoRef.current?.currentTime ?? currentTime) : audioActions.getCurrentTime(),
+    getCurrentTime: () => isVideo ? (videoRef.current ? getVideoTime(videoRef.current) : currentTime) : audioActions.getCurrentTime(),
     isVideo,
     videoRef,
     seekAudio: (t) => audioActions.seek(t),

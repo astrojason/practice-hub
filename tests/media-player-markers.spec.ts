@@ -322,6 +322,87 @@ test("marker Next issued before video metadata has loaded still lands on the rig
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
 
+// While a seek is still deferred (readyState hasn't reached HAVE_METADATA — see
+// above), `vid.currentTime` itself hasn't moved yet. If a second Next click reads
+// that unmoved value to compute where to jump next, it recomputes the exact same
+// answer as the first click and the user is stuck landing back on marker 1 no
+// matter how many times they click — "Next just keeps taking me back to the
+// start." getCurrentTime must use the pending seek target, not the stale DOM value,
+// so repeated clicks before the video is ready still advance correctly.
+test("clicking Next twice before video metadata has loaded advances to the second marker, not back to the first", async ({ page }) => {
+  await page.addInitScript((preset) => {
+    localStorage.setItem("practicePlayerPresets", JSON.stringify({ "/path/to/practice.mp4": preset }));
+  }, {
+    filePath: "/path/to/practice.mp4",
+    mediaType: "video",
+    playbackSpeed: 1,
+    loopStart: "",
+    loopEnd: "",
+    loopIncreaseBy: "5",
+    loopIncreaseAt: "3",
+    loopIncreaseEnabled: false,
+    loopPlaybackEnabled: false,
+    metronomeBpm: 0,
+    pitchSemitones: 0,
+    pitchCents: 0,
+    regions: [],
+    markers: [{ time: 3, name: "" }, { time: 6, name: "" }, { time: 9, name: "" }, { time: 11.5, name: "" }],
+    updatedAt: Date.now(),
+  });
+
+  const videoBuf = fs.readFileSync(path.join(__dirname, "fixtures", "test-video.mp4"));
+  await page.route("**/127.0.0.1:17865/**", async (route) => {
+    await new Promise(r => setTimeout(r, 1500)); // simulate metadata taking a moment to establish
+    const range = route.request().headers()["range"];
+    if (range) {
+      const m = /bytes=(\d+)-(\d*)/.exec(range);
+      const start = m ? parseInt(m[1], 10) : 0;
+      const end = m && m[2] ? parseInt(m[2], 10) : videoBuf.length - 1;
+      route.fulfill({
+        status: 206,
+        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${videoBuf.length}` },
+        body: videoBuf.subarray(start, end + 1),
+      });
+    } else {
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Length": String(videoBuf.length) },
+        body: videoBuf,
+      });
+    }
+  });
+
+  await page.reload();
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Video" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator("#waveMarkerLabel")).toContainText("4 markers");
+
+  await expect(page.evaluate(() => document.querySelector("video")!.readyState)).resolves.toBe(0);
+  const nextBtn = page.locator("#waveNextMarkerBtn");
+  const label = page.locator("#waveMarkerLabel");
+
+  await nextBtn.click();
+  await expect(label).toContainText("1/4 selected");
+  // Still not ready — the second click must not see the first seek's target as
+  // "already there" and recompute from the stale (pre-seek) DOM value.
+  await expect(page.evaluate(() => document.querySelector("video")!.readyState)).resolves.toBe(0);
+  await nextBtn.click();
+  await expect(label).toContainText("2/4 selected");
+
+  const atReady = await page.evaluate(() => new Promise<number>((resolve) => {
+    const v = document.querySelector("video") as HTMLVideoElement;
+    if (v.readyState >= 1) { resolve(v.currentTime); return; }
+    v.addEventListener("loadedmetadata", () => resolve(v.currentTime), { once: true });
+  }));
+  expect(atReady).toBeCloseTo(6, 0);
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
 test("Alt+ArrowLeft/Right navigate markers via keyboard shortcuts", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();

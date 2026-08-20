@@ -8,6 +8,9 @@ import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { BrowseView } from "./components/BrowseView";
 import { Changelog } from "./components/Changelog";
 import { ErrorModal } from "./components/ErrorModal";
+import pkgJson from "../package.json";
+
+const APP_VERSION: string = pkgJson.version;
 
 type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog";
 
@@ -63,24 +66,17 @@ export function App() {
     return <SignInScreen onSignIn={signIn} restoreError={authError} />;
   }
 
+  let content;
   if (view === "gp-library") {
-    return <GpLibraryView token={token} onBack={() => setView("session")} />;
-  }
-
-  if (view === "calendar") {
-    return <InterleavedCalendarView token={token} onBack={() => setView("session")} />;
-  }
-
-  if (view === "browse") {
-    return <BrowseView token={token} onBack={() => setView("session")} />;
-  }
-
-  if (view === "changelog") {
-    return <Changelog onBack={() => setView("session")} />;
-  }
-
-  return (
-    <>
+    content = <GpLibraryView token={token} onBack={() => setView("session")} />;
+  } else if (view === "calendar") {
+    content = <InterleavedCalendarView token={token} onBack={() => setView("session")} />;
+  } else if (view === "browse") {
+    content = <BrowseView token={token} onBack={() => setView("session")} />;
+  } else if (view === "changelog") {
+    content = <Changelog onBack={() => setView("session")} />;
+  } else {
+    content = (
       <SessionView
         token={token}
         onSignOut={signOut}
@@ -90,7 +86,20 @@ export function App() {
         onChangelog={() => setView("changelog")}
         onGpView={openGpFile}
       />
+    );
+  }
+
+  return (
+    <>
+      {content}
       {gpOpenError && <ErrorModal error={gpOpenError} onDismiss={() => setGpOpenError(null)} />}
+      <button
+        className="app-version-footer"
+        onClick={() => setView("changelog")}
+        title="View changelog"
+      >
+        v{APP_VERSION}
+      </button>
     </>
   );
 }
