@@ -1437,8 +1437,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         </div>
         <div className="mp-row mp-row--wrap">
           <button className="btn-ghost btn-xs" id="waveAddMarkerBtn" onClick={markerState.addMarkerFromCurrentTime} title="Add marker at playhead">Add</button>
-          <button className="btn-ghost btn-xs" id="wavePrevMarkerBtn" onClick={() => markerState.jumpToMarker("prev")} disabled={!markerState.markers.length} title="Previous marker">◀ Prev</button>
-          <button className="btn-ghost btn-xs" id="waveNextMarkerBtn" onClick={() => markerState.jumpToMarker("next")} disabled={!markerState.markers.length} title="Next marker">Next ▶</button>
+          <button className="btn-ghost btn-xs" id="wavePrevMarkerBtn" onClick={() => markerState.jumpToMarker("prev")} disabled={markerState.selectedIdx <= 0} title="Previous marker">◀ Prev</button>
+          <button className="btn-ghost btn-xs" id="waveNextMarkerBtn" onClick={() => markerState.jumpToMarker("next")} disabled={!markerState.markers.length || markerState.selectedIdx >= markerState.markers.length - 1} title="Next marker">Next ▶</button>
           <button className="btn-ghost btn-xs" id="waveDeleteMarkerBtn" onClick={markerState.deleteSelected} disabled={markerState.selectedIdx < 0} title="Delete selected marker">Delete</button>
           <button className="btn-ghost btn-xs" id="waveClearMarkersBtn" onClick={markerState.clearAll} disabled={!markerState.markers.length} title="Clear all markers">Clear all</button>
           {markerState.selectedIdx >= 0 && (

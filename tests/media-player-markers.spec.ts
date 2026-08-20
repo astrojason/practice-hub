@@ -110,7 +110,11 @@ test("adding, renaming, navigating, and deleting waveform markers works without 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
 
-test("marker Prev/Next navigate relative to the current playhead, not a stale selection", async ({ page }) => {
+// Prev/Next step through markers strictly by list order (selectedIdx ± 1), not by
+// comparing against the playhead — so scrubbing away from the selected marker
+// doesn't change what the next click does, and each button disables itself at
+// its end of the list instead of wrapping around.
+test("marker Prev/Next always move to the adjacent marker by order and disable at the ends", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
   const card = page.locator(".item-card").first();
@@ -126,118 +130,48 @@ test("marker Prev/Next navigate relative to the current playhead, not a stale se
   const skipBackward = page.locator('button[title="Skip back 5%"]');
   const label = page.locator("#waveMarkerLabel");
   const timeLabel = page.locator(".media-player__time");
+  const prevBtn = page.locator("#wavePrevMarkerBtn");
+  const nextBtn = page.locator("#waveNextMarkerBtn");
 
-  // M1 at t≈0.
+  // M1 at t≈0 — the only marker so far, so both ends are also the only marker.
   await page.locator("#waveAddMarkerBtn").click();
-  await expect(label).toContainText("1 marker");
+  await expect(label).toContainText("1/1 selected");
+  await expect(prevBtn).toBeDisabled();
+  await expect(nextBtn).toBeDisabled();
 
   // M2 at t≈0.90 (6 × 5% of a 3s clip).
   await clickAndSettle(skipForward, timeLabel, 6);
   await page.locator("#waveAddMarkerBtn").click();
-  await expect(label).toContainText("2 markers");
+  await expect(label).toContainText("2/2 selected");
+  await expect(nextBtn).toBeDisabled(); // newly added marker is selected and is last
 
-  // M3 at t≈1.80 — selection is now on M3 (the last-added marker).
+  // M3 at t≈1.80 — selection is now on M3 (the last-added marker, last in order).
   await clickAndSettle(skipForward, timeLabel, 6);
   await page.locator("#waveAddMarkerBtn").click();
   await expect(label).toContainText("3/3 selected");
+  await expect(nextBtn).toBeDisabled();
+  await expect(prevBtn).toBeEnabled();
 
-  // Scrub back to t≈0.30 — strictly between M1 and M2 — without touching markers.
-  // Selection is still stale on M3, but the nearest marker AFTER the playhead is M2.
-  await clickAndSettle(skipBackward, timeLabel, 10);
-  await page.locator("#waveNextMarkerBtn").click();
-  await expect(label).toContainText("2/3 selected");
-
-  // Now scrub forward past M3 to t≈2.10, again without touching markers.
-  // Selection is stale on M2, but the nearest marker BEFORE the playhead is M3.
-  await clickAndSettle(skipForward, timeLabel, 8);
-  await page.locator("#wavePrevMarkerBtn").click();
+  // Scrub back near M1, without touching markers — selection is unaffected by
+  // where the playhead physically is.
+  await clickAndSettle(skipBackward, timeLabel, 20);
   await expect(label).toContainText("3/3 selected");
 
-  await expect(page.locator(".error-modal")).toHaveCount(0);
-});
+  // Prev always steps to the strictly previous marker in the list, regardless
+  // of the scrub above.
+  await prevBtn.click();
+  await expect(label).toContainText("2/3 selected");
+  await prevBtn.click();
+  await expect(label).toContainText("1/3 selected");
+  await expect(prevBtn).toBeDisabled(); // at the first marker now
 
-// Video's currentTime is only mirrored into React state by the <video> element's
-// `timeupdate` event. If a browser doesn't promptly fire `timeupdate` after a
-// programmatic seek while paused (observed on WebKit, which is what Tauri's macOS
-// webview uses), marker Prev/Next keeps computing from a stale playhead position
-// instead of the real one. This test disables `timeupdate` delivery entirely to
-// force that condition deterministically, and checks that Prev/Next still lands on
-// the correct marker by reading the live position straight off the video element.
-test("marker Prev/Next uses the live video position even if timeupdate never fires", async ({ page }) => {
-  await page.addInitScript(() => {
-    const orig = HTMLMediaElement.prototype.addEventListener;
-    HTMLMediaElement.prototype.addEventListener = function (type: string, ...args: unknown[]) {
-      if (type === "timeupdate") return;
-      // eslint-disable-next-line prefer-spread
-      return (orig as any).apply(this, [type, ...args]);
-    };
-  });
-  await page.addInitScript((preset) => {
-    localStorage.setItem("practicePlayerPresets", JSON.stringify({ "/path/to/practice.mp4": preset }));
-  }, {
-    filePath: "/path/to/practice.mp4",
-    mediaType: "video",
-    playbackSpeed: 1,
-    loopStart: "",
-    loopEnd: "",
-    loopIncreaseBy: "5",
-    loopIncreaseAt: "3",
-    loopIncreaseEnabled: false,
-    loopPlaybackEnabled: false,
-    metronomeBpm: 0,
-    pitchSemitones: 0,
-    pitchCents: 0,
-    regions: [],
-    markers: [{ time: 3, name: "" }, { time: 6, name: "" }, { time: 9, name: "" }, { time: 11.5, name: "" }],
-    updatedAt: Date.now(),
-  });
-
-  const videoBuf = fs.readFileSync(path.join(__dirname, "fixtures", "test-video.mp4"));
-  await page.route("**/127.0.0.1:17865/**", (route) => {
-    const range = route.request().headers()["range"];
-    if (range) {
-      const m = /bytes=(\d+)-(\d*)/.exec(range);
-      const start = m ? parseInt(m[1], 10) : 0;
-      const end = m && m[2] ? parseInt(m[2], 10) : videoBuf.length - 1;
-      route.fulfill({
-        status: 206,
-        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${videoBuf.length}` },
-        body: videoBuf.subarray(start, end + 1),
-      });
-    } else {
-      route.fulfill({
-        status: 200,
-        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Length": String(videoBuf.length) },
-        body: videoBuf,
-      });
-    }
-  });
-
-  // The beforeEach already navigated before the addInitScript calls above were
-  // registered, so reload to make sure they actually apply.
-  await page.reload();
-  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
-  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
-  const card = page.locator(".item-card").first();
-  await card.locator('button[title="Log session"]').click();
-  await page.locator(".modal-resource-link--local", { hasText: "Practice Video" }).click();
-  await expect(page.locator(".media-player")).toBeVisible();
-  await expect(page.locator("#waveMarkerLabel")).toContainText("4 markers");
-  await page.locator('button[title="Pause"]').click();
-
-  const label = page.locator("#waveMarkerLabel");
-  const nextBtn = page.locator("#waveNextMarkerBtn");
-
-  // First Next: playhead is genuinely at ~0, so this should land on M1 (3s) either way.
+  // Next always steps to the strictly next marker.
   await nextBtn.click();
-  await expect(label).toContainText("1/4 selected");
-  await expect.poll(() => page.evaluate(() => document.querySelector("video")!.currentTime)).toBeCloseTo(3, 0);
-
-  // Second Next: with timeupdate blocked, the buggy code still thinks t=0 and
-  // re-selects M1 instead of advancing to M2 (6s).
+  await expect(label).toContainText("2/3 selected");
+  await expect(prevBtn).toBeEnabled();
   await nextBtn.click();
-  await expect(label).toContainText("2/4 selected");
-  await expect.poll(() => page.evaluate(() => document.querySelector("video")!.currentTime)).toBeCloseTo(6, 0);
+  await expect(label).toContainText("3/3 selected");
+  await expect(nextBtn).toBeDisabled(); // at the last marker now
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
@@ -247,12 +181,15 @@ test("marker Prev/Next uses the live video position even if timeupdate never fir
 // Chromium, it does not defer/honor it once metadata loads; playback just
 // continues from wherever autoplay left it. This matters in practice because a
 // large/non-optimized video can take a moment to establish metadata over the
-// local Range-serving file server, and a user clicking marker Next right after
-// opening the player (before that completes) would see the seek silently do
-// nothing. This test forces that window open by delaying every response from the
-// local file server, and checks the marker jump still lands correctly once
-// metadata becomes available.
-test("marker Next issued before video metadata has loaded still lands on the right marker", async ({ page }) => {
+// local Range-serving file server, and clicking marker Next right after opening
+// the player (before that completes) would seek nowhere. Since Prev/Next now
+// jump by list order rather than by playhead position, the *selection* always
+// updates immediately regardless of video readiness — what this test actually
+// exercises is that the underlying seek is still deferred-and-applied correctly
+// (landing on the last-requested marker, not silently dropped or stuck on an
+// earlier one) once metadata becomes available, including across two rapid
+// clicks issued before the video was ever ready.
+test("marker Next clicked twice before video metadata has loaded still ends up seeked to the second marker", async ({ page }) => {
   await page.addInitScript((preset) => {
     localStorage.setItem("practicePlayerPresets", JSON.stringify({ "/path/to/practice.mp4": preset }));
   }, {
@@ -302,103 +239,30 @@ test("marker Next issued before video metadata has loaded still lands on the rig
   await card.locator('button[title="Log session"]').click();
   await page.locator(".modal-resource-link--local", { hasText: "Practice Video" }).click();
   await expect(page.locator(".media-player")).toBeVisible();
-  await expect(page.locator("#waveMarkerLabel")).toContainText("4 markers");
-
-  // Metadata hasn't loaded yet (readyState 0) — click Next right away.
-  await expect(page.evaluate(() => document.querySelector("video")!.readyState)).resolves.toBe(0);
-  await page.locator("#waveNextMarkerBtn").click();
-  await expect(page.locator("#waveMarkerLabel")).toContainText("1/4 selected");
-
-  // The instant metadata becomes available, currentTime should already reflect
-  // the deferred seek to M1 (3s) — not 0 (dropped) and not some later position
-  // reached by autoplay running unseeked in the meantime.
-  const atReady = await page.evaluate(() => new Promise<number>((resolve) => {
-    const v = document.querySelector("video") as HTMLVideoElement;
-    if (v.readyState >= 1) { resolve(v.currentTime); return; }
-    v.addEventListener("loadedmetadata", () => resolve(v.currentTime), { once: true });
-  }));
-  expect(atReady).toBeCloseTo(3, 0);
-
-  await expect(page.locator(".error-modal")).toHaveCount(0);
-});
-
-// While a seek is still deferred (readyState hasn't reached HAVE_METADATA — see
-// above), `vid.currentTime` itself hasn't moved yet. If a second Next click reads
-// that unmoved value to compute where to jump next, it recomputes the exact same
-// answer as the first click and the user is stuck landing back on marker 1 no
-// matter how many times they click — "Next just keeps taking me back to the
-// start." getCurrentTime must use the pending seek target, not the stale DOM value,
-// so repeated clicks before the video is ready still advance correctly.
-test("clicking Next twice before video metadata has loaded advances to the second marker, not back to the first", async ({ page }) => {
-  await page.addInitScript((preset) => {
-    localStorage.setItem("practicePlayerPresets", JSON.stringify({ "/path/to/practice.mp4": preset }));
-  }, {
-    filePath: "/path/to/practice.mp4",
-    mediaType: "video",
-    playbackSpeed: 1,
-    loopStart: "",
-    loopEnd: "",
-    loopIncreaseBy: "5",
-    loopIncreaseAt: "3",
-    loopIncreaseEnabled: false,
-    loopPlaybackEnabled: false,
-    metronomeBpm: 0,
-    pitchSemitones: 0,
-    pitchCents: 0,
-    regions: [],
-    markers: [{ time: 3, name: "" }, { time: 6, name: "" }, { time: 9, name: "" }, { time: 11.5, name: "" }],
-    updatedAt: Date.now(),
-  });
-
-  const videoBuf = fs.readFileSync(path.join(__dirname, "fixtures", "test-video.mp4"));
-  await page.route("**/127.0.0.1:17865/**", async (route) => {
-    await new Promise(r => setTimeout(r, 1500)); // simulate metadata taking a moment to establish
-    const range = route.request().headers()["range"];
-    if (range) {
-      const m = /bytes=(\d+)-(\d*)/.exec(range);
-      const start = m ? parseInt(m[1], 10) : 0;
-      const end = m && m[2] ? parseInt(m[2], 10) : videoBuf.length - 1;
-      route.fulfill({
-        status: 206,
-        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${videoBuf.length}` },
-        body: videoBuf.subarray(start, end + 1),
-      });
-    } else {
-      route.fulfill({
-        status: 200,
-        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Length": String(videoBuf.length) },
-        body: videoBuf,
-      });
-    }
-  });
-
-  await page.reload();
-  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
-  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
-  const card = page.locator(".item-card").first();
-  await card.locator('button[title="Log session"]').click();
-  await page.locator(".modal-resource-link--local", { hasText: "Practice Video" }).click();
-  await expect(page.locator(".media-player")).toBeVisible();
-  await expect(page.locator("#waveMarkerLabel")).toContainText("4 markers");
+  // The first marker (3s) is auto-selected as soon as the preset loads.
+  await expect(page.locator("#waveMarkerLabel")).toContainText("4 markers · 1/4 selected");
 
   await expect(page.evaluate(() => document.querySelector("video")!.readyState)).resolves.toBe(0);
   const nextBtn = page.locator("#waveNextMarkerBtn");
   const label = page.locator("#waveMarkerLabel");
 
-  await nextBtn.click();
-  await expect(label).toContainText("1/4 selected");
-  // Still not ready — the second click must not see the first seek's target as
-  // "already there" and recompute from the stale (pre-seek) DOM value.
-  await expect(page.evaluate(() => document.querySelector("video")!.readyState)).resolves.toBe(0);
+  // Selection advances synchronously regardless of video readiness — both clicks
+  // land immediately even though metadata is still loading.
   await nextBtn.click();
   await expect(label).toContainText("2/4 selected");
+  await expect(page.evaluate(() => document.querySelector("video")!.readyState)).resolves.toBe(0);
+  await nextBtn.click();
+  await expect(label).toContainText("3/4 selected");
 
+  // Once metadata becomes available, the actual seek should land on the LAST
+  // requested marker (9s, the 3rd) — not silently dropped (0) and not stuck on
+  // the first click's target (6s).
   const atReady = await page.evaluate(() => new Promise<number>((resolve) => {
     const v = document.querySelector("video") as HTMLVideoElement;
     if (v.readyState >= 1) { resolve(v.currentTime); return; }
     v.addEventListener("loadedmetadata", () => resolve(v.currentTime), { once: true });
   }));
-  expect(atReady).toBeCloseTo(6, 0);
+  expect(atReady).toBeCloseTo(9, 0);
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
