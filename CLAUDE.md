@@ -36,6 +36,7 @@ Rules:
 Keep `TODO.md` up to date:
 
 - Remove items from TODO.md once the work has been committed — do not leave them checked off. The git log is the record.
+- A TODO.md item is a promise that the described work is still outstanding. Once a fix or feature for it lands in git history (i.e. it's in a commit, whether or not that commit has been pushed), remove the item in that same commit — never leave it in TODO.md "for reference" or "for tracking" once it's done. If a commit fixes something without removing its TODO.md entry, that's a bug in the commit.
 - Add new bugs or planned features as they are identified.
 
 ## Versioning

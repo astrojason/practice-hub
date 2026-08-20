@@ -12,6 +12,7 @@ import { useMetronomeEngine } from "./useMetronomeEngine";
 import { useMarkers, type WaveMarker } from "./useMarkers";
 import { useRegions, type Region } from "./useRegions";
 import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
+import { seekVideo } from "./videoSeek";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { ErrorModal } from "../ErrorModal";
 
@@ -185,7 +186,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   // ── Markers ─────────────────────────────────────────────────────────────────
   const markerState = useMarkers({
     dur,
-    currentTime,
+    getCurrentTime: () => isVideo ? (videoRef.current?.currentTime ?? currentTime) : audioActions.getCurrentTime(),
     isVideo,
     videoRef,
     seekAudio: (t) => audioActions.seek(t),
@@ -279,7 +280,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (!region) return;
     regionState.setActiveRegionId(region.id);
     if (isVideo && videoRef.current) {
-      videoRef.current.currentTime = region.start;
+      seekVideo(videoRef.current, region.start);
     } else {
       audioActions.seek(region.start);
       audioActions.setLoopStart(region.start);
@@ -720,7 +721,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const t = ratio * dur;
-    if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+    if (isVideo && videoRef.current) seekVideo(videoRef.current, t);
     else audioActions.seek(t);
   }, [isVideo, dur, audioActions]);
 
@@ -808,7 +809,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (dur <= 0) return;
     const delta = dur * pct;
     const t = Math.max(0, Math.min(dur, currentTime + delta));
-    if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+    if (isVideo && videoRef.current) seekVideo(videoRef.current, t);
     else audioActions.seek(t);
   };
 
@@ -983,7 +984,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     regionState.setActiveRegionId(id);
     setRegionNameInput(region.name ?? "");
     showToast(`Region "${region.name}" applied (${formatTime(region.start)} → ${formatTime(region.end)})`, { icon: "🎯" });
-    if (isVideo && videoRef.current) videoRef.current.currentTime = region.start;
+    if (isVideo && videoRef.current) seekVideo(videoRef.current, region.start);
     else audioActions.seek(region.start);
     schedulePresetSave();
   };
@@ -1030,7 +1031,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   // ── Region sequence playback ─────────────────────────────────────────────────
 
   const seekTo = useCallback((t: number) => {
-    if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+    if (isVideo && videoRef.current) seekVideo(videoRef.current, t);
     else audioActions.seek(t);
   }, [isVideo, audioActions]);
 
@@ -1185,14 +1186,14 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         case "seekBackward": {
           if (dur <= 0) break;
           const t = Math.max(0, currentTime - SEEK_STEP);
-          if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+          if (isVideo && videoRef.current) seekVideo(videoRef.current, t);
           else audioActions.seek(t);
           break;
         }
         case "seekForward": {
           if (dur <= 0) break;
           const t = Math.min(dur, currentTime + SEEK_STEP);
-          if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+          if (isVideo && videoRef.current) seekVideo(videoRef.current, t);
           else audioActions.seek(t);
           break;
         }
@@ -1325,7 +1326,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           <button className="btn-ghost btn-xs" onClick={() => {
             const ls = parseTimeInput(loopStartInput, dur);
             const t = ls ?? 0;
-            if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+            if (isVideo && videoRef.current) seekVideo(videoRef.current, t);
             else audioActions.seek(t);
           }} title="Go to loop start">⏮</button>
           <button
@@ -1339,7 +1340,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           <button className="btn-ghost btn-xs" onClick={() => {
             const le = parseTimeInput(loopEndInput, dur);
             const t = le ?? dur;
-            if (isVideo && videoRef.current) videoRef.current.currentTime = t;
+            if (isVideo && videoRef.current) seekVideo(videoRef.current, t);
             else audioActions.seek(t);
           }} title="Go to loop end">⏭</button>
           <button className="btn-ghost btn-xs" onClick={() => jumpByPercent(0.05)} title="Skip forward 5%">

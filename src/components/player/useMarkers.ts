@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { seekVideo } from "./videoSeek";
 
 export interface WaveMarker {
   time: number;
@@ -7,7 +8,10 @@ export interface WaveMarker {
 
 interface Options {
   dur: number;
-  currentTime: number;
+  /** Reads the authoritative playhead position at call time — must not rely on
+   * React state mirrored from a DOM event (e.g. video `timeupdate`), which can
+   * lag or fail to fire promptly after a programmatic seek while paused. */
+  getCurrentTime: () => number;
   isVideo: boolean;
   videoRef: RefObject<HTMLVideoElement | null>;
   seekAudio: (time: number) => void;
@@ -16,17 +20,17 @@ interface Options {
 }
 
 /** Waveform markers: add/delete/nudge/jump, kept in sync with a ref for synchronous reads (preset snapshots, keyboard shortcuts). */
-export function useMarkers({ dur, currentTime, isVideo, videoRef, seekAudio, onChange }: Options) {
+export function useMarkers({ dur, getCurrentTime, isVideo, videoRef, seekAudio, onChange }: Options) {
   const [markers, setMarkersState] = useState<WaveMarker[]>([]);
   const [selectedIdx, setSelectedIdxState] = useState(-1);
   const [nameInput, setNameInput] = useState("");
   const markersRef = useRef<WaveMarker[]>([]);
   const selectedIdxRef = useRef(-1);
   const durRef = useRef(dur);
-  const currentTimeRef = useRef(currentTime);
+  const getCurrentTimeRef = useRef(getCurrentTime);
 
   useEffect(() => { durRef.current = dur; }, [dur]);
-  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
+  useEffect(() => { getCurrentTimeRef.current = getCurrentTime; }, [getCurrentTime]);
 
   const addMarkerAt = useCallback((time: number) => {
     if (!Number.isFinite(time) || durRef.current <= 0) return;
@@ -51,7 +55,7 @@ export function useMarkers({ dur, currentTime, isVideo, videoRef, seekAudio, onC
   }, [onChange]);
 
   const addMarkerFromCurrentTime = useCallback(() => {
-    addMarkerAt(currentTimeRef.current);
+    addMarkerAt(getCurrentTimeRef.current());
   }, [addMarkerAt]);
 
   const jumpToMarker = useCallback((dir: "prev" | "next") => {
@@ -60,7 +64,7 @@ export function useMarkers({ dur, currentTime, isVideo, videoRef, seekAudio, onC
     // Navigate relative to the actual playhead, not the last-selected marker —
     // a stale selectedIdx (e.g. after scrubbing away from it) would otherwise
     // send Prev/Next to the wrong marker.
-    const t = currentTimeRef.current;
+    const t = getCurrentTimeRef.current();
     const EPS = 0.05;
     let idx: number;
     if (dir === "next") {
@@ -77,7 +81,7 @@ export function useMarkers({ dur, currentTime, isVideo, videoRef, seekAudio, onC
     setSelectedIdxState(idx);
     selectedIdxRef.current = idx;
     setNameInput(marker.name ?? "");
-    if (isVideo && videoRef.current) videoRef.current.currentTime = marker.time;
+    if (isVideo && videoRef.current) seekVideo(videoRef.current, marker.time);
     else seekAudio(marker.time);
   }, [isVideo, videoRef, seekAudio]);
 
