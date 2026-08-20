@@ -1,7 +1,5 @@
 ## Bugs
 
-- [ ] Audio "Skip forward/back" (`jumpByPercent` → `audioActions.seek` → engine restart while playing) doesn't register at all under WebKit — confirmed via the new `webkit` Playwright project; `tests/media-player-region-sequence.spec.ts` is skipped on WebKit until this is fixed. Doesn't affect the video seek path.
-
 ## Features
 
 ## Enhancements

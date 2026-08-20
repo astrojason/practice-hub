@@ -1,11 +1,5 @@
 import { test, expect } from "@playwright/test";
 
-// Pre-existing, unrelated to marker/video seeking: audio "Skip forward/back"
-// (jumpByPercent -> audioActions.seek -> engine restart) doesn't register at all
-// under WebKit in this test — see TODO.md. Skipping here so this known issue
-// doesn't block `npm run test:e2e` for unrelated work; un-skip once it's fixed.
-test.skip(({ browserName }) => browserName === "webkit", "audio skip-forward doesn't work under WebKit yet — see TODO.md");
-
 // A minimal valid, decodable WAV file (silence) so the audio engine reports a
 // real, nonzero duration — region/sequence actions are gated on `dur > 0`.
 function makeSilentWav(seconds: number): Buffer {
@@ -141,10 +135,18 @@ test("playing a sequence of selected regions auto-advances and applies each regi
   await expect(page.locator("#sequenceStatus")).toContainText("2/2");
   await expect(page.locator("#speedIndicator")).toHaveText("150%");
 
-  // Cross Chorus's end (~2.70s) with no loop — sequence should stop. Only 9
-  // clicks, not 10 — the 10th would land exactly on the clip's 3s duration,
-  // where a further skip-forward is a legitimate no-op (already clamped).
-  await clickAndSettle(9);
+  // Cross Chorus's end (~2.70s) with no loop — sequence should stop. Real-time
+  // audio position drift differs slightly across browser engines, so the exact
+  // click count needed to reach the boundary (and whether it overshoots into
+  // the clip's 3s clamp, where a further skip-forward is a legitimate no-op)
+  // varies too. Click enough to comfortably cross it in either engine, pausing
+  // briefly after each so clicks don't race ahead of state updates and
+  // under-count — what's actually under test is that the sequence stopped,
+  // not the exact resulting position.
+  for (let i = 0; i < 9; i++) {
+    await skipForward.click();
+    await page.waitForTimeout(80);
+  }
   await expect(page.locator("#playSequenceBtn")).toContainText("Play Sequence");
   await expect(page.locator("#sequenceStatus")).toHaveCount(0);
 
