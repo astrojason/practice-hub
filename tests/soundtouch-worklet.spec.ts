@@ -108,6 +108,46 @@ test("seeking via percentagePlayed setter updates the reported position", async 
   expect(result).toBeCloseTo(50, 0);
 });
 
+// disconnect() alone doesn't stop the processor's process() callback — the
+// audio rendering thread keeps calling it every quantum regardless of graph
+// connections, so a "paused" (merely disconnected) worklet kept silently
+// advancing its own position in the background and could reach the end and
+// fire onEnd() even though playback looked stopped. pause()/resume() actually
+// freeze/unfreeze it via a message to the processor.
+test("pause() freezes the worklet's position instead of letting it advance and fire onEnd() in the background", async ({ page }) => {
+  const wavBase64 = buildSilentWavBase64(3);
+  const result = await page.evaluate(async (wavBase64) => {
+    const { PitchShifterWorklet, loadSoundTouchWorklet } = await import("/src/lib/soundtouch.js");
+    const ctx = new AudioContext();
+    await loadSoundTouchWorklet(ctx);
+
+    const bytes = Uint8Array.from(atob(wavBase64), (c) => c.charCodeAt(0));
+    const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
+
+    let endedCount = 0;
+    const shifter = new PitchShifterWorklet(ctx, audioBuffer, () => { endedCount++; });
+    shifter.connect(ctx.destination);
+
+    // Let it play briefly, then pause — mirrors stopEngine(false) in
+    // useAudioEngine.ts, which disconnects the gain node and calls this.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    shifter.pause();
+    shifter.disconnect();
+    const atPause = shifter.percentagePlayed;
+
+    // Wait well past the clip's remaining ~2.9s — if pause() didn't actually
+    // freeze it, it would reach the end and fire onEnd() (and, in the real
+    // app, auto-restart playback) well before this returns.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const afterWait = shifter.percentagePlayed;
+
+    return { atPause, afterWait, endedCount };
+  }, wavBase64);
+
+  expect(result.afterWait).toBeCloseTo(result.atPause, 0);
+  expect(result.endedCount).toBe(0);
+});
+
 test("loadSoundTouchWorklet is idempotent per context (adding the module twice doesn't throw)", async ({ page }) => {
   const ok = await page.evaluate(async () => {
     const { loadSoundTouchWorklet } = await import("/src/lib/soundtouch.js");

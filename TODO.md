@@ -1,7 +1,6 @@
 ## Bugs
 
 - [ ] Audio "Skip forward/back" (`jumpByPercent` → `audioActions.seek` → engine restart while playing) doesn't register at all under WebKit — confirmed via the new `webkit` Playwright project; `tests/media-player-region-sequence.spec.ts` is skipped on WebKit until this is fixed. Doesn't affect the video seek path.
-- [ ] Pausing audio playback (`useAudioEngine.ts` `stopEngine`) only disconnects the SoundTouch pitch-shifter worklet from the audio graph and cancels the UI's rAF polling — it doesn't stop the worklet's own internal position tracking, which keeps advancing in the background. If left paused long enough, it silently reaches the end of the buffer and (since `loopEnabled` defaults to true) auto-restarts playback from `loopStart`, with no user action. Needs an explicit stop/reset on the worklet node itself in `stopEngine`, not just `.disconnect()`.
 
 ## Features
 

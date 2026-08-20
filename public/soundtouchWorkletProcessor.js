@@ -693,6 +693,13 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
     this._filter = null;
     this._scratch = new Float32Array(QUANTUM_FRAMES * 2);
     this._quantaSinceReport = 0;
+    // process() is called by the audio rendering thread every quantum as long
+    // as this node is referenced, regardless of whether it's connected to any
+    // destination — disconnect() alone does NOT stop it. Without this flag,
+    // a "paused" node keeps silently extracting samples and advancing its
+    // position in the background, eventually reaching the end and firing the
+    // "ended" message even though playback looks stopped from the main thread.
+    this._paused = false;
 
     const opts = (options && options.processorOptions) || {};
     if (opts.left && opts.right) {
@@ -714,6 +721,12 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
         case "seek":
           if (this._filter) this._filter.sourcePosition = msg.sourcePosition;
           break;
+        case "pause":
+          this._paused = true;
+          break;
+        case "resume":
+          this._paused = false;
+          break;
       }
     };
   }
@@ -727,7 +740,7 @@ class SoundTouchProcessor extends AudioWorkletProcessor {
 
   process(_inputs, outputs) {
     const output = outputs[0];
-    if (!this._filter || !output || output.length < 2) {
+    if (!this._filter || !output || output.length < 2 || this._paused) {
       return true;
     }
 

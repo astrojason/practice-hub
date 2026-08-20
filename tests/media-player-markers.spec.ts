@@ -155,10 +155,12 @@ test("marker Prev/Next always move to the adjacent marker by order and disable a
   await expect(nextBtn).toBeDisabled();
   await expect(prevBtn).toBeEnabled();
 
-  // Scrub back near M1, without touching markers — the selection silently
-  // follows the playhead back down to M1 (no seek, just the highlighted marker
-  // updating), landing at the first marker again.
-  await clickAndSettle(skipBackward, timeLabel, 20);
+  // Scrub back to ≈0.45s (9 of the 12 forward clicks used to place M2/M3
+  // above), without touching markers — the selection silently follows the
+  // playhead back down to M1. M1 isn't added at *exactly* 0 (a little
+  // playback runs before Pause actually lands), so land comfortably between
+  // M1 (~0) and M2 (~0.9) rather than right on either boundary.
+  await clickAndSettle(skipBackward, timeLabel, 9);
   await expect(label).toContainText("1/3 selected");
   await expect(prevBtn).toBeDisabled();
 

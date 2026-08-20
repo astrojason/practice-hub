@@ -141,8 +141,10 @@ test("playing a sequence of selected regions auto-advances and applies each regi
   await expect(page.locator("#sequenceStatus")).toContainText("2/2");
   await expect(page.locator("#speedIndicator")).toHaveText("150%");
 
-  // Cross Chorus's end (~2.70s) with no loop — sequence should stop.
-  await clickAndSettle(10);
+  // Cross Chorus's end (~2.70s) with no loop — sequence should stop. Only 9
+  // clicks, not 10 — the 10th would land exactly on the clip's 3s duration,
+  // where a further skip-forward is a legitimate no-op (already clamped).
+  await clickAndSettle(9);
   await expect(page.locator("#playSequenceBtn")).toContainText("Play Sequence");
   await expect(page.locator("#sequenceStatus")).toHaveCount(0);
 

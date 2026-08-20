@@ -9,6 +9,8 @@ export class PitchShifterWorklet {
   percentagePlayed: number;
   connect(node: AudioNode): void;
   disconnect(): void;
+  pause(): void;
+  resume(): void;
 }
 
 export function loadSoundTouchWorklet(context: AudioContext): Promise<void>;

@@ -276,6 +276,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       eng.raf = null;
     }
     if (eng.shifter) {
+      try { eng.shifter.pause(); } catch (_) { /* non-critical: node already gone */ }
       try { eng.shifter.disconnect(); } catch (_) { /* non-critical: node already disconnected */ }
     }
     if (eng.gain) {
@@ -303,6 +304,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     }
 
     const gain = eng.ctx.createGain();
+    eng.shifter.resume();
     eng.shifter.tempo = eng.speed;
     eng.shifter.pitch = pitchRatio(eng.pitchSemitones, eng.pitchCents);
     eng.shifter.connect(gain);

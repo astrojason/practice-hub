@@ -738,6 +738,16 @@ class PitchShifterWorklet {
   disconnect() {
     this._node.disconnect();
   }
+  // disconnect() only severs output routing — the processor keeps running
+  // every render quantum regardless (see soundtouchWorkletProcessor.js), so
+  // its internal position keeps advancing and can still reach the end and
+  // fire onEnd() even while "paused". pause()/resume() actually freeze it.
+  pause() {
+    this._node.port.postMessage({ type: 'pause' });
+  }
+  resume() {
+    this._node.port.postMessage({ type: 'resume' });
+  }
 }
 
 export { PitchShifterWorklet, loadSoundTouchWorklet };
