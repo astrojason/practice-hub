@@ -156,6 +156,94 @@ test("the sequence checkbox sits immediately to the left of the region name, on 
   expect(checkboxBox!.x).toBeLessThan(titleBox!.x);
 });
 
+test("applying a saved region restores its saved tempo, even if the current tempo has since changed", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+
+  // Set tempo to 150% before saving the region, so the region remembers 150%.
+  const speedNumberInput = page.locator(".media-player__speed-input");
+  await speedNumberInput.fill("1.5");
+  await speedNumberInput.blur();
+  await expect(page.locator("#speedIndicator")).toHaveText("150%");
+
+  await page.locator('button[title="Set from playhead"]').first().click();
+  await page.locator('button[title="Skip forward 5%"]').click();
+  await page.locator('button[title="Set from playhead"]').nth(1).click();
+  await page.fill("#regionNameInput", "Fast Part");
+  await page.locator("#addRegionBtn").click();
+
+  const regionItem = page.locator(".mp-region-item", { hasText: "Fast Part" });
+  await expect(regionItem).toBeVisible();
+
+  // Change tempo away from the region's saved value.
+  await speedNumberInput.fill("1.0");
+  await speedNumberInput.blur();
+  await expect(page.locator("#speedIndicator")).toHaveText("100%");
+
+  // Selecting the region should restore its saved 150% tempo.
+  await regionItem.click();
+  await expect(regionItem).toHaveClass(/is-active/);
+  await expect(page.locator("#speedIndicator")).toHaveText("150%");
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("checking a region's sequence checkbox auto-applies its tempo when the playhead enters it during normal playback, and reverts when it leaves", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+  await page.locator('button[title="Pause"]').click();
+
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  const skipBack = page.locator('button[title="Skip back 5%"]');
+  const setFromPlayhead = page.locator('button[title="Set from playhead"]');
+  const speedNumberInput = page.locator(".media-player__speed-input");
+  const speedIndicator = page.locator("#speedIndicator");
+
+  // Region "Slow Part" ~= [0.9s, 1.8s] of the 3s track, saved at 50% tempo.
+  for (let i = 0; i < 6; i++) await skipForward.click();
+  await setFromPlayhead.first().click();
+  for (let i = 0; i < 6; i++) await skipForward.click();
+  await setFromPlayhead.nth(1).click();
+  await speedNumberInput.fill("0.5");
+  await speedNumberInput.blur();
+  await page.fill("#regionNameInput", "Slow Part");
+  await page.locator("#addRegionBtn").click();
+
+  const regionItem = page.locator(".mp-region-item", { hasText: "Slow Part" });
+  await expect(regionItem).toBeVisible();
+
+  // Back to normal tempo, and back to before the region's start (playhead ~0.6s).
+  await speedNumberInput.fill("1.0");
+  await speedNumberInput.blur();
+  for (let i = 0; i < 8; i++) await skipBack.click();
+  await expect(speedIndicator).toHaveText("100%");
+
+  // Select the region for auto-tempo (checkbox only — never click/apply the row).
+  await regionItem.locator('input[type="checkbox"]').check();
+  await expect(regionItem).not.toHaveClass(/is-active/);
+  await expect(speedIndicator).toHaveText("100%");
+
+  // Skip forward into the region — tempo should snap to its saved 50%.
+  for (let i = 0; i < 3; i++) await skipForward.click();
+  await expect(speedIndicator).toHaveText("50%");
+
+  // Skip forward out the far side — tempo should revert to normal.
+  for (let i = 0; i < 6; i++) await skipForward.click();
+  await expect(speedIndicator).toHaveText("100%");
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
 test("the region list scrolls instead of growing unbounded once there are many regions", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();

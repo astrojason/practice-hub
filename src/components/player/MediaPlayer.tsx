@@ -1096,6 +1096,35 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, dur]);
 
+  // ── Auto tempo for checkbox-selected regions during normal playback ─────────
+  // Distinct from sequence playback: this runs during ordinary playback/scrubbing
+  // and doesn't jump the playhead — it just matches tempo to whichever selected
+  // region (if any) currently contains the playhead, reverting to normal outside one.
+  const autoTempoRegionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (sequenceActiveRef.current || dur <= 0) return;
+    const t = currentTime;
+    const match = regionState.regionsRef.current.find(r =>
+      regionState.selectedIdsRef.current.includes(r.id) && t >= r.start && t < r.end
+    );
+    if (match) {
+      if (autoTempoRegionIdRef.current !== match.id) {
+        autoTempoRegionIdRef.current = match.id;
+        applySpeed(match.playbackSpeed.toFixed(2));
+        setLoopIncreaseByLocal(match.speedIncreasePercent);
+        audioActions.setLoopIncreaseBy(match.speedIncreasePercent);
+        setLoopIncreaseAtLocal(match.speedIncreaseInterval);
+        audioActions.setLoopIncreaseAt(match.speedIncreaseInterval);
+        regionState.setActiveRegionId(match.id);
+      }
+    } else if (autoTempoRegionIdRef.current !== null) {
+      autoTempoRegionIdRef.current = null;
+      applySpeed("1.00");
+      regionState.setActiveRegionId(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, dur]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
   useEffect(() => {
