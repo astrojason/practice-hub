@@ -6,8 +6,14 @@ export interface WaveMarker {
   name: string;
 }
 
+const MARKER_EPS = 0.05;
+
 interface Options {
   dur: number;
+  /** The live playhead position — reactive, so the selected marker can silently
+   * follow it as it moves (playback advancing past a marker, scrubbing, etc.)
+   * without issuing a seek. */
+  currentTime: number;
   /** Reads the authoritative playhead position at call time — must not rely on
    * React state mirrored from a DOM event (e.g. video `timeupdate`), which can
    * lag or fail to fire promptly after a programmatic seek while paused. */
@@ -20,7 +26,7 @@ interface Options {
 }
 
 /** Waveform markers: add/delete/nudge/jump, kept in sync with a ref for synchronous reads (preset snapshots, keyboard shortcuts). */
-export function useMarkers({ dur, getCurrentTime, isVideo, videoRef, seekAudio, onChange }: Options) {
+export function useMarkers({ dur, currentTime, getCurrentTime, isVideo, videoRef, seekAudio, onChange }: Options) {
   const [markers, setMarkersState] = useState<WaveMarker[]>([]);
   const [selectedIdx, setSelectedIdxState] = useState(-1);
   const [nameInput, setNameInput] = useState("");
@@ -31,6 +37,25 @@ export function useMarkers({ dur, getCurrentTime, isVideo, videoRef, seekAudio, 
 
   useEffect(() => { durRef.current = dur; }, [dur]);
   useEffect(() => { getCurrentTimeRef.current = getCurrentTime; }, [getCurrentTime]);
+
+  // Silently keep the selection in sync with wherever the playhead actually is —
+  // the last marker at or before currentTime — without seeking. This runs on
+  // every currentTime change (playback advancing, scrubbing, a Prev/Next seek
+  // landing), so Next/Prev's simple selectedIdx ± 1 step always starts from the
+  // marker the playhead is really sitting on.
+  useEffect(() => {
+    const list = markersRef.current;
+    if (!list.length) return;
+    let idx = -1;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].time <= currentTime + MARKER_EPS) { idx = i; break; }
+    }
+    if (idx !== selectedIdxRef.current) {
+      setSelectedIdxState(idx);
+      selectedIdxRef.current = idx;
+      setNameInput(idx >= 0 ? (list[idx].name ?? "") : "");
+    }
+  }, [currentTime]);
 
   const addMarkerAt = useCallback((time: number) => {
     if (!Number.isFinite(time) || durRef.current <= 0) return;
@@ -58,9 +83,10 @@ export function useMarkers({ dur, getCurrentTime, isVideo, videoRef, seekAudio, 
     addMarkerAt(getCurrentTimeRef.current());
   }, [addMarkerAt]);
 
-  // Steps to the adjacent marker by index, not by comparing against the current
-  // playhead — that always lands on exactly the previous/next item in the list,
-  // and lets the caller disable Prev/Next at the ends instead of wrapping.
+  // Steps to the adjacent marker by index (selectedIdx is already kept in sync
+  // with the playhead by the effect above), so the result is always exactly the
+  // previous/next item in the list — and the caller can disable Prev/Next at the
+  // ends instead of wrapping.
   const jumpToMarker = useCallback((dir: "prev" | "next") => {
     const list = markersRef.current;
     if (!list.length) return;

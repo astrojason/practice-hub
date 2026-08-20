@@ -123,8 +123,11 @@ test("marker Prev/Next always move to the adjacent marker by order and disable a
   await expect(page.locator(".media-player")).toBeVisible();
   await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
   // Playback auto-starts on load — pause it so seeks below are the only thing
-  // moving the playhead (otherwise real-time drift makes the math flaky).
+  // moving the playhead (otherwise real-time drift makes the math flaky). Wait
+  // for the button to actually flip to "Play" — clicking before autoplay has
+  // truly started would toggle it back on instead of pausing it.
   await page.locator('button[title="Pause"]').click();
+  await expect(page.locator('button[title="Play"]')).toBeVisible();
 
   const skipForward = page.locator('button[title="Skip forward 5%"]');
   const skipBackward = page.locator('button[title="Skip back 5%"]');
@@ -152,26 +155,90 @@ test("marker Prev/Next always move to the adjacent marker by order and disable a
   await expect(nextBtn).toBeDisabled();
   await expect(prevBtn).toBeEnabled();
 
-  // Scrub back near M1, without touching markers — selection is unaffected by
-  // where the playhead physically is.
+  // Scrub back near M1, without touching markers — the selection silently
+  // follows the playhead back down to M1 (no seek, just the highlighted marker
+  // updating), landing at the first marker again.
   await clickAndSettle(skipBackward, timeLabel, 20);
-  await expect(label).toContainText("3/3 selected");
-
-  // Prev always steps to the strictly previous marker in the list, regardless
-  // of the scrub above.
-  await prevBtn.click();
-  await expect(label).toContainText("2/3 selected");
-  await prevBtn.click();
   await expect(label).toContainText("1/3 selected");
-  await expect(prevBtn).toBeDisabled(); // at the first marker now
+  await expect(prevBtn).toBeDisabled();
 
-  // Next always steps to the strictly next marker.
+  // Next always steps to the strictly next marker in order.
   await nextBtn.click();
   await expect(label).toContainText("2/3 selected");
   await expect(prevBtn).toBeEnabled();
   await nextBtn.click();
   await expect(label).toContainText("3/3 selected");
   await expect(nextBtn).toBeDisabled(); // at the last marker now
+
+  // Prev always steps to the strictly previous marker.
+  await prevBtn.click();
+  await expect(label).toContainText("2/3 selected");
+  await prevBtn.click();
+  await expect(label).toContainText("1/3 selected");
+  await expect(prevBtn).toBeDisabled(); // at the first marker now
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+// Uses video rather than audio: pausing a <video> element is a real native
+// operation, whereas the audio engine's SoundTouch worklet keeps advancing its
+// internal position in the background even after "pause" disconnects it from
+// output (see TODO.md) — that would make the deliberately-real-time wait below
+// flaky for reasons unrelated to what this test is actually checking.
+test("the selected marker silently follows playback as it advances past each one, with no seek involved", async ({ page }) => {
+  const videoBuf = fs.readFileSync(path.join(__dirname, "fixtures", "test-video.mp4"));
+  await page.route("**/127.0.0.1:17865/**", (route) => {
+    const range = route.request().headers()["range"];
+    if (range) {
+      const m = /bytes=(\d+)-(\d*)/.exec(range);
+      const start = m ? parseInt(m[1], 10) : 0;
+      const end = m && m[2] ? parseInt(m[2], 10) : videoBuf.length - 1;
+      route.fulfill({
+        status: 206,
+        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${videoBuf.length}` },
+        body: videoBuf.subarray(start, end + 1),
+      });
+    } else {
+      route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Length": String(videoBuf.length) },
+        body: videoBuf,
+      });
+    }
+  });
+
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card").first();
+  await card.locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Video" }).click();
+  await expect(page.locator(".media-player")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:12", { timeout: 10000 });
+  await page.locator('button[title="Pause"]').click();
+  await expect(page.locator('button[title="Play"]')).toBeVisible();
+
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  const skipBackward = page.locator('button[title="Skip back 5%"]');
+  const label = page.locator("#waveMarkerLabel");
+  const timeLabel = page.locator(".media-player__time");
+
+  // M1 at t≈1.80, M2 at t≈3.60 (of a 12s clip).
+  await clickAndSettle(skipForward, timeLabel, 3);
+  await page.locator("#waveAddMarkerBtn").click();
+  await clickAndSettle(skipForward, timeLabel, 3);
+  await page.locator("#waveAddMarkerBtn").click();
+  await expect(label).toContainText("2/2 selected");
+
+  // Rewind to the very start, before either marker — nothing is "current" yet.
+  await clickAndSettle(skipBackward, timeLabel, 6);
+  await expect(label).toContainText("2 markers");
+  await expect(label).not.toContainText("selected");
+
+  // Resume real playback (no button clicks, no seeks) and let it run past both
+  // markers on its own — the selection should silently pick each one up in turn.
+  await page.locator('button[title="Play"]').click();
+  await expect(label).toContainText("1/2 selected", { timeout: 5000 });
+  await expect(label).toContainText("2/2 selected", { timeout: 5000 });
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });

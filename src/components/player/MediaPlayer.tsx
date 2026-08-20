@@ -186,6 +186,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   // ── Markers ─────────────────────────────────────────────────────────────────
   const markerState = useMarkers({
     dur,
+    currentTime,
     getCurrentTime: () => isVideo ? (videoRef.current ? getVideoTime(videoRef.current) : currentTime) : audioActions.getCurrentTime(),
     isVideo,
     videoRef,
