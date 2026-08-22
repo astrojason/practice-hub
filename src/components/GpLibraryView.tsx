@@ -273,6 +273,8 @@ export function GpLibraryView({ token, onBack }: Props) {
                     <th className="gp-sortable" onClick={() => handleSort("difficulty")}>
                       Difficulty{sortIndicator("difficulty")}
                     </th>
+                    <th>Rhythm</th>
+                    <th>Lead</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -390,7 +392,7 @@ function GpMatchRow({
     <>
       <tr className={match.is_newer_version ? "gp-row-updated" : ""}>
         <td className="gp-expand-cell">
-          {match.difficulty_vector && (
+          {(match.difficulty_vector || match.rhythm || match.lead) && (
             <button
               className="gp-expand-btn"
               onClick={() => setExpanded((v) => !v)}
@@ -436,6 +438,12 @@ function GpMatchRow({
             <span className="gp-score-na" onClick={startEdit} title="Click to set score" style={{ cursor: "pointer" }}>—</span>
           )}
         </td>
+        <td className="gp-aspect-cell" title={match.rhythm ? `Track: ${match.rhythm.track_name}` : undefined}>
+          {match.rhythm ? <DifficultyPill score={match.rhythm.difficulty_score} /> : <span className="gp-score-na">—</span>}
+        </td>
+        <td className="gp-aspect-cell" title={match.lead ? `Track: ${match.lead.track_name}` : undefined}>
+          {match.lead ? <DifficultyPill score={match.lead.difficulty_score} /> : <span className="gp-score-na">—</span>}
+        </td>
         <td>
           {match.is_newer_version ? (
             <span className="gp-badge-updated">updated</span>
@@ -446,11 +454,13 @@ function GpMatchRow({
           )}
         </td>
       </tr>
-      {expanded && match.difficulty_vector && (
+      {expanded && (match.difficulty_vector || match.rhythm || match.lead) && (
         <tr className="gp-vector-row">
           <td />
-          <td colSpan={7}>
-            <VectorBreakdown vector={match.difficulty_vector} />
+          <td colSpan={9}>
+            {match.difficulty_vector && <VectorBreakdown label="Overall" vector={match.difficulty_vector} />}
+            {match.rhythm && <VectorBreakdown label="Rhythm" vector={match.rhythm.vector} />}
+            {match.lead && <VectorBreakdown label="Lead" vector={match.lead.vector} />}
           </td>
         </tr>
       )}
@@ -458,7 +468,7 @@ function GpMatchRow({
   );
 }
 
-function VectorBreakdown({ vector }: { vector: DifficultyVector }) {
+function VectorBreakdown({ vector, label: sectionLabel }: { vector: DifficultyVector; label?: string }) {
   const axes: { key: keyof DifficultyVector; label: string; desc: string }[] = [
     { key: "speed",             label: "Speed",       desc: "Peak attack rate (notes/sec)" },
     { key: "fret_complexity",   label: "Fret",        desc: "Reach, stretch, position shifts" },
@@ -470,6 +480,7 @@ function VectorBreakdown({ vector }: { vector: DifficultyVector }) {
 
   return (
     <div className="gp-vector-breakdown">
+      {sectionLabel && <div className="gp-vector-breakdown-label">{sectionLabel}</div>}
       {axes.map(({ key, label, desc }) => {
         const val = vector[key] as number;
         return (

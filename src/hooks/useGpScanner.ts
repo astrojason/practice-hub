@@ -22,9 +22,10 @@ import type {
   GpLastScan,
   GpSeenEntry,
   DifficultyVector,
+  AspectDifficulty,
 } from "../api/types";
 import type { Song } from "../api/types";
-import { getCatalogSongs } from "../api/client";
+import { getCatalogSongs, getSong } from "../api/client";
 
 const STORE_KEY = "gp-library";
 const DEFAULT_ROOT = "/Users/jasonsylvester/Documents/Sheet Music";
@@ -83,6 +84,42 @@ export function parseFilename(filename: string): {
 
 function normKey(s: string): string {
   return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function parseAspect(raw: unknown): AspectDifficulty | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.difficulty_score !== "number" || typeof r.track_name !== "string") return null;
+  return {
+    difficulty_score: r.difficulty_score,
+    vector: (r.vector as DifficultyVector) ?? null,
+    track_name: r.track_name,
+  } as AspectDifficulty;
+}
+
+// A computed rhythm/lead value must never be calculated for an aspect an
+// admin has already locked as the song's canonical value — the *_manual
+// flag on Song (not UserSongMeta, which is a purely personal per-user pick
+// with no manual flag of its own) means that value is locked in via the
+// website's "set as master" checkbox until they clear it themselves.
+async function suppressManualAspects(
+  token: string,
+  songId: number,
+  rhythm: AspectDifficulty | null,
+  lead: AspectDifficulty | null
+): Promise<{ rhythm: AspectDifficulty | null; lead: AspectDifficulty | null }> {
+  try {
+    const song = await getSong(token, songId);
+    return {
+      rhythm: song.rhythm_difficulty_manual ? null : rhythm,
+      lead: song.lead_difficulty_manual ? null : lead,
+    };
+  } catch {
+    // Couldn't confirm manual state (e.g. offline) — nothing is pushed to
+    // Instrumenta at this stage, so show the computed values rather than
+    // blocking the whole scan on this lookup.
+    return { rhythm, lead };
+  }
 }
 
 // A stable fingerprint of the raw directory listing (path + mtime + size for
@@ -264,14 +301,22 @@ export function useGpScanner(token: string) {
         let difficultyScore: number | null = null;
         let difficultyVector: DifficultyVector | null = null;
         let tempoBpm: number | null = null;
+        let rhythm: AspectDifficulty | null = null;
+        let lead: AspectDifficulty | null = null;
         try {
           const rawResult = await invoke<string>("analyze_gp_file", { filePath: file.path });
           const result = JSON.parse(rawResult);
           difficultyScore = typeof result.difficulty_score === "number" ? result.difficulty_score : null;
           difficultyVector = result.vector ?? null;
           tempoBpm = typeof result.tempo_bpm === "number" ? result.tempo_bpm : null;
+          rhythm = parseAspect(result.rhythm);
+          lead = parseAspect(result.lead);
         } catch {
           // Analysis failed for this file — continue with null score
+        }
+
+        if (song && (rhythm || lead)) {
+          ({ rhythm, lead } = await suppressManualAspects(token, song.id, rhythm, lead));
         }
 
         // Check if this file is a newer version of a previously seen file
@@ -290,6 +335,8 @@ export function useGpScanner(token: string) {
           difficulty_vector: difficultyVector,
           tempo_bpm: tempoBpm,
           manual_score: null,
+          rhythm,
+          lead,
           resource_path: file.path,
           dismissed: false,
           pushed: isNewerVersion ? false : (prevEntry?.pushed ?? false),
@@ -305,6 +352,8 @@ export function useGpScanner(token: string) {
             difficulty_vector: difficultyVector,
             tempo_bpm: tempoBpm,
             manual_score: null,
+            rhythm,
+            lead,
             is_newer_version: isNewerVersion,
             pushed: seen[file.filename].pushed,
           });
@@ -336,6 +385,8 @@ export function useGpScanner(token: string) {
             difficulty_vector: prev.difficulty_vector ?? null,
             tempo_bpm: prev.tempo_bpm ?? null,
             manual_score: prev.manual_score ?? null,
+            rhythm: prev.rhythm ?? null,
+            lead: prev.lead ?? null,
             is_newer_version: false,
             pushed: prev.pushed,
           });
@@ -386,6 +437,8 @@ export function useGpScanner(token: string) {
           difficulty_vector: match.difficulty_vector,
           tempo_bpm: match.tempo_bpm,
           manual_score: match.manual_score,
+          rhythm: match.rhythm,
+          lead: match.lead,
           resource_path: match.file.path,
           dismissed: false,
           pushed: true,
@@ -447,6 +500,8 @@ export function useGpScanner(token: string) {
         difficulty_vector: null,
         tempo_bpm: null,
         manual_score: null,
+        rhythm: null,
+        lead: null,
         resource_path: "",
         dismissed: true,
         pushed: false,

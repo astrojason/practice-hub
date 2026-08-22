@@ -194,6 +194,21 @@ def get_song_catalog(env: str) -> dict:
 # ─── Analysis sidecar ─────────────────────────────────────────────────────────
 
 def analyze_file(path: str):
+    """
+    Returns (difficulty_score, vector, tempo_bpm, rhythm, lead). rhythm/lead
+    are the per-aspect breakdowns from separate GP tracks (see analyze_gp.py's
+    _select_role_tracks) — each is {difficulty_score, vector, track_name} or
+    None when the file has no distinguishable track for that aspect.
+
+    NOTE: unlike the in-app scanner (useGpScanner.ts), this script does not
+    yet suppress rhythm/lead for songs where the user has already set
+    rhythm_difficulty_manual/lead_difficulty_manual by hand — that needs a
+    per-user UserSongMeta lookup, and this script currently has no notion of
+    "which user" (get_song_catalog reads the shared song/artist tables only).
+    Since this script never pushes to Instrumenta (read-only, local-cache-
+    only), the practical effect is limited to what the app *displays* next
+    time it's opened — tracked as a follow-up in TODO.md.
+    """
     try:
         result = subprocess.run(
             ["python3", str(ANALYZE_SIDECAR), path],
@@ -201,12 +216,15 @@ def analyze_file(path: str):
         )
         if result.returncode != 0:
             print(f"  analyze failed for {path}: {result.stderr.strip()}", file=sys.stderr)
-            return None, None, None
+            return None, None, None, None, None
         data = json.loads(result.stdout)
-        return data.get("difficulty_score"), data.get("vector"), data.get("tempo_bpm")
+        return (
+            data.get("difficulty_score"), data.get("vector"), data.get("tempo_bpm"),
+            data.get("rhythm"), data.get("lead"),
+        )
     except Exception as exc:
         print(f"  analyze error for {path}: {exc}", file=sys.stderr)
-        return None, None, None
+        return None, None, None, None, None
 
 
 # ─── Result shaping (matches GpMatch / GpUnmatched in src/api/types.ts) ───────
@@ -234,6 +252,8 @@ def to_match(f: dict, song: dict, seen_entry: dict, is_newer_version: bool) -> d
         "difficulty_vector": seen_entry.get("difficulty_vector"),
         "tempo_bpm": seen_entry.get("tempo_bpm"),
         "manual_score": seen_entry.get("manual_score"),
+        "rhythm": seen_entry.get("rhythm"),
+        "lead": seen_entry.get("lead"),
         "is_newer_version": is_newer_version,
         "pushed": seen_entry.get("pushed", False),
     }
@@ -311,7 +331,7 @@ def main():
 
         analyzed_count += 1
         print(f"  analyzing {f['filename']} ...")
-        score, vector, tempo = analyze_file(f["path"])
+        score, vector, tempo, rhythm, lead = analyze_file(f["path"])
 
         is_newer_version = bool(prev)
         seen[f["filename"]] = {
@@ -321,6 +341,8 @@ def main():
             "difficulty_vector": vector,
             "tempo_bpm": tempo,
             "manual_score": None,
+            "rhythm": rhythm,
+            "lead": lead,
             "resource_path": f["path"],
             "dismissed": False,
             "pushed": False if is_newer_version else (prev.get("pushed", False) if prev else False),

@@ -216,6 +216,13 @@ export async function getCatalogExercises(
   return handleResponse<CatalogExercisesResponse>(response);
 }
 
+export async function getSong(token: string, songId: number): Promise<Song> {
+  const response = await fetch(`${API_BASE_URL}/song/${songId}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<Song>(response);
+}
+
 // ─── Guitar Pro difficulty ────────────────────────────────────────────────────
 
 export async function pushDifficultyScore(

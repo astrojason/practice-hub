@@ -29,7 +29,9 @@ Output (stdout): JSON object
         "title": str | null,
         "artist": str | null,
         "tempo_bpm": float | null,
-        "tracks": [...]
+        "tracks": [...],
+        "rhythm": {"difficulty_score": float, "vector": {...}, "track_name": str} | null,
+        "lead": {"difficulty_score": float, "vector": {...}, "track_name": str} | null
     }
 
     --correct mode outputs: {"weights": {...}, "was_violation": bool}
@@ -453,6 +455,8 @@ def _clean(value: Optional[str]) -> Optional[str]:
 _GUITAR_KEYWORDS = ("guitar", "lead", "solo", "gtr", "electric", "rhythm", "riff")
 _BASS_KEYWORDS = ("bass",)
 _DRUM_KEYWORDS = ("drum", "percussion", "kit", "snare")
+_RHYTHM_ROLE_KEYWORDS = ("rhythm", "rythm")
+_LEAD_ROLE_KEYWORDS = ("lead", "solo")
 
 
 def _is_guitar_track(track: TrackData) -> bool:
@@ -474,6 +478,44 @@ def _select_primary_track(tracks: List[TrackData]) -> Optional[TrackData]:
     if not guitar_tracks:
         return None
     return max(guitar_tracks, key=lambda t: sum(len(b.notes) for b in t.beats))
+
+
+def _note_count(track: TrackData) -> int:
+    return sum(len(b.notes) for b in track.beats)
+
+
+def _track_role_match(track: TrackData, keywords: Tuple[str, ...]) -> bool:
+    combined = f"{track.name or ''} {track.instrument or ''}".lower()
+    return any(k in combined for k in keywords)
+
+
+def _select_role_tracks(tracks: List[TrackData]) -> Tuple[Optional[TrackData], Optional[TrackData]]:
+    """
+    Identify separate rhythm and lead guitar tracks (Phase 2 auto-difficulty:
+    rhythm/lead need their own scores, not one combined "primary" score).
+
+    Returns (rhythm_track, lead_track). lead_track is None whenever the file
+    has no distinguishable lead/solo part (e.g. a single rhythm-only guitar
+    track) — there is deliberately no vocal-track equivalent here; singing
+    difficulty stays manual-only.
+    """
+    guitar_tracks = [t for t in tracks if _is_guitar_track(t)]
+    if not guitar_tracks:
+        return None, None
+    if len(guitar_tracks) == 1:
+        return guitar_tracks[0], None
+
+    rhythm_named = [t for t in guitar_tracks if _track_role_match(t, _RHYTHM_ROLE_KEYWORDS)]
+    lead_named = [t for t in guitar_tracks if _track_role_match(t, _LEAD_ROLE_KEYWORDS)]
+
+    if rhythm_named and lead_named:
+        return max(rhythm_named, key=_note_count), max(lead_named, key=_note_count)
+
+    # No clear naming on either side: fall back to note-density ranking — the
+    # busiest track is the lead/solo part (mirrors _select_primary_track's
+    # existing heuristic), the next-busiest is rhythm.
+    ranked = sorted(guitar_tracks, key=_note_count, reverse=True)
+    return ranked[1], ranked[0]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1077,6 +1119,18 @@ def analyze(path: Path, weights: Dict[str, float]) -> dict:
         primary_score = 0.0
         primary_vector = DifficultyVector().to_dict()
 
+    def _aspect(track: Optional[TrackData]) -> Optional[dict]:
+        if track is None:
+            return None
+        vec = compute_difficulty_vector(track.beats, tempo, track.time_signatures, weights)
+        return {
+            "difficulty_score": round(vec.overall, 2),
+            "vector": vec.to_dict(),
+            "track_name": track.name,
+        }
+
+    rhythm_track, lead_track = _select_role_tracks(song.tracks)
+
     return {
         "difficulty_score": primary_score,
         "vector": primary_vector,
@@ -1084,6 +1138,8 @@ def analyze(path: Path, weights: Dict[str, float]) -> dict:
         "artist": song.artist,
         "tempo_bpm": tempo,
         "tracks": track_results,
+        "rhythm": _aspect(rhythm_track),
+        "lead": _aspect(lead_track),
     }
 
 

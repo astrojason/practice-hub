@@ -138,6 +138,9 @@ export interface UpdateSongSectionPayload {
 
 // ─── Song ─────────────────────────────────────────────────────────────────────
 
+// The user's own personal rhythm/lead/singing pick — freely editable, no
+// manual flag of its own. Falls back to the song's canonical
+// rhythm_difficulty/lead_difficulty (see Song) when unset.
 export interface SongMeta {
   id?: number;
   user_id?: number;
@@ -147,8 +150,6 @@ export interface SongMeta {
   lead_difficulty: number | null;
   singing_difficulty: number | null;
   singing_difficulty_name: string | null;
-  rhythm_difficulty_manual: boolean;
-  lead_difficulty_manual: boolean;
   song_lists?: SongListRef[];
   sessions?: SongSession[];
   sections?: SongSection[];
@@ -177,6 +178,16 @@ export interface Song {
   session_type: "song";
   created_timestamp: number;
   updated_timestamp: number;
+  // Canonical/shared per-song difficulty — maintained by the practice-hub
+  // auto-analysis job or locked by an admin via the website's "set as
+  // master" checkbox. Not the same as meta.rhythm_difficulty/lead_difficulty,
+  // which is each user's own personal pick.
+  rhythm_difficulty: number | null;
+  rhythm_difficulty_name: string | null;
+  lead_difficulty: number | null;
+  lead_difficulty_name: string | null;
+  rhythm_difficulty_manual: boolean;
+  lead_difficulty_manual: boolean;
   meta: SongMeta;
 }
 
@@ -504,6 +515,19 @@ export interface DifficultyVector {
   overall: number;
 }
 
+/**
+ * Per-aspect (rhythm or lead) difficulty computed from a single GP track.
+ * null when the file has no distinguishable track for that aspect (e.g. no
+ * separate lead/solo part), or when the song's corresponding
+ * rhythm_difficulty_manual/lead_difficulty_manual flag means a computed
+ * value should not be calculated at all.
+ */
+export interface AspectDifficulty {
+  difficulty_score: number;
+  vector: DifficultyVector;
+  track_name: string;
+}
+
 /** A GP file that matched an Instrumenta song. */
 export interface GpMatch {
   file: GpFileParsed;
@@ -516,6 +540,8 @@ export interface GpMatch {
   tempo_bpm: number | null;
   /** User-overridden score; takes precedence over difficulty_score when pushing. */
   manual_score: number | null;
+  rhythm: AspectDifficulty | null;
+  lead: AspectDifficulty | null;
   /** Whether this version supersedes a previously scanned version. */
   is_newer_version: boolean;
   /** Whether this file's score/resource has already been pushed to Instrumenta. */
@@ -548,6 +574,8 @@ export interface GpSeenEntry {
   difficulty_vector: DifficultyVector | null;
   tempo_bpm: number | null;
   manual_score: number | null;
+  rhythm: AspectDifficulty | null;
+  lead: AspectDifficulty | null;
   resource_path: string;
   dismissed: boolean;
   /** Whether this file's score/resource has been pushed to Instrumenta. */
