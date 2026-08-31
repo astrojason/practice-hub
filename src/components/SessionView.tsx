@@ -328,13 +328,14 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     itemName: string;
     itemKey?: string;
     songId?: number;
+    resources?: Resource[];
   } | null>(null);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
 
-  const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string, itemKey?: string) => {
+  const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string, itemKey?: string, resources?: Resource[]) => {
     const parsedKey = itemKey ? parseItemKey(itemKey) : null;
     const songId = parsedKey?.type === "song" ? parsedKey.id : undefined;
-    setPlayerState({ path, mediaType, itemName, itemKey, songId: Number.isFinite(songId) ? songId : undefined });
+    setPlayerState({ path, mediaType, itemName, itemKey, songId: Number.isFinite(songId) ? songId : undefined, resources });
   };
 
   const OPEN_SESSION_KEY = "open-session";
@@ -1002,6 +1003,11 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           isTimerActive={playerState.itemKey ? activeTimers.has(playerState.itemKey) : false}
           token={token}
           songId={playerState.songId}
+          resources={playerState.resources}
+          onOpenFile={(path, mt, itemKey, resources) =>
+            openPlayer(path, mt, playerState.itemName, itemKey ?? playerState.itemKey, resources ?? playerState.resources)
+          }
+          onGpView={onGpView}
         />
       )}
 
@@ -1038,7 +1044,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             onSkip={handleSequentialChildSkip}
             onFormClose={() => setOpenForm(null)}
             onCancelReturn={handleCancelSequential}
-            onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, children[currentIndex].name, itemKey ?? childKey)}
+            onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, children[currentIndex].name, itemKey ?? childKey, resources)}
             onGpView={onGpView}
             onMediaOpen={hideForMedia}
           />
@@ -1096,7 +1102,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 }
               }}
               onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id))}
+              onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id), resources)}
               onGpView={onGpView}
               onOpenChat={(id) => openChat("exercise", id)}
               isMediaActive={playerState !== null}
@@ -1141,7 +1147,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 }
               }}
               onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id))}
+              onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id), resources)}
               onGpView={onGpView}
               onOpenChat={(id) => openChat("study_material", id)}
               isMediaActive={playerState !== null}
@@ -1184,7 +1190,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 handleSessionSubmit(dpt, makeItemKey("song", song.id))
               }
               onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
+              onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id), resources)}
               onGpView={onGpView}
               onOpenChat={() => openChat("song", song.id)}
               isMediaActive={playerState !== null}
@@ -1226,7 +1232,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 handleSessionSubmit(dpt, makeItemKey("song", song.id))
               }
               onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
-              onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
+              onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id), resources)}
               onGpView={onGpView}
               onOpenChat={() => openChat("song", song.id)}
               isMediaActive={playerState !== null}
@@ -1265,7 +1271,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                   handleSessionSubmit(dpt, makeItemKey("song", song.id))
                 }
                 onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
-                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id))}
+                onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id), resources)}
                 onGpView={onGpView}
                 onOpenChat={() => openChat("song", song.id)}
                 isMediaActive={playerState !== null}
@@ -1296,7 +1302,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                   }
                 }}
                 onStartSequential={(parentId) => handleStartSequential("exercise", parentId)}
-                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id))}
+                onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, ex.name, itemKey ?? makeItemKey("exercise", ex.id), resources)}
                 onGpView={onGpView}
                 onOpenChat={(id) => openChat("exercise", id)}
                 isMediaActive={playerState !== null}
@@ -1328,7 +1334,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                   }
                 }}
                 onStartSequential={(parentId) => handleStartSequential("study_material", parentId)}
-                onOpenFile={(path, mt, itemKey) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id))}
+                onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, sm.name, itemKey ?? makeItemKey("studymaterial", sm.id), resources)}
                 onGpView={onGpView}
                 onOpenChat={(id) => openChat("study_material", id)}
                 isMediaActive={playerState !== null}

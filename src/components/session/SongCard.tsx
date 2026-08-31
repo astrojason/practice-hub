@@ -1,7 +1,7 @@
 import { ItemSessionCard } from "./ItemSessionCard";
 import { SongSessionForm } from "./forms/SongSessionForm";
 import { SongEditForm } from "./forms/SongEditForm";
-import type { Song, SongSession } from "../../api/types";
+import type { Resource, Song, SongSession } from "../../api/types";
 
 function decodeHtml(html: string): string {
   const ta = document.createElement("textarea");
@@ -27,7 +27,7 @@ interface Props {
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
   onOpenChat?: () => void;
   isMediaActive?: boolean;

@@ -15,6 +15,8 @@ import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { seekVideo, getVideoTime } from "./videoSeek";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { ErrorModal } from "../ErrorModal";
+import { ResourceLinks } from "../session/SessionModal";
+import type { Resource } from "../../api/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +36,10 @@ interface Props {
   token?: string;
   /** Song ID — when provided, regions are synced to the DB as song sections */
   songId?: number;
+  /** The playing item's resources — lets the player swap between an item's files or open its external links without stopping playback. */
+  resources?: Resource[];
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
+  onGpView?: (path: string) => void;
 }
 
 interface Preset {
@@ -127,9 +133,10 @@ let toastCounter = 0;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive, activeSectionId, token, songId }: Props) {
+export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive, activeSectionId, token, songId, resources, onOpenFile, onGpView }: Props) {
   const detectedType = getMediaTypeFromPath(filePath);
   const isVideo = detectedType === "video";
+  const [resourcesOpen, setResourcesOpen] = useState(false);
 
   const [audioState, audioActions] = useAudioEngine();
 
@@ -1280,6 +1287,28 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         </div>
       )}
 
+      {/* Resources — reachable without stopping playback */}
+      {resourcesOpen && resources && resources.length > 0 && (
+        <div className="mp-palette-backdrop" onClick={() => setResourcesOpen(false)}>
+          <div className="mp-palette" onClick={e => e.stopPropagation()}>
+            <div className="mp-palette-header">
+              <span>Resources</span>
+              <button className="btn-ghost btn-xs" onClick={() => setResourcesOpen(false)}>✕</button>
+            </div>
+            <div className="mp-resources-body">
+              <ResourceLinks
+                resources={resources}
+                onOpenFile={(path, mt, itemKey, res) => {
+                  onOpenFile?.(path, mt, itemKey, res);
+                  setResourcesOpen(false);
+                }}
+                onGpView={onGpView}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="media-player__header">
         <div className="media-player__title-group">
@@ -1296,6 +1325,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
         </div>
         <div className="media-player__header-actions">
           <span className="media-player__preset-status">{presetStatus}</span>
+          {resources && resources.length > 0 && (
+            <button className="btn-ghost btn-xs" onClick={() => setResourcesOpen(true)} title="Open other resources without stopping playback">
+              🔗 Resources
+            </button>
+          )}
           <button className="btn-ghost btn-xs" onClick={() => shortcuts.setPaletteOpen(true)} title="Keyboard shortcuts">
             ⌨ Shortcuts
           </button>

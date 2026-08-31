@@ -90,7 +90,7 @@ export interface ItemSessionCardProps {
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
   /** When set, the play button starts a sequential child session instead of this item's own timer. */
   onStartSequential?: () => void;
@@ -163,9 +163,9 @@ export function ItemSessionCard({
     }
   }, [isMediaActive]);
 
-  function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string) {
+  function handleOpenFile(path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) {
     mediaWasOpenedRef.current = true;
-    onOpenFile!(path, mediaType, itemKey);
+    onOpenFile!(path, mediaType, itemKey, resources);
   }
 
   function handleStart() {

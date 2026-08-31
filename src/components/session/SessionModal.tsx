@@ -72,12 +72,98 @@ function LocalFolderResource({ name, folderPath, onOpenFile, onGpView }: LocalFo
   );
 }
 
+export interface ResourceLinksProps {
+  resources: Resource[];
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
+  onGpView?: (path: string) => void;
+  /** Called after a local file/folder resource is opened for playback — lets callers e.g. hide a wrapping modal. Not called for external links or GP files. */
+  onLocalMediaOpen?: () => void;
+}
+
+/**
+ * Renders a resource list (local files/folders, Guitar Pro files, external links).
+ * Shared between SessionModal and the in-app MediaPlayer so resources stay reachable
+ * while a local file is already playing.
+ */
+export function ResourceLinks({ resources, onOpenFile, onGpView, onLocalMediaOpen }: ResourceLinksProps) {
+  const [error, setError] = useState<string | null>(null);
+
+  if (resources.length === 0) return null;
+
+  return (
+    <div className="modal-resource-links">
+      {resources.map((r) => {
+        if (r.type === "local_folder") {
+          return (
+            <LocalFolderResource
+              key={r.url}
+              name={r.name}
+              folderPath={r.url}
+              onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt, undefined, resources); onLocalMediaOpen?.(); } : undefined}
+              onGpView={onGpView}
+            />
+          );
+        }
+        if (r.type === "local_file") {
+          const ft = fileTypeFromPath(r.url);
+          return (
+            <button
+              key={r.url}
+              className="modal-resource-link modal-resource-link--local"
+              onClick={() => {
+                if (ft === "guitar_pro") {
+                  // Opens in the OS's default app (Guitar Pro) — a
+                  // fire-and-forget external launch, not an in-app
+                  // overlay, so the caller's UI stays open.
+                  onGpView?.(r.url);
+                } else {
+                  onOpenFile?.(r.url, ft, undefined, resources);
+                  onLocalMediaOpen?.();
+                }
+              }}
+            >
+              <FolderOpenIcon style={{ width: 11, height: 11 }} />
+              {r.name}
+            </button>
+          );
+        }
+        if (r.type === "guitar_pro") {
+          return (
+            <button
+              key={r.url}
+              className="modal-resource-link modal-resource-link--local"
+              onClick={() => onGpView?.(r.url)}
+            >
+              <FolderOpenIcon style={{ width: 11, height: 11 }} />
+              {r.name}
+            </button>
+          );
+        }
+        // All other types (url, youtube, unknown) → system browser
+        return (
+          <button
+            key={r.url}
+            className="modal-resource-link"
+            onClick={() => {
+              openUrl(r.url).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+            }}
+          >
+            <ArrowTopRightOnSquareIcon style={{ width: 11, height: 11 }} />
+            {r.name}
+          </button>
+        );
+      })}
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
+    </div>
+  );
+}
+
 interface Props {
   title: string;
   subtitle?: string;
   resources?: Resource[];
   onClose: () => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
   /** Called instead of onClose when a resource opens media, so callers can distinguish "hide while media plays" from an explicit close/cancel. Defaults to onClose. */
   onMediaOpen?: () => void;
@@ -86,7 +172,6 @@ interface Props {
 
 export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, onGpView, onMediaOpen, children }: Props) {
   const closeForMedia = onMediaOpen ?? onClose;
-  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -111,75 +196,17 @@ export function SessionModal({ title, subtitle, resources, onClose, onOpenFile, 
         {resources && resources.length > 0 && (
           <div className="modal-resources">
             <span className="modal-section-label">Resources</span>
-            <div className="modal-resource-links">
-              {resources.map((r) => {
-                if (r.type === "local_folder") {
-                  return (
-                    <LocalFolderResource
-                      key={r.url}
-                      name={r.name}
-                      folderPath={r.url}
-                      onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt); closeForMedia(); } : undefined}
-                      onGpView={onGpView}
-                    />
-                  );
-                }
-                if (r.type === "local_file") {
-                  const ft = fileTypeFromPath(r.url);
-                  return (
-                    <button
-                      key={r.url}
-                      className="modal-resource-link modal-resource-link--local"
-                      onClick={() => {
-                        if (ft === "guitar_pro") {
-                          // Opens in the OS's default app (Guitar Pro) — a
-                          // fire-and-forget external launch, not an in-app
-                          // overlay, so the session modal stays open.
-                          onGpView?.(r.url);
-                        } else {
-                          onOpenFile?.(r.url, ft);
-                          closeForMedia();
-                        }
-                      }}
-                    >
-                      <FolderOpenIcon style={{ width: 11, height: 11 }} />
-                      {r.name}
-                    </button>
-                  );
-                }
-                if (r.type === "guitar_pro") {
-                  return (
-                    <button
-                      key={r.url}
-                      className="modal-resource-link modal-resource-link--local"
-                      onClick={() => onGpView?.(r.url)}
-                    >
-                      <FolderOpenIcon style={{ width: 11, height: 11 }} />
-                      {r.name}
-                    </button>
-                  );
-                }
-                // All other types (url, youtube, unknown) → system browser
-                return (
-                  <button
-                    key={r.url}
-                    className="modal-resource-link"
-                    onClick={() => {
-                      openUrl(r.url).catch((err) => setError(err instanceof Error ? err.message : String(err)));
-                    }}
-                  >
-                    <ArrowTopRightOnSquareIcon style={{ width: 11, height: 11 }} />
-                    {r.name}
-                  </button>
-                );
-              })}
-            </div>
+            <ResourceLinks
+              resources={resources}
+              onOpenFile={onOpenFile}
+              onGpView={onGpView}
+              onLocalMediaOpen={closeForMedia}
+            />
           </div>
         )}
 
         <div className="modal-body">{children}</div>
       </div>
-      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
     </div>
   );
 }

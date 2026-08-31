@@ -23,7 +23,7 @@ interface CardProps {
   onFormClose: () => void;
   onSessionSubmit: (dailyPracticeTime: number) => void;
   onSkip: () => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
   isChild?: boolean;
   /** When set, play button starts a sequential child session instead of this item's own timer */
@@ -173,7 +173,7 @@ interface ExerciseCardProps {
   onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
   onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
@@ -257,7 +257,7 @@ export function ExerciseCard({
             onFormClose={() => onFormClose(child.id)}
             onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
             onSkip={() => onSkip(child.id)}
-            onOpenFile={onOpenFile ? (path, mt) => onOpenFile(path, mt, makeItemKey("exercise", child.id)) : undefined}
+            onOpenFile={onOpenFile ? (path, mt, _itemKey, resources) => onOpenFile(path, mt, makeItemKey("exercise", child.id), resources) : undefined}
             onGpView={onGpView}
             onOpenChat={onOpenChat ? () => onOpenChat(child.id) : undefined}
             isMediaActive={isMediaActive}

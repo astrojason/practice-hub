@@ -1924,6 +1924,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   flex-direction: column;
 }
 
+.mp-resources-body {
+  padding: 12px 16px;
+  overflow-y: auto;
+}
+
 .mp-palette-item {
   display: flex;
   align-items: center;

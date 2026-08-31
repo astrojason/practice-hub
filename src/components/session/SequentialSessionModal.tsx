@@ -44,7 +44,7 @@ interface Props {
   onSkip: () => void;
   onFormClose: () => void;
   onCancelReturn: () => void;
-  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string) => void;
+  onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string, audioPath?: string) => void;
   /** Called instead of cancelling when media is opened from within the modal, so it can be hidden and restored without losing the session/timer. */
   onMediaOpen?: () => void;
