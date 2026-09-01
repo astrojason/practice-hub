@@ -8,12 +8,13 @@ import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { BrowseView } from "./components/BrowseView";
 import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
+import { PracticeTimeReport } from "./components/reports/PracticeTimeReport";
 import { ErrorModal } from "./components/ErrorModal";
 import pkgJson from "../package.json";
 
 const APP_VERSION: string = pkgJson.version;
 
-type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog" | "settings";
+type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog" | "settings" | "reports";
 
 const MUSIC_QUOTES = [
   { text: "Without music, life would be a mistake.", author: "Nietzsche" },
@@ -78,6 +79,8 @@ export function App() {
     overlay = <Changelog onBack={() => setView("session")} />;
   } else if (view === "settings") {
     overlay = <SettingsView onBack={() => setView("session")} />;
+  } else if (view === "reports") {
+    overlay = <PracticeTimeReport token={token} onBack={() => setView("session")} />;
   }
 
   return (
@@ -93,6 +96,7 @@ export function App() {
           onBrowse={() => setView("browse")}
           onChangelog={() => setView("changelog")}
           onSettings={() => setView("settings")}
+          onReports={() => setView("reports")}
           onGpView={openGpFile}
         />
       </div>

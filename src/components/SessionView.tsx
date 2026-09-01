@@ -26,7 +26,6 @@ import { ChatPanel } from "./chat/ChatPanel";
 import type { ChatEntity } from "./chat/ChatPanel";
 import { ErrorModal } from "./ErrorModal";
 import { HelpModal } from "./HelpModal";
-import { PracticeTimeReport } from "./reports/PracticeTimeReport";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { makeItemKey, parseItemKey } from "../lib/itemKey";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../hooks/useLocalStorageJSON";
@@ -256,10 +255,11 @@ interface Props {
   onBrowse: () => void;
   onChangelog: () => void;
   onSettings: () => void;
+  onReports: () => void;
   onGpView?: (path: string) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onChangelog, onSettings, onGpView }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onChangelog, onSettings, onReports, onGpView }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -301,7 +301,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
   // ── Chat / Reports ────────────────────────────────────────────────────────────
   const [chatEntity, setChatEntity] = useState<ChatEntity | null>(null);
-  const [reportOpen, setReportOpen] = useState(false);
   const [historicalExercises, setHistoricalExercises] = useState<CatalogExerciseWithActive[]>([]);
   const [historicalExercisesLoaded, setHistoricalExercisesLoaded] = useState(false);
 
@@ -941,7 +940,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onQuickAdd={() => setShowQuickAddModal((v) => !v)}
         onMetronome={() => setMetronomeOpen((v) => !v)}
         onSignOut={onSignOut}
-        onReports={() => setReportOpen(true)}
+        onReports={onReports}
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
         onBrowse={onBrowse}
@@ -1052,11 +1051,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           />
         );
       })()}
-
-      {/* Practice Time Report */}
-      {reportOpen && (
-        <PracticeTimeReport token={token} onClose={() => setReportOpen(false)} />
-      )}
 
       {/* AI Chat Panel */}
       {chatEntity && dashboard && (
