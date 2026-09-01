@@ -255,10 +255,11 @@ interface Props {
   onCalendar: () => void;
   onBrowse: () => void;
   onChangelog: () => void;
+  onSettings: () => void;
   onGpView?: (path: string) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onChangelog, onGpView }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onChangelog, onSettings, onGpView }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -946,6 +947,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onBrowse={onBrowse}
         onHelp={() => setHelpOpen(true)}
         onChangelog={onChangelog}
+        onSettings={onSettings}
       />
 
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}

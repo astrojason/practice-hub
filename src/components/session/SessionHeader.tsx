@@ -31,6 +31,7 @@ interface Props {
   onBrowse: () => void;
   onHelp: () => void;
   onChangelog: () => void;
+  onSettings: () => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -62,6 +63,7 @@ export function SessionHeader({
   onBrowse,
   onHelp,
   onChangelog,
+  onSettings,
 }: Props) {
   const progressPct = Math.min(
     100,
@@ -115,6 +117,9 @@ export function SessionHeader({
           </button>
           <button onClick={onHelp} className="btn-ghost" title="Help & tutorials">
             <QuestionMarkCircleIcon className="icon-sm" /> Help
+          </button>
+          <button onClick={onSettings} className="btn-ghost" title="Application settings">
+            Settings
           </button>
           <button onClick={onMetronome} className="btn-ghost" title="Open metronome">
             ♩ Metronome

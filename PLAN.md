@@ -49,74 +49,7 @@ commit that touches non-CLAUDE.md files.
 
 ---
 
-## Step 1 — Unattended overnight execution via launchd
-
-**TODO.md item:** *"True unattended overnight execution via macOS launchd —
-opt-in settings toggle installs/removes the launchd agent; not just 'run on
-next app open.'"*
-
-There is currently no in-app Settings view — this step creates one.
-
-1. **launchd plist template**: `src-tauri/sidecar/com.astrojason.practicehub.nightly-gp-scan.plist`
-   (or generate it in Rust as a string — a static template file is simpler to
-   review/edit). Should invoke
-   `~/Projects/astrojason/practice.astrojason.com/.venv/bin/python3
-   <resolved-scripts-dir>/nightly_gp_scan.py --env production`, run on a
-   `StartCalendarInterval` (pick a late-night hour, e.g. 3am — expose it as a
-   fixed default, not a user-configurable schedule unless asked), with
-   `StandardOutPath`/`StandardErrorPath` pointed at a log file under
-   `~/Library/Logs/practice-hub/nightly-gp-scan.log` so failures are
-   inspectable.
-   - Note `scripts/nightly_gp_scan.py` resolves `ANALYZE_SIDECAR` relative to
-     its own file location (`Path(__file__).resolve().parent.parent /
-     "src-tauri/sidecar/analyze_gp.py"`) — the plist must invoke the script
-     from its real repo path (`~/Projects/astrojason/practice-hub/scripts/nightly_gp_scan.py`),
-     not a copied/bundled location, or that relative resolution breaks.
-
-2. **Two new Tauri commands** in `lib.rs`:
-   - `install_launchd_agent(app) -> Result<(), String>`: writes the plist
-     (with the real repo path substituted in) to
-     `~/Library/LaunchAgents/com.astrojason.practicehub.nightly-gp-scan.plist`,
-     then runs `launchctl load -w <path>`.
-   - `uninstall_launchd_agent() -> Result<(), String>`: runs `launchctl
-     unload -w <path>` then removes the plist file. Tolerate "already
-     unloaded"/file-not-found as a non-error (idempotent toggle-off).
-   - Both surface real stderr/error text on failure — same rule as everywhere
-     else in this codebase.
-   - Consider a third `is_launchd_agent_installed() -> Result<bool, String>`
-     (checks file existence, or `launchctl list | grep`) so the Settings
-     toggle reflects real state on load rather than trusting local store
-     state that could drift (e.g. user manually removed the plist).
-
-3. **New Settings UI**: there's no existing Settings component — add
-   `src/components/SettingsView.tsx` (or fold the toggle into
-   `GpLibraryView.tsx`'s settings bar if a full Settings view feels like
-   overreach for one toggle — your call, but a dedicated view scales better
-   if more toggles get added later). Needs:
-   - A checkbox/switch: "Run nightly scan automatically (launchd)".
-   - On enable: call `install_launchd_agent`; on disable: call
-     `uninstall_launchd_agent`. Reflect actual failures via `ErrorModal`.
-   - On mount, call `is_launchd_agent_installed` (if implemented) to set the
-     toggle's initial state from ground truth, not cached preference.
-   - Persist the user's intent in the `gp-library` store too (e.g.
-     `launchdEnabled: boolean`) purely for UI responsiveness — ground truth
-     stays the actual plist/launchctl state.
-
-### Tests
-
-`tests/settings-launchd-toggle.spec.ts` (or add to an existing settings spec
-if one gets created for other reasons first):
-- Toggling on invokes `install_launchd_agent`; toggling off invokes
-  `uninstall_launchd_agent`.
-- A rejected install/uninstall call surfaces via `ErrorModal` with the actual
-  error text and the toggle visually reverts to its prior state (don't leave
-  the UI claiming "enabled" when the install call failed).
-- Initial toggle state on mount reflects what `is_launchd_agent_installed`
-  returns, not a locally-cached guess.
-
----
-
-## Step 2 — Proficiency-calibrated scoring (proposed design — confirm before building)
+## Step 1 — Proficiency-calibrated scoring (proposed design — confirm before building)
 
 **TODO.md item:** *"Computed score is calibrated against the user's own
 demonstrated proficiency (inferred from their rating history on other
@@ -155,9 +88,6 @@ of the shape, for whoever picks it up:
 
 ## Order of work
 
-Step 1 is the remaining ready-to-build implementation. Step 2 comes last and
-is a re-scoping checkpoint, not a ready-to-build spec.
+Step 1 is a re-scoping checkpoint, not a ready-to-build spec.
 
-Remove the Step 1 TODO.md bullet in the commit that lands it. Leave the Step 2
-bullet in TODO.md until it has its own confirmed plan — don't remove it as
-part of this work.
+Leave the Step 1 bullet in TODO.md until it has its own confirmed plan.

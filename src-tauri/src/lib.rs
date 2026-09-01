@@ -289,6 +289,136 @@ async fn write_song_difficulty(
     }
 }
 
+// ─── Nightly GP scan launchd agent ───────────────────────────────────────────
+
+const NIGHTLY_SCAN_LABEL: &str = "com.astrojason.practicehub.nightly-gp-scan";
+
+fn home_directory() -> Result<PathBuf, String> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| "Could not locate the home directory".to_string())
+}
+
+fn launchd_agent_path() -> Result<PathBuf, String> {
+    Ok(home_directory()?
+        .join("Library/LaunchAgents")
+        .join(format!("{NIGHTLY_SCAN_LABEL}.plist")))
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn run_launchctl(action: &str, path: &Path) -> Result<(), String> {
+    let output = std::process::Command::new("launchctl")
+        .arg(action)
+        .arg("-w")
+        .arg(path)
+        .output()
+        .map_err(|e| format!("Failed to launch launchctl: {e}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else if !stdout.is_empty() { stdout } else {
+        format!("exit status {}", output.status)
+    };
+    Err(format!("launchctl {action} failed: {detail}"))
+}
+
+fn launchctl_already_unloaded(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("could not find specified service")
+        || lower.contains("service is not loaded")
+        || lower.contains("no such process")
+        || lower.contains("no such file")
+}
+
+#[tauri::command]
+async fn install_launchd_agent(app: tauri::AppHandle) -> Result<(), String> {
+    let home = home_directory()?;
+    let python = home.join("Projects/astrojason/practice.astrojason.com/.venv/bin/python3");
+    let script = home.join("Projects/astrojason/practice-hub/scripts/nightly_gp_scan.py");
+    let log_dir = home.join("Library/Logs/practice-hub");
+    let log_path = log_dir.join("nightly-gp-scan.log");
+    let agent_path = launchd_agent_path()?;
+
+    if !python.is_file() {
+        return Err(format!("Instrumenta Python environment not found at {}", python.display()));
+    }
+    if !script.is_file() {
+        return Err(format!("Nightly scan script not found at {}", script.display()));
+    }
+
+    let template_path = app
+        .path()
+        .resolve(
+            "sidecar/com.astrojason.practicehub.nightly-gp-scan.plist",
+            BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("Could not locate launchd template: {e}"))?;
+    let template = fs::read_to_string(&template_path)
+        .map_err(|e| format!("Failed to read launchd template {}: {e}", template_path.display()))?;
+    let plist = template
+        .replace("__PYTHON_PATH__", &xml_escape(&python.to_string_lossy()))
+        .replace("__SCRIPT_PATH__", &xml_escape(&script.to_string_lossy()))
+        .replace("__LOG_PATH__", &xml_escape(&log_path.to_string_lossy()));
+
+    fs::create_dir_all(&log_dir)
+        .map_err(|e| format!("Failed to create log directory {}: {e}", log_dir.display()))?;
+    let agent_dir = agent_path
+        .parent()
+        .ok_or_else(|| format!("Invalid launchd agent path: {}", agent_path.display()))?;
+    fs::create_dir_all(agent_dir)
+        .map_err(|e| format!("Failed to create LaunchAgents directory {}: {e}", agent_dir.display()))?;
+    fs::write(&agent_path, plist)
+        .map_err(|e| format!("Failed to write launchd agent {}: {e}", agent_path.display()))?;
+
+    if let Err(load_error) = run_launchctl("load", &agent_path) {
+        return match fs::remove_file(&agent_path) {
+            Ok(()) => Err(load_error),
+            Err(cleanup_error) if cleanup_error.kind() == std::io::ErrorKind::NotFound => Err(load_error),
+            Err(cleanup_error) => Err(format!(
+                "{load_error}; failed to remove the inactive plist: {cleanup_error}"
+            )),
+        };
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn uninstall_launchd_agent() -> Result<(), String> {
+    let agent_path = launchd_agent_path()?;
+    if !agent_path.exists() {
+        return Ok(());
+    }
+
+    if let Err(error) = run_launchctl("unload", &agent_path) {
+        if !launchctl_already_unloaded(&error) {
+            return Err(error);
+        }
+    }
+
+    match fs::remove_file(&agent_path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Failed to remove launchd agent {}: {error}", agent_path.display())),
+    }
+}
+
+#[tauri::command]
+fn is_launchd_agent_installed() -> Result<bool, String> {
+    Ok(launchd_agent_path()?.is_file())
+}
+
 // ─── GP library scanner ───────────────────────────────────────────────────────
 // Recursively walks a directory and returns JSON describing every .gp file
 // found, along with its filesystem metadata for incremental-scan tracking.
@@ -549,6 +679,9 @@ pub fn run() {
             start_auth,
             analyze_gp_file,
             write_song_difficulty,
+            install_launchd_agent,
+            uninstall_launchd_agent,
+            is_launchd_agent_installed,
             parse_gp_file,
             scan_gp_directory,
             list_local_folder,

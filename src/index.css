@@ -259,6 +259,34 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
 }
 .all-complete-banner svg { width: 13px; height: 13px; }
 
+/* ─── Settings ─────────────────────────────────────────────────────────────── */
+.settings-view {
+  flex: 1;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.settings-header { display: flex; align-items: center; gap: 12px; }
+.settings-header h2 { font-size: 18px; font-weight: 600; }
+.settings-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings-card-copy h3 { font-size: 15px; margin-bottom: 6px; }
+.settings-card-copy p { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+.settings-card-copy code { color: var(--text); }
+.settings-toggle { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.settings-toggle input { width: 17px; height: 17px; accent-color: var(--accent); }
+.settings-status { color: var(--text-dim); font-size: 12px; }
+
 /* ─── Open-session form (rendered between header and main) ───────────────────── */
 .open-session-form {
   margin: 12px 16px 4px;
