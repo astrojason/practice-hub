@@ -1,6 +1,7 @@
 ## Bugs
 
 ## Features
+- [ ] 1% better every day improvement functionality, region specific and have it push the playback speed by 1% of what it was the day before until it reaches 100%
 
 ## Enhancements
 

@@ -81,6 +81,7 @@ function StudyMaterialSingleCard({
       sessions={sessions}
       entityType="study_material"
       entityId={material.id}
+      itemCreatedTimestamp={material.created_timestamp}
       isChild={isChild}
       isCompletedToday={isCompletedToday}
       isSkippedToday={isSkippedToday}

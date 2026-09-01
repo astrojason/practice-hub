@@ -17,6 +17,7 @@ import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import type { LastSessionData } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
+import { getUsageStalenessLevel } from "../../lib/itemUsage";
 import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
@@ -75,6 +76,8 @@ export interface ItemSessionCardProps {
   sessions: AnySession[];
   entityType: "exercise" | "song" | "study_material";
   entityId: number;
+  /** When set, enables the orange/red "hasn't been practiced recently" highlight for this item. */
+  itemCreatedTimestamp?: number;
   isChild?: boolean;
   isCompletedToday: boolean;
   isSkippedToday: boolean;
@@ -117,6 +120,7 @@ export function ItemSessionCard({
   sessions,
   entityType,
   entityId,
+  itemCreatedTimestamp,
   isChild,
   isCompletedToday,
   isSkippedToday,
@@ -199,12 +203,13 @@ export function ItemSessionCard({
 
   const lastSession = sessions[0] ?? null;
   const struggling = isStruggling(sessions, entityType);
+  const usageStaleness = itemCreatedTimestamp != null ? getUsageStalenessLevel(itemCreatedTimestamp, sessions) : "none";
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
 
   return (
     <div
-      className={`item-card ${isChild ? "child-card" : ""} ${isSkippedToday ? "skipped" : isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""}`}
+      className={`item-card ${isChild ? "child-card" : ""} ${isSkippedToday ? "skipped" : isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""} ${usageStaleness !== "none" ? `stale-${usageStaleness}` : ""}`}
     >
       <div className="item-card-row">
         <span className="item-status">

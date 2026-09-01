@@ -32,6 +32,8 @@ interface Props {
   onOpenChat?: () => void;
   isMediaActive?: boolean;
   onEntityEdited?: (song: Song) => void;
+  /** Enables the orange/red "hasn't been practiced recently" highlight — only meaningful for Project songs. */
+  trackUsage?: boolean;
 }
 
 export function SongCard({
@@ -57,6 +59,7 @@ export function SongCard({
   onOpenChat,
   isMediaActive,
   onEntityEdited,
+  trackUsage,
 }: Props) {
   const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
   const sessions = (song.meta.sessions ?? []) as SongSession[];
@@ -81,6 +84,7 @@ export function SongCard({
       sessions={sessions}
       entityType="song"
       entityId={song.id}
+      itemCreatedTimestamp={trackUsage ? song.created_timestamp : undefined}
       isCompletedToday={isCompletedToday}
       isSkippedToday={isSkippedToday}
       isTimerActive={isTimerActive}

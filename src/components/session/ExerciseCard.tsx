@@ -92,6 +92,7 @@ function ExerciseSingleCard({
       sessions={sessions}
       entityType="exercise"
       entityId={exercise.id}
+      itemCreatedTimestamp={exercise.created_timestamp}
       isChild={isChild}
       isCompletedToday={isCompletedToday}
       isSkippedToday={isSkippedToday}

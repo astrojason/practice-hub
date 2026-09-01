@@ -18,6 +18,9 @@
   --red:          #f87171;
   --red-dim:      rgba(248, 113, 113, 0.10);
   --red-border:   rgba(248, 113, 113, 0.22);
+  --orange:        #fb923c;
+  --orange-dim:    rgba(251, 146, 60, 0.10);
+  --orange-border: rgba(251, 146, 60, 0.22);
   --r:            6px;
   --r-sm:         4px;
 }
@@ -334,6 +337,10 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
 .item-card.active   { background: var(--accent-dim); }
 .item-card.completed .item-card-row { opacity: 0.45; }
 .item-card.skipped .item-card-row { opacity: 0.28; }
+
+/* Not practiced recently enough — see src/lib/itemUsage.ts for thresholds */
+.item-card.stale-orange { background: var(--orange-dim); border-left: 3px solid var(--orange); }
+.item-card.stale-red    { background: var(--red-dim); border-left: 3px solid var(--red); }
 
 .child-card { background: rgba(255, 255, 255, 0.04); border-left: 2px solid rgba(255,255,255,0.06); }
 .child-card .item-card-row { padding-left: 30px; }

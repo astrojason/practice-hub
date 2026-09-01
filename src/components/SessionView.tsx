@@ -1171,6 +1171,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               token={token}
               song={song}
               currentListId={dashboard.project?.id}
+              trackUsage
               isCompletedToday={completedIds.has(makeItemKey("song", song.id)) && !skippedIds.has(makeItemKey("song", song.id))}
               isSkippedToday={skippedIds.has(makeItemKey("song", song.id))}
               isTimerActive={activeTimers.has(makeItemKey("song", song.id))}
