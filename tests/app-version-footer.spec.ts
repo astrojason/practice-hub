@@ -35,14 +35,18 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-test("a persistent version badge is visible and opens the changelog, including while the media player is open", async ({ page }) => {
+test("a full-width app footer holds the version badge and opens the changelog, including while the media player is open", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
 
-  const footer = page.locator(".app-version-footer");
-  await expect(footer).toBeVisible();
-  await expect(footer).toHaveText(`v${pkgJson.version}`);
+  // The header no longer carries a version link.
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toHaveText("Practice Hub");
 
-  // Open the media player — the badge must stay visible/clickable on top of it,
+  const footer = page.locator(".app-footer");
+  await expect(footer).toBeVisible();
+  const versionBadge = footer.locator(".app-footer-version");
+  await expect(versionBadge).toHaveText(`v${pkgJson.version}`);
+
+  // Open the media player — the footer must stay visible/clickable on top of it,
   // not just on the plain session view.
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
   const card = page.locator(".item-card").first();
@@ -51,8 +55,23 @@ test("a persistent version badge is visible and opens the changelog, including w
   await expect(page.locator(".media-player")).toBeVisible();
   await expect(footer).toBeVisible();
 
-  await footer.click();
+  await versionBadge.click();
   await expect(page.locator("h2", { hasText: "Changelog" })).toBeVisible();
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("Help and Metronome live in the app footer, not the header, and stay visible while browsing another view", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+
+  const footer = page.locator(".app-footer");
+  await expect(footer.locator('button[title="Help & tutorials"]')).toBeVisible();
+  await expect(footer.locator('button[title="Open metronome"]')).toBeVisible();
+
+  await page.locator('button[title="Browse catalog"]').click();
+  await expect(page.locator(".browse-view")).toBeVisible();
+  await expect(footer).toBeVisible();
+  await expect(footer.locator('button[title="Help & tutorials"]')).toBeVisible();
+  await expect(footer.locator('button[title="Open metronome"]')).toBeVisible();
+  await expect(footer.locator(".app-footer-version")).toHaveText(`v${pkgJson.version}`);
 });

@@ -2755,14 +2755,24 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   background: rgba(0, 0, 0, 0.2);
 }
 
-/* Always-visible, click-to-view-changelog version badge — pinned to the
- * viewport so it stays reachable regardless of scroll position or which
- * modal/overlay (e.g. the media player) is currently open on top of it. */
-.app-version-footer {
-  position: fixed;
-  bottom: 8px;
-  right: 10px;
-  z-index: 1000;
+/* Always-visible, full-width app footer — a real flex child of #root (not
+ * fixed/floating) so it reserves its own space beneath whichever view is
+ * showing, on every screen, rather than overlapping content. Holds Help and
+ * Metronome (moved out of the session header, since neither is scoped to
+ * the session view) plus the click-to-view-changelog version badge. */
+.app-footer {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; height: 40px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.app-footer-actions {
+  display: flex; align-items: center; gap: 6px;
+}
+
+.app-footer-version {
   padding: 2px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -2771,11 +2781,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   font-size: 11px;
   line-height: 1.6;
   cursor: pointer;
-  opacity: 0.75;
 }
 
-.app-version-footer:hover {
-  opacity: 1;
+.app-footer-version:hover {
   color: var(--text-dim);
   border-color: var(--text-dim);
 }

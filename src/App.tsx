@@ -10,6 +10,9 @@ import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
 import { PracticeTimeReport } from "./components/reports/PracticeTimeReport";
 import { ErrorModal } from "./components/ErrorModal";
+import { HelpModal } from "./components/HelpModal";
+import { Metronome } from "./components/player/Metronome";
+import { AppFooter } from "./components/AppFooter";
 import pkgJson from "../package.json";
 
 const APP_VERSION: string = pkgJson.version;
@@ -33,6 +36,8 @@ export function App() {
   const [slowLoad, setSlowLoad] = useState(false);
   const [view, setView] = useState<AppView>("session");
   const [gpOpenError, setGpOpenError] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [metronomeOpen, setMetronomeOpen] = useState(false);
 
   // Guitar Pro files open in the real Guitar Pro app (via the OS's default
   // file-type handler) rather than an in-app viewer.
@@ -94,21 +99,21 @@ export function App() {
           onGpLibrary={() => setView("gp-library")}
           onCalendar={() => setView("calendar")}
           onBrowse={() => setView("browse")}
-          onChangelog={() => setView("changelog")}
           onSettings={() => setView("settings")}
           onReports={() => setView("reports")}
           onGpView={openGpFile}
         />
       </div>
       {overlay}
+      {metronomeOpen && <Metronome onClose={() => setMetronomeOpen(false)} />}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {gpOpenError && <ErrorModal error={gpOpenError} onDismiss={() => setGpOpenError(null)} />}
-      <button
-        className="app-version-footer"
-        onClick={() => setView("changelog")}
-        title="View changelog"
-      >
-        v{APP_VERSION}
-      </button>
+      <AppFooter
+        version={APP_VERSION}
+        onHelp={() => setHelpOpen(true)}
+        onMetronome={() => setMetronomeOpen((v) => !v)}
+        onChangelog={() => setView("changelog")}
+      />
     </>
   );
 }

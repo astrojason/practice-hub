@@ -25,7 +25,6 @@ import type {
 import { ChatPanel } from "./chat/ChatPanel";
 import type { ChatEntity } from "./chat/ChatPanel";
 import { ErrorModal } from "./ErrorModal";
-import { HelpModal } from "./HelpModal";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { makeItemKey, parseItemKey } from "../lib/itemKey";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../hooks/useLocalStorageJSON";
@@ -38,15 +37,11 @@ import { OpenSessionForm } from "./session/forms/OpenSessionForm";
 import { QuickAddPanel } from "./session/QuickAddPanel";
 import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
-import { Metronome } from "./player/Metronome";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
 import { useSessionTimers } from "../hooks/useSessionTimers";
 import { useSequentialSession } from "../hooks/useSequentialSession";
-import pkgJson from "../../package.json";
-
-const APP_VERSION: string = pkgJson.version;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -253,14 +248,12 @@ interface Props {
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
-  onChangelog: () => void;
   onSettings: () => void;
   onReports: () => void;
   onGpView?: (path: string) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onChangelog, onSettings, onReports, onGpView }: Props) {
-  const [helpOpen, setHelpOpen] = useState(false);
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onSettings, onReports, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -321,7 +314,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       );
   }, [chatEntity, historicalExercisesLoaded, token]);
 
-  // ── Player / Metronome ────────────────────────────────────────────────────────
+  // ── Player ───────────────────────────────────────────────────────────────────
   const [playerState, setPlayerState] = useState<{
     path: string;
     mediaType: "audio" | "video";
@@ -330,7 +323,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     songId?: number;
     resources?: Resource[];
   } | null>(null);
-  const [metronomeOpen, setMetronomeOpen] = useState(false);
 
   const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string, itemKey?: string, resources?: Resource[]) => {
     const parsedKey = itemKey ? parseItemKey(itemKey) : null;
@@ -926,7 +918,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         goalReached={goalReached}
         allComplete={allComplete}
         isRebuilding={isRebuilding}
-        version={APP_VERSION}
         onRebuild={handleRebuild}
         onOpenSession={() => {
           if (!activeTimers.has(OPEN_SESSION_KEY) && !pausedElapsed.has(OPEN_SESSION_KEY)) {
@@ -938,18 +929,13 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         openSessionElapsed={getElapsed(OPEN_SESSION_KEY)}
         onAdd={() => setShowAdd((v) => !v)}
         onQuickAdd={() => setShowQuickAddModal((v) => !v)}
-        onMetronome={() => setMetronomeOpen((v) => !v)}
         onSignOut={onSignOut}
         onReports={onReports}
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
         onBrowse={onBrowse}
-        onHelp={() => setHelpOpen(true)}
-        onChangelog={onChangelog}
         onSettings={onSettings}
       />
-
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
 
       {openSessionModalOpen && (
         <OpenSessionForm
@@ -1010,11 +996,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           }
           onGpView={onGpView}
         />
-      )}
-
-      {/* Standalone metronome panel */}
-      {metronomeOpen && (
-        <Metronome onClose={() => setMetronomeOpen(false)} />
       )}
 
       {/* Sequential session overlay */}

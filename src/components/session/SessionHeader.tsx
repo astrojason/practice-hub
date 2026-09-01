@@ -6,7 +6,6 @@ import {
   MagnifyingGlassPlusIcon,
   MusicalNoteIcon,
   PlusIcon,
-  QuestionMarkCircleIcon,
   RectangleStackIcon,
 } from "@heroicons/react/16/solid";
 
@@ -18,19 +17,15 @@ interface Props {
   isRebuilding: boolean;
   openSessionActive: boolean;
   openSessionElapsed: number;
-  version: string;
   onRebuild: () => void;
   onOpenSession: () => void;
   onAdd: () => void;
   onQuickAdd: () => void;
-  onMetronome: () => void;
   onSignOut: () => void;
   onReports: () => void;
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
-  onHelp: () => void;
-  onChangelog: () => void;
   onSettings: () => void;
 }
 
@@ -50,19 +45,15 @@ export function SessionHeader({
   isRebuilding,
   openSessionActive,
   openSessionElapsed,
-  version,
   onRebuild,
   onOpenSession,
   onAdd,
   onQuickAdd,
-  onMetronome,
   onSignOut,
   onReports,
   onGpLibrary,
   onCalendar,
   onBrowse,
-  onHelp,
-  onChangelog,
   onSettings,
 }: Props) {
   const progressPct = Math.min(
@@ -73,17 +64,7 @@ export function SessionHeader({
   return (
     <header className="session-header">
       <div className="session-header-top">
-        <h1 className="session-title">
-          Practice Hub{' '}
-          <button
-            onClick={onChangelog}
-            className="btn-ghost"
-            title="View changelog"
-            style={{ fontSize: '0.7em', fontWeight: 'normal', padding: '0.1em 0.4em', verticalAlign: 'middle' }}
-          >
-            v{version}
-          </button>
-        </h1>
+        <h1 className="session-title">Practice Hub</h1>
         <div className="session-timer-row">
           <span className={`session-timer ${goalReached ? "goal-reached" : ""}`}>
             {formatTime(displayedSeconds)}
@@ -115,14 +96,8 @@ export function SessionHeader({
           <button onClick={onBrowse} className="btn-ghost" title="Browse catalog">
             <RectangleStackIcon className="icon-sm" /> Browse
           </button>
-          <button onClick={onHelp} className="btn-ghost" title="Help & tutorials">
-            <QuestionMarkCircleIcon className="icon-sm" /> Help
-          </button>
           <button onClick={onSettings} className="btn-ghost" title="Application settings">
             Settings
-          </button>
-          <button onClick={onMetronome} className="btn-ghost" title="Open metronome">
-            ♩ Metronome
           </button>
           <button onClick={onRebuild} disabled={isRebuilding} className="btn-ghost">
             <ArrowPathIcon className="icon-sm" />
