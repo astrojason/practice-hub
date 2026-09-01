@@ -28,7 +28,8 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "sidecar/analyze_gp.py": "sidecar/analyze_gp.py"
+      "sidecar/analyze_gp.py": "sidecar/analyze_gp.py",
+      "sidecar/write_song_difficulty.py": "sidecar/write_song_difficulty.py"
     },
     "icon": [
       "icons/32x32.png",

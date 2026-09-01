@@ -2,7 +2,7 @@ use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom},
     net::SocketAddr,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     thread,
     time::UNIX_EPOCH,
@@ -226,6 +226,66 @@ async fn analyze_gp_file(
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+// Writes computed per-aspect values directly to the canonical song row in
+// Turso. The Python sidecar re-checks the manual flags immediately before
+// each update so an admin lock that lands after scanning still wins.
+#[tauri::command]
+async fn write_song_difficulty(
+    app: tauri::AppHandle,
+    db_url: String,
+    auth_token: String,
+    song_id: i64,
+    rhythm: Option<f64>,
+    lead: Option<f64>,
+) -> Result<String, String> {
+    let script = app
+        .path()
+        .resolve("sidecar/write_song_difficulty.py", BaseDirectory::Resource)
+        .map_err(|e| format!("Could not locate Turso writer script: {e}"))?;
+
+    let home = std::env::var_os("HOME")
+        .ok_or_else(|| "Could not locate the home directory for the Instrumenta Python environment".to_string())?;
+    let python = PathBuf::from(home)
+        .join("Projects/astrojason/practice.astrojason.com/.venv/bin/python3");
+    if !python.is_file() {
+        return Err(format!(
+            "Instrumenta Python environment not found at {}",
+            python.display()
+        ));
+    }
+
+    let mut command = std::process::Command::new(&python);
+    command
+        .arg(&script)
+        .arg("--db-url")
+        .arg(&db_url)
+        .arg("--auth-token")
+        .arg(&auth_token)
+        .arg("--song-id")
+        .arg(song_id.to_string());
+    if let Some(value) = rhythm {
+        command.arg("--rhythm").arg(value.to_string());
+    }
+    if let Some(value) = lead {
+        command.arg("--lead").arg(value.to_string());
+    }
+
+    let output = command
+        .output()
+        .map_err(|e| format!("Failed to launch Turso writer: {e}"))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("Turso writer exited with status {}", output.status)
+        } else {
+            stderr
+        })
     }
 }
 
@@ -488,6 +548,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_auth,
             analyze_gp_file,
+            write_song_difficulty,
             parse_gp_file,
             scan_gp_directory,
             list_local_folder,

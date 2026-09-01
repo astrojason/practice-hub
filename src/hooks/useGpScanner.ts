@@ -171,6 +171,8 @@ type ScanStatus = "idle" | "scanning" | "analyzing" | "done" | "error";
 
 export function useGpScanner(token: string) {
   const [rootPath, setRootPathState] = useState<string>(DEFAULT_ROOT);
+  const [tursoDbUrl, setTursoDbUrl] = useState("");
+  const [tursoAuthToken, setTursoAuthToken] = useState("");
   const [scanResult, setScanResult] = useState<GpScanResult | null>(null);
   const [status, setStatus] = useState<ScanStatus>("idle");
   const [statusMessage, setStatusMessage] = useState("");
@@ -185,10 +187,29 @@ export function useGpScanner(token: string) {
     await store.save();
   }, []);
 
+  const setTursoCredentials = useCallback(async (dbUrl: string, authToken: string) => {
+    setTursoDbUrl(dbUrl);
+    setTursoAuthToken(authToken);
+    const store = await load(STORE_KEY);
+    await store.set("tursoDbUrl", dbUrl);
+    await store.set("tursoAuthToken", authToken);
+    await store.save();
+  }, []);
+
+  const getTursoCredentials = useCallback(async () => {
+    const store = await load(STORE_KEY);
+    return {
+      dbUrl: (await store.get<string>("tursoDbUrl")) ?? "",
+      authToken: (await store.get<string>("tursoAuthToken")) ?? "",
+    };
+  }, []);
+
   const loadSettings = useCallback(async () => {
     const store = await load(STORE_KEY);
     const saved = await store.get<string>("rootPath");
     if (saved) setRootPathState(saved);
+    setTursoDbUrl((await store.get<string>("tursoDbUrl")) ?? "");
+    setTursoAuthToken((await store.get<string>("tursoAuthToken")) ?? "");
   }, []);
 
   // ── Seen-file state ─────────────────────────────────────────────────────────
@@ -521,6 +542,10 @@ export function useGpScanner(token: string) {
   return {
     rootPath,
     setRootPath,
+    tursoDbUrl,
+    tursoAuthToken,
+    getTursoCredentials,
+    setTursoCredentials,
     loadSettings,
     scanResult,
     status,

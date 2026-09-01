@@ -2311,8 +2311,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 
 .gp-library-settings {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gp-library-settings-row {
+  display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
 }
 .gp-library-settings label { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
 .gp-library-settings input {
@@ -2326,6 +2332,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   font-family: monospace;
 }
 .gp-library-settings input:focus { outline: none; border-color: var(--accent); }
+.gp-turso-settings input { min-width: 0; }
 .scan-button { padding: 7px 14px; white-space: nowrap; flex-shrink: 0; }
 
 .gp-status {

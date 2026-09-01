@@ -28,6 +28,9 @@ export function GpLibraryView({ token, onBack }: Props) {
   const {
     rootPath,
     setRootPath,
+    tursoDbUrl,
+    tursoAuthToken,
+    setTursoCredentials,
     loadSettings,
     scanResult,
     status,
@@ -42,6 +45,8 @@ export function GpLibraryView({ token, onBack }: Props) {
   } = useGpScanner(token);
 
   const [pathInput, setPathInput] = useState(rootPath);
+  const [dbUrlInput, setDbUrlInput] = useState(tursoDbUrl);
+  const [authTokenInput, setAuthTokenInput] = useState(tursoAuthToken);
   const [pushing, setPushing] = useState(false);
   const [pushStatus, setPushStatus] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
@@ -58,19 +63,37 @@ export function GpLibraryView({ token, onBack }: Props) {
     setPathInput(rootPath);
   }, [rootPath]);
 
-  async function handleSaveAndScan() {
+  useEffect(() => {
+    setDbUrlInput(tursoDbUrl);
+    setAuthTokenInput(tursoAuthToken);
+  }, [tursoDbUrl, tursoAuthToken]);
+
+  async function saveSettings() {
     if (pathInput !== rootPath) {
       await setRootPath(pathInput);
     }
-    scan();
+    if (dbUrlInput !== tursoDbUrl || authTokenInput !== tursoAuthToken) {
+      await setTursoCredentials(dbUrlInput, authTokenInput);
+    }
+  }
+
+  async function handleSaveAndScan() {
+    try {
+      await saveSettings();
+      scan();
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function handleForceRescan() {
-    if (pathInput !== rootPath) {
-      await setRootPath(pathInput);
+    try {
+      await saveSettings();
+      await clearSeenCache();
+      scan();
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : String(err));
     }
-    await clearSeenCache();
-    scan();
   }
 
   async function handleOpenFile(path: string) {
@@ -127,12 +150,26 @@ export function GpLibraryView({ token, onBack }: Props) {
   async function handleConfirm() {
     if (!scanResult) return;
     const newMatches = readyToPush(scanResult.matches);
+    const hasAspectScores = newMatches.some((match) => match.rhythm || match.lead);
+    if (hasAspectScores && (!dbUrlInput.trim() || !authTokenInput.trim())) {
+      setOpenError("Turso credentials not set — configure them in the scan settings");
+      return;
+    }
+    if (dbUrlInput !== tursoDbUrl || authTokenInput !== tursoAuthToken) {
+      try {
+        await setTursoCredentials(dbUrlInput, authTokenInput);
+      } catch (err) {
+        setOpenError(err instanceof Error ? err.message : String(err));
+        return;
+      }
+    }
 
     setPushing(true);
     setPushStatus("Pushing to Instrumenta…");
 
     let pushed = 0;
     const errors: string[] = [];
+    const successfulMatches: GpMatch[] = [];
 
     for (const match of newMatches) {
       try {
@@ -140,20 +177,32 @@ export function GpLibraryView({ token, onBack }: Props) {
         if (score !== null) {
           await pushDifficultyScore(token, match.song_id, score);
         }
+        if (match.rhythm || match.lead) {
+          await invoke("write_song_difficulty", {
+            dbUrl: dbUrlInput,
+            authToken: authTokenInput,
+            songId: match.song_id,
+            ...(match.rhythm ? { rhythm: match.rhythm.difficulty_score } : {}),
+            ...(match.lead ? { lead: match.lead.difficulty_score } : {}),
+          });
+        }
         const resourceName = match.file.filename.replace(/\.[^.]+$/, "");
         await registerGpResource(token, match.song_id, match.file.path, resourceName);
         pushed++;
+        successfulMatches.push(match);
       } catch (err) {
-        errors.push(`${match.file.filename}: ${err}`);
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`${match.file.filename}: ${message}`);
       }
     }
 
-    await persistSeenEntries(newMatches);
+    await persistSeenEntries(successfulMatches);
 
     if (errors.length === 0) {
       setPushStatus(`Done — pushed ${pushed} songs to Instrumenta.`);
     } else {
       setPushStatus(`Pushed ${pushed}, ${errors.length} errors:\n${errors.join("\n")}`);
+      setOpenError(errors.join("\n"));
     }
     setPushing(false);
   }
@@ -187,30 +236,52 @@ export function GpLibraryView({ token, onBack }: Props) {
 
       {/* ── Settings bar ── */}
       <div className="gp-library-settings">
-        <label htmlFor="gp-root-path">Library folder</label>
-        <input
-          id="gp-root-path"
-          type="text"
-          value={pathInput}
-          onChange={(e) => setPathInput(e.target.value)}
-          disabled={isScanning}
-          placeholder="/path/to/Sheet Music"
-        />
-        <button
-          className="scan-button"
-          onClick={handleSaveAndScan}
-          disabled={isScanning || !pathInput.trim()}
-        >
-          {isScanning ? "Scanning…" : "Scan & Analyze"}
-        </button>
-        <button
-          className="btn-secondary"
-          onClick={handleForceRescan}
-          disabled={isScanning || !pathInput.trim()}
-          title="Clear seen-file cache and re-analyze all files"
-        >
-          Force Rescan
-        </button>
+        <div className="gp-library-settings-row">
+          <label htmlFor="gp-root-path">Library folder</label>
+          <input
+            id="gp-root-path"
+            type="text"
+            value={pathInput}
+            onChange={(e) => setPathInput(e.target.value)}
+            disabled={isScanning}
+            placeholder="/path/to/Sheet Music"
+          />
+          <button
+            className="scan-button"
+            onClick={handleSaveAndScan}
+            disabled={isScanning || !pathInput.trim()}
+          >
+            {isScanning ? "Scanning…" : "Scan & Analyze"}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={handleForceRescan}
+            disabled={isScanning || !pathInput.trim()}
+            title="Clear seen-file cache and re-analyze all files"
+          >
+            Force Rescan
+          </button>
+        </div>
+        <div className="gp-library-settings-row gp-turso-settings">
+          <label htmlFor="gp-turso-db-url">Turso DB URL</label>
+          <input
+            id="gp-turso-db-url"
+            type="text"
+            value={dbUrlInput}
+            onChange={(event) => setDbUrlInput(event.target.value)}
+            disabled={isScanning}
+            placeholder="libsql://database.turso.io"
+          />
+          <label htmlFor="gp-turso-auth-token">Auth token</label>
+          <input
+            id="gp-turso-auth-token"
+            type="password"
+            value={authTokenInput}
+            onChange={(event) => setAuthTokenInput(event.target.value)}
+            disabled={isScanning}
+            autoComplete="off"
+          />
+        </div>
       </div>
 
       {/* ── Progress / status ── */}
