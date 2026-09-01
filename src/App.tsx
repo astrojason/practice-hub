@@ -67,35 +67,36 @@ export function App() {
     return <SignInScreen onSignIn={signIn} restoreError={authError} />;
   }
 
-  let content;
+  let overlay = null;
   if (view === "gp-library") {
-    content = <GpLibraryView token={token} onBack={() => setView("session")} />;
+    overlay = <GpLibraryView token={token} onBack={() => setView("session")} />;
   } else if (view === "calendar") {
-    content = <InterleavedCalendarView token={token} onBack={() => setView("session")} />;
+    overlay = <InterleavedCalendarView token={token} onBack={() => setView("session")} />;
   } else if (view === "browse") {
-    content = <BrowseView token={token} onBack={() => setView("session")} />;
+    overlay = <BrowseView token={token} onBack={() => setView("session")} />;
   } else if (view === "changelog") {
-    content = <Changelog onBack={() => setView("session")} />;
+    overlay = <Changelog onBack={() => setView("session")} />;
   } else if (view === "settings") {
-    content = <SettingsView onBack={() => setView("session")} />;
-  } else {
-    content = (
-      <SessionView
-        token={token}
-        onSignOut={signOut}
-        onGpLibrary={() => setView("gp-library")}
-        onCalendar={() => setView("calendar")}
-        onBrowse={() => setView("browse")}
-        onChangelog={() => setView("changelog")}
-        onSettings={() => setView("settings")}
-        onGpView={openGpFile}
-      />
-    );
+    overlay = <SettingsView onBack={() => setView("session")} />;
   }
 
   return (
     <>
-      {content}
+      {/* Stays mounted across navigation so switching views doesn't re-fetch the
+          dashboard or reset in-progress timers — only visibility toggles. */}
+      <div style={{ display: view === "session" ? "contents" : "none" }}>
+        <SessionView
+          token={token}
+          onSignOut={signOut}
+          onGpLibrary={() => setView("gp-library")}
+          onCalendar={() => setView("calendar")}
+          onBrowse={() => setView("browse")}
+          onChangelog={() => setView("changelog")}
+          onSettings={() => setView("settings")}
+          onGpView={openGpFile}
+        />
+      </div>
+      {overlay}
       {gpOpenError && <ErrorModal error={gpOpenError} onDismiss={() => setGpOpenError(null)} />}
       <button
         className="app-version-footer"
