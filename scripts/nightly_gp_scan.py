@@ -9,7 +9,7 @@ file so the app shows them next time it's opened; it does not push anything
 to Instrumenta.
 
 Usage:
-    <instrumenta-repo>/venv/bin/python3 nightly_gp_scan.py [--env production|development] [--root PATH] [--dry-run]
+    <instrumenta-repo>/.venv/bin/python3 nightly_gp_scan.py [--env production|development] [--root PATH] [--dry-run]
 """
 
 import argparse
@@ -176,7 +176,8 @@ def get_song_catalog(env: str) -> dict:
         # Mirrors the WHERE clause in api/song.py's song_list endpoint
         # (EntityStatus.APPROVED == 1) — only approved songs are matchable.
         cursor.execute(
-            "SELECT song.id, song.name, artist.name FROM song "
+            "SELECT song.id, song.name, artist.name, "
+            "song.rhythm_difficulty_manual, song.lead_difficulty_manual FROM song "
             "JOIN artist ON song.artist_id = artist.id WHERE song.status = 1"
         )
         rows = cursor.fetchall()
@@ -185,9 +186,13 @@ def get_song_catalog(env: str) -> dict:
 
     return {
         f"{norm_key(artist_name)}|||{norm_key(song_name)}": {
-            "id": song_id, "name": song_name, "artist_name": artist_name,
+            "id": song_id,
+            "name": song_name,
+            "artist_name": artist_name,
+            "rhythm_difficulty_manual": rhythm_manual,
+            "lead_difficulty_manual": lead_manual,
         }
-        for song_id, song_name, artist_name in rows
+        for song_id, song_name, artist_name, rhythm_manual, lead_manual in rows
     }
 
 
@@ -200,14 +205,9 @@ def analyze_file(path: str):
     _select_role_tracks) — each is {difficulty_score, vector, track_name} or
     None when the file has no distinguishable track for that aspect.
 
-    NOTE: unlike the in-app scanner (useGpScanner.ts), this script does not
-    yet suppress rhythm/lead for songs where the user has already set
-    rhythm_difficulty_manual/lead_difficulty_manual by hand — that needs a
-    per-user UserSongMeta lookup, and this script currently has no notion of
-    "which user" (get_song_catalog reads the shared song/artist tables only).
-    Since this script never pushes to Instrumenta (read-only, local-cache-
-    only), the practical effect is limited to what the app *displays* next
-    time it's opened — tracked as a follow-up in TODO.md.
+    The caller suppresses an aspect before caching it when the matched song's
+    canonical value is protected by its corresponding *_difficulty_manual
+    flag. Unmatched files retain every computed aspect.
     """
     try:
         result = subprocess.run(
@@ -225,6 +225,16 @@ def analyze_file(path: str):
     except Exception as exc:
         print(f"  analyze error for {path}: {exc}", file=sys.stderr)
         return None, None, None, None, None
+
+
+def suppress_manual(rhythm, lead, song: dict | None):
+    """Remove computed aspects protected by canonical manual locks."""
+    if song is None:
+        return rhythm, lead
+    return (
+        None if song.get("rhythm_difficulty_manual") else rhythm,
+        None if song.get("lead_difficulty_manual") else lead,
+    )
 
 
 # ─── Result shaping (matches GpMatch / GpUnmatched in src/api/types.ts) ───────
@@ -332,6 +342,7 @@ def main():
         analyzed_count += 1
         print(f"  analyzing {f['filename']} ...")
         score, vector, tempo, rhythm, lead = analyze_file(f["path"])
+        rhythm, lead = suppress_manual(rhythm, lead, song)
 
         is_newer_version = bool(prev)
         seen[f["filename"]] = {

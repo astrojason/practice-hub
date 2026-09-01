@@ -8,7 +8,6 @@
 ### Ratings & Difficulty Engine — Phase 2 (all auto-population of difficulty)
 
 - [ ] True unattended overnight execution via macOS launchd — opt-in settings toggle installs/removes the launchd agent; not just "run on next app open."
-- [ ] `scripts/nightly_gp_scan.py` doesn't yet suppress rhythm/lead for songs already locked as canonical. Since the manual flags now live on `song` (which the script already reads directly from Turso) rather than the old per-user `UserSongMeta`, there's no longer an identity blocker here — just needs the `rhythm_difficulty_manual`/`lead_difficulty_manual` check added, matching what `useGpScanner.ts` already does via `GET /song/<id>`.
 - [ ] Computed score is calibrated against the user's own demonstrated proficiency (inferred from their rating history on other technically-analyzed songs), not just raw note-density from the tab — see practice.astrojason.com/TODO.md for the full writeup.
 
 ### Section-level aspect ratings — Phase 3

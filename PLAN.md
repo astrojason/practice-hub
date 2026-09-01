@@ -49,55 +49,7 @@ commit that touches non-CLAUDE.md files.
 
 ---
 
-## Step 1 — Manual-flag suppression in `nightly_gp_scan.py`
-
-**TODO.md item:** *"`scripts/nightly_gp_scan.py` doesn't yet suppress
-rhythm/lead for songs already locked as canonical... just needs the
-`rhythm_difficulty_manual`/`lead_difficulty_manual` check added, matching what
-`useGpScanner.ts` already does."*
-
-This is now purely a display-suppression fix for the nightly script's local
-cache (the script still doesn't write anywhere — the completed write-back is an
-in-app-only action for now, since the nightly script running unattended has
-no interactive confirmation step; don't fold Turso *writes* into the nightly
-script as part of this plan). Implementation:
-
-1. In `get_song_catalog()` (`scripts/nightly_gp_scan.py`), extend the `SELECT`
-   to also pull `song.rhythm_difficulty_manual, song.lead_difficulty_manual`,
-   and include them in each catalog entry dict.
-2. In `main()`'s per-file loop, after `analyze_file()` returns `rhythm`/`lead`
-   and a `song` match was found, null out `rhythm` when
-   `song["rhythm_difficulty_manual"]` is truthy and `lead` when
-   `song["lead_difficulty_manual"]` is truthy — mirroring
-   `suppressManualAspects()` in `useGpScanner.ts` exactly (same precedence:
-   suppression only applies when there's a matched song; unmatched files are
-   unaffected).
-3. Update the misleading docstring on `analyze_file()` (currently says this
-   script "does not yet suppress rhythm/lead... tracked as a follow-up in
-   TODO.md") to reflect the fix.
-
-### Tests
-
-`nightly_gp_scan.py` has no existing automated test coverage (it's invoked
-via launchd/manually, not through Playwright, and isn't part of `npm run
-test:e2e`). Since CLAUDE.md's TDD mandate is scoped to Playwright tests under
-`tests/` for behavior reachable from the app, and this script is a standalone
-CLI with its own concerns:
-- Add a small `scripts/test_nightly_gp_scan.py` (plain `unittest`, no pytest
-  dependency assumed unless one already exists — check
-  `requirements.txt`/imports first) covering the new suppression logic as a
-  pure function extracted from `main()` — e.g. factor the "should this aspect
-  be suppressed" check into a standalone `suppress_manual(rhythm, lead, song)`
-  function so it's unit-testable without a live Turso connection, matching
-  how `parse_filename`/`compute_raw_fingerprint`/`dedupe` are already
-  standalone functions in this file.
-- This doesn't replace the Playwright-first workflow for anything reachable
-  from the React app — it's additive because this fix lives entirely outside
-  the app.
-
----
-
-## Step 2 — Unattended overnight execution via launchd
+## Step 1 — Unattended overnight execution via launchd
 
 **TODO.md item:** *"True unattended overnight execution via macOS launchd —
 opt-in settings toggle installs/removes the launchd agent; not just 'run on
@@ -164,7 +116,7 @@ if one gets created for other reasons first):
 
 ---
 
-## Step 3 — Proficiency-calibrated scoring (proposed design — confirm before building)
+## Step 2 — Proficiency-calibrated scoring (proposed design — confirm before building)
 
 **TODO.md item:** *"Computed score is calibrated against the user's own
 demonstrated proficiency (inferred from their rating history on other
@@ -203,10 +155,9 @@ of the shape, for whoever picks it up:
 
 ## Order of work
 
-Steps 1 → 2 are independent of each other and can be done in either order,
-but are listed in priority order. Step 3 comes last and is a re-scoping
-checkpoint, not a ready-to-build spec.
+Step 1 is the remaining ready-to-build implementation. Step 2 comes last and
+is a re-scoping checkpoint, not a ready-to-build spec.
 
-Remove each of the two TODO.md bullets (Steps 1–2) from `TODO.md` in the
-commit that lands it. Leave the Step 3 bullet in TODO.md until it has its own
-confirmed plan — don't remove it as part of this work.
+Remove the Step 1 TODO.md bullet in the commit that lands it. Leave the Step 2
+bullet in TODO.md until it has its own confirmed plan — don't remove it as
+part of this work.
