@@ -102,6 +102,13 @@ function parseTimeInput(value: string, duration: number): number | null {
   return Math.min(seconds, duration);
 }
 
+function todayLocalDateStr(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 function getMediaTypeFromPath(path: string): PlayerMediaType {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return ["mp4", "mov", "webm", "m4v"].includes(ext) ? "video" : "audio";
@@ -958,6 +965,37 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     savePreset({ silent: true });
   };
 
+  // "1% better every day": each time a boosted region is applied on a day it
+  // hasn't already been nudged, bump its saved speed 1% closer to 100% and
+  // persist the new speed + today's date. Enabling the toggle records today's
+  // date as a baseline without nudging — the first automatic bump happens the
+  // next day the region is applied.
+  const resolveDailyBoostSpeed = useCallback((region: Region): number => {
+    if (!region.dailyBoostEnabled) return region.playbackSpeed;
+    const today = todayLocalDateStr();
+    if (region.lastBoostDate === today) return region.playbackSpeed;
+    if (region.lastBoostDate === undefined || region.playbackSpeed >= 1) {
+      regionState.updateRegionAt(region.id, { lastBoostDate: today });
+      savePreset({ silent: true });
+      return region.playbackSpeed;
+    }
+    const boosted = Math.min(1, region.playbackSpeed * 1.01);
+    regionState.updateRegionAt(region.id, { playbackSpeed: boosted, lastBoostDate: today });
+    savePreset({ silent: true });
+    showToast(`"${region.name || "Region"}" nudged to ${Math.round(boosted * 100)}% (daily +1%).`, { icon: "📈" });
+    return boosted;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionState.updateRegionAt, savePreset, showToast]);
+
+  const toggleRegionDailyBoost = (id: string) => {
+    const region = regionState.regionsRef.current.find(r => r.id === id);
+    if (!region) return;
+    const next = !region.dailyBoostEnabled;
+    regionState.updateRegionAt(id, { dailyBoostEnabled: next, lastBoostDate: next ? todayLocalDateStr() : region.lastBoostDate });
+    savePreset({ silent: true });
+    showToast(next ? `"${region.name}" will nudge up 1% each day.` : `"${region.name}" daily boost turned off.`, { icon: "📈" });
+  };
+
   const applyRegion = (id: string) => {
     if (sequenceActiveRef.current) stopSequence();
     if (regionState.activeRegionIdRef.current === id) {
@@ -975,7 +1013,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     setLoopEndInput(formatTime(region.end));
     audioActions.setLoopStart(region.start);
     audioActions.setLoopEnd(region.end);
-    applySpeed(region.playbackSpeed.toFixed(2));
+    applySpeed(resolveDailyBoostSpeed(region).toFixed(2));
     if (region.speedIncreasePercent !== undefined) {
       setLoopIncreaseByLocal(region.speedIncreasePercent);
       audioActions.setLoopIncreaseBy(region.speedIncreasePercent);
@@ -1045,14 +1083,14 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
   const applySequenceStep = useCallback((region: Region) => {
     seekTo(region.start);
-    applySpeed(region.playbackSpeed.toFixed(2));
+    applySpeed(resolveDailyBoostSpeed(region).toFixed(2));
     setLoopIncreaseByLocal(region.speedIncreasePercent);
     audioActions.setLoopIncreaseBy(region.speedIncreasePercent);
     setLoopIncreaseAtLocal(region.speedIncreaseInterval);
     audioActions.setLoopIncreaseAt(region.speedIncreaseInterval);
     regionState.setActiveRegionId(region.id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seekTo, audioActions, regionState.setActiveRegionId]);
+  }, [seekTo, audioActions, regionState.setActiveRegionId, resolveDailyBoostSpeed]);
 
   const stopSequence = useCallback(() => {
     sequenceOrderRef.current = [];
@@ -1119,7 +1157,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (match) {
       if (autoTempoRegionIdRef.current !== match.id) {
         autoTempoRegionIdRef.current = match.id;
-        applySpeed(match.playbackSpeed.toFixed(2));
+        applySpeed(resolveDailyBoostSpeed(match).toFixed(2));
         setLoopIncreaseByLocal(match.speedIncreasePercent);
         audioActions.setLoopIncreaseBy(match.speedIncreasePercent);
         setLoopIncreaseAtLocal(match.speedIncreaseInterval);
@@ -1769,8 +1807,20 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                         </div>
                         <div className="mp-region-meta">
                           {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{incStr}
+                          {region.dailyBoostEnabled ? " · 📈 +1%/day" : ""}
                         </div>
                         <div className="mp-region-actions">
+                          <button
+                            className={`btn-ghost btn-xs ${region.dailyBoostEnabled ? "is-active" : ""}`}
+                            data-region-action="daily-boost"
+                            title="1% better every day — nudges this region's saved speed up 1% each day you practice it, until it reaches 100%"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRegionDailyBoost(region.id);
+                            }}
+                          >
+                            📈{region.dailyBoostEnabled ? " On" : ""}
+                          </button>
                           <button className="btn-ghost btn-xs" data-region-action="rename" onClick={(e) => {
                             e.stopPropagation();
                             setEditingRegionId(region.id);
