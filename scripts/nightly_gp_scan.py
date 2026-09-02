@@ -35,7 +35,19 @@ ISO_SUFFIX_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 # launchd runs this headless (no terminal), so a notification is the only way
 # the user sees the scan happened at all without opening the app or a log file.
 # LimitLoadToSessionType=Aqua in the plist keeps this in the GUI session that
-# `display notification` requires.
+# both mechanisms below need.
+#
+# Plain osascript notifications are all attributed to the same "Script
+# Editor" identity as every other display-notification script on this Mac,
+# so they stack into one indistinguishable group and can't carry a custom
+# icon (macOS has no API to override it — the icon always comes from the
+# calling app's own bundle). practice-hub-notifier.app is a copy of
+# terminal-notifier built with its own bundle id and the Practice Hub icon
+# (see scripts/build-notifier.sh) specifically so this scan's notifications
+# are visually distinct and don't nest under anything else. Fall back to
+# plain osascript if that copy is ever missing, rather than going silent.
+NOTIFIER_APP = Path("/Applications/practice-hub-notifier.app/Contents/MacOS/terminal-notifier")
+
 
 def _applescript_string(value: str) -> str:
     # AppleScript string literals only understand \" and \\ — NOT the \uXXXX
@@ -45,12 +57,18 @@ def _applescript_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def notify(message: str, title: str = "Practice Hub") -> None:
-    # Fire-and-forget: a notification failure (no GUI session, osascript
+def _notify_command(message: str, title: str, group: str, notifier_path: Path) -> list:
+    if notifier_path.is_file():
+        return [str(notifier_path), "-title", title, "-message", message, "-group", group]
+    script = f"display notification {_applescript_string(message)} with title {_applescript_string(title)}"
+    return ["osascript", "-e", script]
+
+
+def notify(message: str, title: str = "Practice Hub", group: str = "nightly-gp-scan") -> None:
+    # Fire-and-forget: a notification failure (no GUI session, notifier
     # missing, etc.) must never take down the scan itself.
     try:
-        script = f"display notification {_applescript_string(message)} with title {_applescript_string(title)}"
-        subprocess.run(["osascript", "-e", script], check=False, timeout=10)
+        subprocess.run(_notify_command(message, title, group, NOTIFIER_APP), check=False, timeout=10)
     except Exception:
         pass
 
