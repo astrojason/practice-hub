@@ -4,9 +4,23 @@ import { load } from "@tauri-apps/plugin-store";
 import { ErrorModal } from "./ErrorModal";
 
 const STORE_KEY = "gp-library";
+const NIGHTLY_SCAN_HOUR = 3;
+const NIGHTLY_SCAN_MINUTE = 0;
+
+interface NightlyScanStatus {
+  last_run_ms: number;
+  success: boolean;
+}
 
 interface Props {
   onBack: () => void;
+}
+
+function nextScheduledRun(): Date {
+  const next = new Date();
+  next.setHours(NIGHTLY_SCAN_HOUR, NIGHTLY_SCAN_MINUTE, 0, 0);
+  if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+  return next;
 }
 
 export function SettingsView({ onBack }: Props) {
@@ -14,6 +28,8 @@ export function SettingsView({ onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<NightlyScanStatus | null>(null);
+  const [lastRunChecked, setLastRunChecked] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +51,19 @@ export function SettingsView({ onBack }: Props) {
       }
     }
 
+    async function loadLastRun() {
+      try {
+        const status = await invoke<NightlyScanStatus | null>("nightly_scan_last_run");
+        if (!cancelled) setLastRun(status);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLastRunChecked(true);
+      }
+    }
+
     loadLaunchdState();
+    loadLastRun();
     return () => { cancelled = true; };
   }, []);
 
@@ -94,6 +122,17 @@ export function SettingsView({ onBack }: Props) {
         </label>
         {loading && <p className="settings-status">Checking launchd status…</p>}
         {updating && <p className="settings-status">Updating launchd agent…</p>}
+        {lastRun && (
+          <p className={`settings-status${lastRun.success ? "" : " error"}`}>
+            Last run {new Date(lastRun.last_run_ms).toLocaleString()} — {lastRun.success ? "succeeded" : "failed"}
+          </p>
+        )}
+        {!lastRun && lastRunChecked && launchdEnabled && (
+          <p className="settings-status">Hasn't run yet.</p>
+        )}
+        {launchdEnabled && (
+          <p className="settings-status">Next run: {nextScheduledRun().toLocaleString()}</p>
+        )}
       </section>
 
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}

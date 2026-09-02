@@ -286,6 +286,7 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
 .settings-toggle { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .settings-toggle input { width: 17px; height: 17px; accent-color: var(--accent); }
 .settings-status { color: var(--text-dim); font-size: 12px; }
+.settings-status.error { color: var(--red); }
 
 /* ─── Open-session form (rendered between header and main) ───────────────────── */
 .open-session-form {

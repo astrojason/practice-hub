@@ -419,6 +419,38 @@ fn is_launchd_agent_installed() -> Result<bool, String> {
     Ok(launchd_agent_path()?.is_file())
 }
 
+const NIGHTLY_SCAN_LOG_RELATIVE: &str = "Library/Logs/practice-hub/nightly-gp-scan.log";
+
+#[derive(serde::Serialize)]
+struct NightlyScanStatus {
+    last_run_ms: i64,
+    success: bool,
+}
+
+#[tauri::command]
+fn nightly_scan_last_run() -> Result<Option<NightlyScanStatus>, String> {
+    let log_path = home_directory()?.join(NIGHTLY_SCAN_LOG_RELATIVE);
+    if !log_path.is_file() {
+        return Ok(None);
+    }
+
+    let metadata = fs::metadata(&log_path)
+        .map_err(|e| format!("Failed to read {}: {e}", log_path.display()))?;
+    let last_run_ms = metadata
+        .modified()
+        .map_err(|e| format!("Failed to read {}: {e}", log_path.display()))?
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis() as i64;
+
+    let contents = fs::read_to_string(&log_path)
+        .map_err(|e| format!("Failed to read {}: {e}", log_path.display()))?;
+    let last_line = contents.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let success = last_line.starts_with("Done —") || last_line.starts_with("No changes since last scan");
+
+    Ok(Some(NightlyScanStatus { last_run_ms, success }))
+}
+
 // ─── GP library scanner ───────────────────────────────────────────────────────
 // Recursively walks a directory and returns JSON describing every .gp file
 // found, along with its filesystem metadata for incremental-scan tracking.
@@ -682,6 +714,7 @@ pub fn run() {
             install_launchd_agent,
             uninstall_launchd_agent,
             is_launchd_agent_installed,
+            nightly_scan_last_run,
             parse_gp_file,
             scan_gp_directory,
             list_local_folder,

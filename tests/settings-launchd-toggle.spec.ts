@@ -25,6 +25,7 @@ interface SetupOptions {
   cachedIntent?: boolean;
   installError?: string;
   uninstallError?: string;
+  lastRun?: { last_run_ms: number; success: boolean } | null;
 }
 
 async function setupPage(page: Page, options: SetupOptions = {}) {
@@ -65,6 +66,10 @@ async function setupPage(page: Page, options: SetupOptions = {}) {
         if (cmd === "uninstall_launchd_agent") {
           calls.push(cmd);
           return opts.uninstallError ? Promise.reject(opts.uninstallError) : Promise.resolve(null);
+        }
+        if (cmd === "nightly_scan_last_run") {
+          calls.push(cmd);
+          return Promise.resolve(opts.lastRun ?? null);
         }
         return Promise.resolve(null);
       },
@@ -107,7 +112,8 @@ test("enabling and disabling nightly scan invokes the launchd commands", async (
   const calls = await page.evaluate(() => (
     window as unknown as { __launchdCalls: string[] }
   ).__launchdCalls);
-  expect(calls.filter((command) => command !== "is_launchd_agent_installed")).toEqual([
+  const readOnlyCalls = new Set(["is_launchd_agent_installed", "nightly_scan_last_run"]);
+  expect(calls.filter((command) => !readOnlyCalls.has(command))).toEqual([
     "install_launchd_agent",
     "uninstall_launchd_agent",
   ]);
@@ -138,4 +144,35 @@ test("initial toggle state follows launchd ground truth instead of cached intent
   await setupPage(page, { installed: true, cachedIntent: false });
 
   await expect(launchdToggle(page)).toBeChecked();
+});
+
+test("shows the last run outcome and the next scheduled run when a run succeeded", async ({ page }) => {
+  const lastRunMs = Date.now() - 5 * 60 * 60 * 1000;
+  await setupPage(page, { installed: true, lastRun: { last_run_ms: lastRunMs, success: true } });
+
+  await expect(page.getByText(/Last run .* — succeeded/)).toBeVisible();
+  await expect(page.getByText(/Next run:/)).toBeVisible();
+});
+
+test("shows a failed last run distinctly from a successful one", async ({ page }) => {
+  const lastRunMs = Date.now() - 5 * 60 * 60 * 1000;
+  await setupPage(page, { installed: true, lastRun: { last_run_ms: lastRunMs, success: false } });
+
+  const status = page.getByText(/Last run .* — failed/);
+  await expect(status).toBeVisible();
+  await expect(status).toHaveClass(/error/);
+});
+
+test("says the scan hasn't run yet when enabled with no run history", async ({ page }) => {
+  await setupPage(page, { installed: true, lastRun: null });
+
+  await expect(page.getByText("Hasn't run yet.")).toBeVisible();
+  await expect(page.getByText(/Next run:/)).toBeVisible();
+});
+
+test("hides the next-run line when the agent is disabled", async ({ page }) => {
+  await setupPage(page, { installed: false, lastRun: { last_run_ms: Date.now(), success: true } });
+
+  await expect(page.getByText(/Last run .* — succeeded/)).toBeVisible();
+  await expect(page.getByText(/Next run:/)).not.toBeVisible();
 });
