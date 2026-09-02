@@ -31,6 +31,30 @@ ANALYZE_SIDECAR = Path(__file__).resolve().parent.parent / "src-tauri/sidecar/an
 ISO_SUFFIX_RE = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 
 
+# ─── Notification Center ──────────────────────────────────────────────────────
+# launchd runs this headless (no terminal), so a notification is the only way
+# the user sees the scan happened at all without opening the app or a log file.
+# LimitLoadToSessionType=Aqua in the plist keeps this in the GUI session that
+# `display notification` requires.
+
+def _applescript_string(value: str) -> str:
+    # AppleScript string literals only understand \" and \\ — NOT the \uXXXX
+    # escapes json.dumps() would produce, which osascript rejects outright.
+    # Everything else (including UTF-8 like the em dash in our summaries)
+    # passes through as a literal character.
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def notify(message: str, title: str = "Practice Hub") -> None:
+    # Fire-and-forget: a notification failure (no GUI session, osascript
+    # missing, etc.) must never take down the scan itself.
+    try:
+        script = f"display notification {_applescript_string(message)} with title {_applescript_string(title)}"
+        subprocess.run(["osascript", "-e", script], check=False, timeout=10)
+    except Exception:
+        pass
+
+
 # ─── Filename parser ──────────────────────────────────────────────────────────
 # Mirrors parseFilename() in src/hooks/useGpScanner.ts exactly (see
 # tests/gp-filename-parse.spec.ts for the behavior this must match):
@@ -299,6 +323,7 @@ def main():
     fingerprint = compute_raw_fingerprint(raw_entries)
     if store.get("rawFingerprint") == fingerprint and store.get("lastScan"):
         print(f"No changes since last scan ({len(raw_entries)} files) — skipping catalog fetch/analysis.")
+        notify(f"No changes since last scan ({len(raw_entries)} files).")
         return
 
     parsed = []
@@ -364,7 +389,8 @@ def main():
         else:
             unmatched.append(to_unmatched(f, seen[f["filename"]]))
 
-    print(f"Done — {len(matches)} matched, {len(unmatched)} unmatched, {skipped_count} skipped, {analyzed_count} analyzed.")
+    summary = f"Done — {len(matches)} matched, {len(unmatched)} unmatched, {skipped_count} skipped, {analyzed_count} analyzed."
+    print(summary)
 
     if args.dry_run:
         print("(dry run — not writing store file)")
@@ -381,7 +407,12 @@ def main():
     STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STORE_PATH.write_text(json.dumps(store, indent=2))
     print(f"Wrote {STORE_PATH}")
+    notify(summary)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        notify(f"Nightly scan failed: {exc}")
+        raise
