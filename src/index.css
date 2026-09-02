@@ -371,6 +371,18 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
 .item-card.stale-orange { background: var(--orange-dim); border-left: 3px solid var(--orange); }
 .item-card.stale-red    { background: var(--red-dim); border-left: 3px solid var(--red); }
 
+/* A stale item can also land on a zebra-striped row (the selector above).
+   That selector has higher specificity than .stale-orange/.stale-red alone
+   and was winning outright, silently hiding the stale color. These layer the
+   zebra tint back on top of the stale color instead of one replacing the
+   other, at matching specificity so they actually apply. */
+.item-group-body > .exercise-group:nth-child(even) > .item-card.stale-orange:first-child {
+  background: linear-gradient(rgba(255,255,255,0.025), rgba(255,255,255,0.025)), var(--orange-dim);
+}
+.item-group-body > .exercise-group:nth-child(even) > .item-card.stale-red:first-child {
+  background: linear-gradient(rgba(255,255,255,0.025), rgba(255,255,255,0.025)), var(--red-dim);
+}
+
 .child-card { background: rgba(255, 255, 255, 0.04); border-left: 2px solid rgba(255,255,255,0.06); }
 .child-card .item-card-row { padding-left: 30px; }
 

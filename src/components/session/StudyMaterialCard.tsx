@@ -71,6 +71,20 @@ function StudyMaterialSingleCard({
     ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type) }]
     : [];
   const sessions = (material.meta.sessions ?? []) as StudyMaterialSession[];
+  // Practicing a sub-item counts as practicing the group — a parent with no
+  // sessions of its own shouldn't show stale just because the user always
+  // practices it via a child. Only children the user has actually added
+  // (meta.user_study_material set) count — a session logged against a child
+  // that isn't part of the user's active list shouldn't rescue the group.
+  // Children keep their own sessions only.
+  const usageSessions = isChild
+    ? sessions
+    : [
+        ...sessions,
+        ...(material.child_study_materials ?? [])
+          .filter((c) => c.meta.user_study_material != null)
+          .flatMap((c) => c.meta.sessions ?? []),
+      ].sort((a, b) => b.created_timestamp - a.created_timestamp);
 
   return (
     <ItemSessionCard
@@ -79,6 +93,7 @@ function StudyMaterialSingleCard({
       sequentialItemCount={onStartSequential ? (material.child_study_materials ?? []).length : undefined}
       resources={resources}
       sessions={sessions}
+      usageSessions={usageSessions}
       entityType="study_material"
       entityId={material.id}
       itemCreatedTimestamp={material.created_timestamp}

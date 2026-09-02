@@ -97,6 +97,141 @@ const staleStudyMaterial = {
   meta: { user_study_material: null, sessions: [] },
 };
 
+// Parent added 60 days ago with no sessions of its own — but its child has
+// been practiced almost daily. The parent itself must not be flagged stale:
+// practicing a child counts as practicing the group.
+const parentStudyMaterialWithFreshChild = {
+  id: 184,
+  name: "30-Day Legato Course - Bernth",
+  url: null,
+  instrument: null,
+  parent_study_material_id: null,
+  session_type: "study_material",
+  created_timestamp: daysAgo(60),
+  updated_timestamp: daysAgo(60),
+  child_study_materials: [
+    {
+      id: 185,
+      name: "Day 12",
+      url: null,
+      instrument: null,
+      parent_study_material_id: 184,
+      session_type: "study_material",
+      created_timestamp: daysAgo(60),
+      updated_timestamp: daysAgo(60),
+      child_study_materials: [],
+      meta: {
+        user_study_material: { user_id: 1, study_material_id: 185 },
+        sessions: [
+          { id: 50, study_material_id: 185, notes: null, rating: "Good", bpm: null, seconds: 300, created_timestamp: daysAgo(1), updated_timestamp: daysAgo(1) },
+        ],
+      },
+    },
+  ],
+  meta: { user_study_material: null, sessions: [] },
+};
+
+// Same shape, but the only child with a recent session isn't one the user
+// has actually added (meta.user_study_material is null) — its session
+// shouldn't rescue the parent from staleness.
+const parentStudyMaterialWithOnlyUnsubscribedFreshChild = {
+  id: 186,
+  name: "Unrelated Course With A Ghost Session",
+  url: null,
+  instrument: null,
+  parent_study_material_id: null,
+  session_type: "study_material",
+  created_timestamp: daysAgo(60),
+  updated_timestamp: daysAgo(60),
+  child_study_materials: [
+    {
+      id: 187,
+      name: "Day 3 (not added)",
+      url: null,
+      instrument: null,
+      parent_study_material_id: 186,
+      session_type: "study_material",
+      created_timestamp: daysAgo(60),
+      updated_timestamp: daysAgo(60),
+      child_study_materials: [],
+      meta: {
+        user_study_material: null,
+        sessions: [
+          { id: 52, study_material_id: 187, notes: null, rating: "Good", bpm: null, seconds: 300, created_timestamp: daysAgo(1), updated_timestamp: daysAgo(1) },
+        ],
+      },
+    },
+  ],
+  meta: { user_study_material: null, sessions: [] },
+};
+
+// Same shape, but for exercises — a parent with no sessions of its own and a
+// sub-exercise practiced yesterday.
+const parentExerciseWithFreshChild = {
+  id: 20,
+  name: "Scale Sequences",
+  order: 5,
+  resources: null,
+  session_type: "exercise",
+  parent_exercise_id: null,
+  created_timestamp: daysAgo(60),
+  updated_timestamp: daysAgo(60),
+  child_exercises: [
+    {
+      id: 21,
+      name: "3rds ascending",
+      order: 1,
+      resources: null,
+      session_type: "exercise",
+      parent_exercise_id: 20,
+      created_timestamp: daysAgo(60),
+      updated_timestamp: daysAgo(60),
+      child_exercises: [],
+      meta: {
+        user_exercise: { id: 1, exercise_id: 21, user_id: 1, randomize_sub_exercises: false, use_keys: false, use_scales: false },
+        sessions: [
+          { id: 51, exercise_id: 21, notes: null, rating: "Good", bpm: null, seconds: 120, created_timestamp: daysAgo(1), updated_timestamp: daysAgo(1) },
+        ],
+      },
+    },
+  ],
+  meta: { user_exercise: null, sessions: [] },
+};
+
+// Same shape, but the only child with a recent session isn't one the user
+// has actually added (meta.user_exercise is null) — its session shouldn't
+// rescue the parent from staleness.
+const parentExerciseWithOnlyUnsubscribedFreshChild = {
+  id: 22,
+  name: "Unrelated Drill With A Ghost Session",
+  order: 6,
+  resources: null,
+  session_type: "exercise",
+  parent_exercise_id: null,
+  created_timestamp: daysAgo(60),
+  updated_timestamp: daysAgo(60),
+  child_exercises: [
+    {
+      id: 23,
+      name: "5ths ascending (not added)",
+      order: 1,
+      resources: null,
+      session_type: "exercise",
+      parent_exercise_id: 22,
+      created_timestamp: daysAgo(60),
+      updated_timestamp: daysAgo(60),
+      child_exercises: [],
+      meta: {
+        user_exercise: null,
+        sessions: [
+          { id: 53, exercise_id: 23, notes: null, rating: "Good", bpm: null, seconds: 120, created_timestamp: daysAgo(1), updated_timestamp: daysAgo(1) },
+        ],
+      },
+    },
+  ],
+  meta: { user_exercise: null, sessions: [] },
+};
+
 const staleProjectSong = {
   id: 20,
   name: "Neglected Song",
@@ -134,8 +269,8 @@ const mockDashboard = {
   to_review: { songs: [staleReviewSong] },
   to_learn: { songs: [] },
   project: { songs: [staleProjectSong] },
-  exercises: [staleRedExercise, staleOrangeExercise, freshExercise, newExercise],
-  study_materials: [staleStudyMaterial],
+  exercises: [staleRedExercise, staleOrangeExercise, freshExercise, newExercise, parentExerciseWithFreshChild, parentExerciseWithOnlyUnsubscribedFreshChild],
+  study_materials: [staleStudyMaterial, parentStudyMaterialWithFreshChild, parentStudyMaterialWithOnlyUnsubscribedFreshChild],
   chord: null,
   progression: null,
   interval: null,
@@ -207,4 +342,40 @@ test("an equally-neglected Repertoire Review song is not highlighted (tracking i
   const card = page.locator(".item-card", { hasText: "Neglected Review Song" });
   await expect(card).not.toHaveClass(/stale-orange/);
   await expect(card).not.toHaveClass(/stale-red/);
+});
+
+test("a parent study material is not highlighted when a child was practiced yesterday, even though the parent itself has no sessions", async ({ page }) => {
+  await page.locator(".item-group", { hasText: "Study Materials" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card", { hasText: "30-Day Legato Course - Bernth" }).first();
+  await expect(card).not.toHaveClass(/stale-orange/);
+  await expect(card).not.toHaveClass(/stale-red/);
+});
+
+test("a parent exercise is not highlighted when a child was practiced yesterday, even though the parent itself has no sessions", async ({ page }) => {
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card", { hasText: "Scale Sequences" }).first();
+  await expect(card).not.toHaveClass(/stale-orange/);
+  await expect(card).not.toHaveClass(/stale-red/);
+});
+
+test("a parent study material is still highlighted stale when the only recently-practiced child isn't one the user has added", async ({ page }) => {
+  await page.locator(".item-group", { hasText: "Study Materials" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card", { hasText: "Unrelated Course With A Ghost Session" }).first();
+  await expect(card).toHaveClass(/stale-red/);
+});
+
+test("a parent exercise is still highlighted stale when the only recently-practiced child isn't one the user has added", async ({ page }) => {
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card", { hasText: "Unrelated Drill With A Ghost Session" }).first();
+  await expect(card).toHaveClass(/stale-red/);
+});
+
+test("a stale exercise landing on a zebra-striped row still renders its stale color, not just the zebra tint", async ({ page }) => {
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  // "Rusty Arpeggios" is the 2nd exercise-group in the list, which is exactly
+  // where the even-row zebra-striping selector applies.
+  const card = page.locator(".item-card", { hasText: "Rusty Arpeggios" });
+  await expect(card).toHaveClass(/stale-orange/);
+  const backgroundColor = await card.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(backgroundColor).toBe("rgba(251, 146, 60, 0.1)");
 });

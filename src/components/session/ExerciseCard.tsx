@@ -74,6 +74,20 @@ function ExerciseSingleCard({
 
   const resources = (exercise.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
   const sessions = (exercise.meta.sessions ?? []) as ExerciseSession[];
+  // Practicing a sub-exercise counts as practicing the group — a parent
+  // with no sessions of its own shouldn't show stale just because the user
+  // always practices it via a child. Only children the user has actually
+  // added (meta.user_exercise set) count — a session logged against a child
+  // that isn't part of the user's active list shouldn't rescue the group.
+  // Children keep their own sessions only.
+  const usageSessions = isChild
+    ? sessions
+    : [
+        ...sessions,
+        ...exercise.child_exercises
+          .filter((c) => c.meta.user_exercise != null)
+          .flatMap((c) => c.meta.sessions ?? []),
+      ].sort((a, b) => b.created_timestamp - a.created_timestamp);
 
   return (
     <ItemSessionCard
@@ -90,6 +104,7 @@ function ExerciseSingleCard({
       ) : undefined}
       resources={resources}
       sessions={sessions}
+      usageSessions={usageSessions}
       entityType="exercise"
       entityId={exercise.id}
       itemCreatedTimestamp={exercise.created_timestamp}

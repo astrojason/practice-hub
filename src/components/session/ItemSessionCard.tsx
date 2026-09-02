@@ -78,6 +78,15 @@ export interface ItemSessionCardProps {
   entityId: number;
   /** When set, enables the orange/red "hasn't been practiced recently" highlight for this item. */
   itemCreatedTimestamp?: number;
+  /**
+   * Sessions considered for the staleness check, in place of `sessions`.
+   * For a parent card with children, pass `sessions` merged with every
+   * child's sessions — practicing a child counts as practicing the group,
+   * so the parent shouldn't show stale just because it has no sessions of
+   * its own. Defaults to `sessions` (correct for childless items and for
+   * child cards themselves).
+   */
+  usageSessions?: AnySession[];
   isChild?: boolean;
   isCompletedToday: boolean;
   isSkippedToday: boolean;
@@ -121,6 +130,7 @@ export function ItemSessionCard({
   entityType,
   entityId,
   itemCreatedTimestamp,
+  usageSessions,
   isChild,
   isCompletedToday,
   isSkippedToday,
@@ -203,7 +213,7 @@ export function ItemSessionCard({
 
   const lastSession = sessions[0] ?? null;
   const struggling = isStruggling(sessions, entityType);
-  const usageStaleness = itemCreatedTimestamp != null ? getUsageStalenessLevel(itemCreatedTimestamp, sessions) : "none";
+  const usageStaleness = itemCreatedTimestamp != null ? getUsageStalenessLevel(itemCreatedTimestamp, usageSessions ?? sessions) : "none";
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
 
