@@ -116,6 +116,19 @@ test("a region with the daily +1% boost enabled nudges its saved speed up once a
   await regionItemAfterReload.click();
   await expect(page.locator("#speedIndicator")).toHaveText("51%");
 
+  // A second day's nudge compounds off the *stored* (unrounded) speed —
+  // 0.505 * 1.01 ≈ 0.51005, which still rounds to 51%. A flat +1 percentage
+  // point implementation (0.51 + 0.01 = 0.52) would show 52% here instead,
+  // so this pins down multiplicative rather than additive growth.
+  await regionItemAfterReload.click();
+  await backdateRegionBoost(page, "Verse");
+  await page.reload();
+  await openPlayer(page);
+  const regionItemDay3 = page.locator(".mp-region-item", { hasText: "Verse" });
+  await regionItemDay3.click();
+  await expect(page.locator("#speedIndicator")).toHaveText("51%");
+  await expect(regionItemDay3.locator(".mp-region-meta")).toContainText("51%");
+
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
 
