@@ -1,6 +1,6 @@
 {
   "name": "practice-hub",
-  "version": "2.12.3",
+  "version": "2.12.4",
   "type": "module",
   "scripts": {
     "dev": "vite",

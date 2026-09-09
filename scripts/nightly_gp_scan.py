@@ -3,10 +3,15 @@
 
 Runs the same match/analyze pipeline as the in-app "Scan & Analyze" button in
 GpLibraryView, but standalone (outside Tauri) so it can run on a schedule via
-launchd even when practice-hub isn't open. Read-only against the Instrumenta
-catalog (Turso) — it only caches results into the local tauri-plugin-store
-file so the app shows them next time it's opened; it does not push anything
-to Instrumenta.
+launchd even when practice-hub isn't open. Caches results into the local
+tauri-plugin-store file so the app shows them next time it's opened, AND
+writes computed rhythm/lead difficulty straight to Turso for matched songs —
+mirroring src-tauri/sidecar/write_song_difficulty.py's direct-write mechanism
+(same manual-lock respect, re-checked at write time). It does NOT push the
+overall difficulty_score or register the GP file as a resource on the song —
+those go through Instrumenta's HTTP API, which needs a logged-in user token
+that this unattended script doesn't have; that part still requires opening
+the app and clicking Confirm.
 
 Usage:
     <instrumenta-repo>/.venv/bin/python3 nightly_gp_scan.py [--env production|development] [--root PATH] [--dry-run]
@@ -190,7 +195,7 @@ def resolve_undated_resource(f: dict, raw_entries_by_path: dict) -> dict:
     }
 
 
-# ─── Instrumenta catalog (read-only, direct to Turso) ─────────────────────────
+# ─── Instrumenta catalog + direct Turso writes ────────────────────────────────
 
 def load_env_file(env_path: Path) -> dict:
     if not env_path.exists():
@@ -205,26 +210,26 @@ def load_env_file(env_path: Path) -> dict:
     return creds
 
 
-def get_song_catalog(env: str) -> dict:
+def open_turso_connection(env: str):
     creds = load_env_file(INSTRUMENTA_REPO / f".env.{env}")
     db_url = creds["TURSO_DATABASE_URL"]
     auth_token = creds["TURSO_AUTH_TOKEN"]
 
     import libsql_experimental as libsql
 
-    conn = libsql.connect(db_url, auth_token=auth_token)
-    try:
-        cursor = conn.cursor()
-        # Mirrors the WHERE clause in api/song.py's song_list endpoint
-        # (EntityStatus.APPROVED == 1) — only approved songs are matchable.
-        cursor.execute(
-            "SELECT song.id, song.name, artist.name, "
-            "song.rhythm_difficulty_manual, song.lead_difficulty_manual FROM song "
-            "JOIN artist ON song.artist_id = artist.id WHERE song.status = 1"
-        )
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
+    return libsql.connect(db_url, auth_token=auth_token)
+
+
+def get_song_catalog(conn) -> dict:
+    cursor = conn.cursor()
+    # Mirrors the WHERE clause in api/song.py's song_list endpoint
+    # (EntityStatus.APPROVED == 1) — only approved songs are matchable.
+    cursor.execute(
+        "SELECT song.id, song.name, artist.name, "
+        "song.rhythm_difficulty_manual, song.lead_difficulty_manual FROM song "
+        "JOIN artist ON song.artist_id = artist.id WHERE song.status = 1"
+    )
+    rows = cursor.fetchall()
 
     return {
         f"{norm_key(artist_name)}|||{norm_key(song_name)}": {
@@ -236,6 +241,66 @@ def get_song_catalog(env: str) -> dict:
         }
         for song_id, song_name, artist_name, rhythm_manual, lead_manual in rows
     }
+
+
+def write_difficulty(conn, song_id: int, rhythm_score, lead_score) -> tuple:
+    """Writes unlocked rhythm/lead difficulty straight to Turso.
+
+    Mirrors src-tauri/sidecar/write_song_difficulty.py: re-checks the manual
+    lock flags at write time rather than trusting the catalog snapshot from
+    the top of the run, so a lock flipped mid-run is still respected.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT rhythm_difficulty_manual, lead_difficulty_manual FROM song WHERE id = ?",
+        (song_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return False, False
+
+    rhythm_written = rhythm_score is not None and not bool(row[0])
+    lead_written = lead_score is not None and not bool(row[1])
+
+    if rhythm_written:
+        cursor.execute("UPDATE song SET rhythm_difficulty = ? WHERE id = ?", (rhythm_score, song_id))
+    if lead_written:
+        cursor.execute("UPDATE song SET lead_difficulty = ? WHERE id = ?", (lead_score, song_id))
+    if rhythm_written or lead_written:
+        conn.commit()
+
+    return rhythm_written, lead_written
+
+
+def push_seen_entry_to_turso(conn, entry: dict, filename: str) -> bool:
+    """Writes a seen-entry's unlocked rhythm/lead scores to Turso, once.
+
+    No-ops for unmatched files, entries already pushed, or entries with
+    nothing unlocked to write (suppress_manual already nulled locked
+    aspects). Returns whether a write actually happened.
+    """
+    song_id = entry.get("song_id")
+    if not song_id or entry.get("turso_pushed"):
+        return False
+
+    rhythm = entry.get("rhythm")
+    lead = entry.get("lead")
+    if rhythm is None and lead is None:
+        return False
+
+    try:
+        write_difficulty(
+            conn,
+            song_id,
+            rhythm["difficulty_score"] if rhythm else None,
+            lead["difficulty_score"] if lead else None,
+        )
+    except Exception as exc:
+        print(f"  turso write failed for {filename}: {exc}", file=sys.stderr)
+        return False
+
+    entry["turso_pushed"] = True
+    return True
 
 
 # ─── Analysis sidecar ─────────────────────────────────────────────────────────
@@ -361,53 +426,62 @@ def main():
     print(f"Found {len(raw_entries)} GP files, {len(deduped)} after version dedup.")
 
     print(f"Fetching Instrumenta song catalog ({args.env})...")
-    catalog = get_song_catalog(args.env)
+    turso_conn = open_turso_connection(args.env)
+    try:
+        catalog = get_song_catalog(turso_conn)
 
-    matches = []
-    unmatched = []
-    skipped_count = 0
-    analyzed_count = 0
+        matches = []
+        unmatched = []
+        skipped_count = 0
+        analyzed_count = 0
+        pushed_count = 0
 
-    for f in deduped:
-        key = f"{norm_key(f['parsed_artist'])}|||{norm_key(f['parsed_title'])}"
-        song = catalog.get(key)
-        prev = seen.get(f["filename"])
-        unchanged = bool(prev) and prev["modified_ms"] == f["modified_ms"]
+        for f in deduped:
+            key = f"{norm_key(f['parsed_artist'])}|||{norm_key(f['parsed_title'])}"
+            song = catalog.get(key)
+            prev = seen.get(f["filename"])
+            unchanged = bool(prev) and prev["modified_ms"] == f["modified_ms"]
 
-        if unchanged:
-            skipped_count += 1
-            if song:
-                matches.append(to_match(f, song, prev, is_newer_version=False))
+            if unchanged:
+                skipped_count += 1
+                entry = prev
             else:
-                unmatched.append(to_unmatched(f, prev))
-            continue
+                analyzed_count += 1
+                print(f"  analyzing {f['filename']} ...")
+                score, vector, tempo, rhythm, lead = analyze_file(f["path"])
+                rhythm, lead = suppress_manual(rhythm, lead, song)
 
-        analyzed_count += 1
-        print(f"  analyzing {f['filename']} ...")
-        score, vector, tempo, rhythm, lead = analyze_file(f["path"])
-        rhythm, lead = suppress_manual(rhythm, lead, song)
+                is_newer_version = bool(prev)
+                entry = {
+                    "modified_ms": f["modified_ms"],
+                    "song_id": song["id"] if song else None,
+                    "difficulty_score": score,
+                    "difficulty_vector": vector,
+                    "tempo_bpm": tempo,
+                    "manual_score": None,
+                    "rhythm": rhythm,
+                    "lead": lead,
+                    "resource_path": f["path"],
+                    "dismissed": False,
+                    "pushed": False if is_newer_version else (prev.get("pushed", False) if prev else False),
+                    "turso_pushed": False if is_newer_version else (prev.get("turso_pushed", False) if prev else False),
+                }
+                seen[f["filename"]] = entry
 
-        is_newer_version = bool(prev)
-        seen[f["filename"]] = {
-            "modified_ms": f["modified_ms"],
-            "song_id": song["id"] if song else None,
-            "difficulty_score": score,
-            "difficulty_vector": vector,
-            "tempo_bpm": tempo,
-            "manual_score": None,
-            "rhythm": rhythm,
-            "lead": lead,
-            "resource_path": f["path"],
-            "dismissed": False,
-            "pushed": False if is_newer_version else (prev.get("pushed", False) if prev else False),
-        }
+            if not args.dry_run and push_seen_entry_to_turso(turso_conn, entry, f["filename"]):
+                pushed_count += 1
 
-        if song:
-            matches.append(to_match(f, song, seen[f["filename"]], is_newer_version))
-        else:
-            unmatched.append(to_unmatched(f, seen[f["filename"]]))
+            if song:
+                matches.append(to_match(f, song, entry, is_newer_version=not unchanged and bool(prev)))
+            else:
+                unmatched.append(to_unmatched(f, entry))
+    finally:
+        turso_conn.close()
 
-    summary = f"Done — {len(matches)} matched, {len(unmatched)} unmatched, {skipped_count} skipped, {analyzed_count} analyzed."
+    summary = (
+        f"Done — {len(matches)} matched, {len(unmatched)} unmatched, "
+        f"{skipped_count} skipped, {analyzed_count} analyzed, {pushed_count} pushed to Turso."
+    )
     print(summary)
 
     if args.dry_run:
