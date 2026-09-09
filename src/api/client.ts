@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config";
+import { fetchWithRetry as apiFetch } from "./fetchWithRetry";
 import type {
   Artist,
   DashboardData,
@@ -55,7 +56,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 export async function getUser(token: string): Promise<UserProfile> {
-  const response = await fetch(`${API_BASE_URL}/user/me`, {
+  const response = await apiFetch(`${API_BASE_URL}/user/me`, {
     headers: authHeaders(token),
   });
   return handleResponse<UserProfile>(response);
@@ -64,14 +65,14 @@ export async function getUser(token: string): Promise<UserProfile> {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export async function getDashboard(token: string): Promise<DashboardData> {
-  const response = await fetch(`${API_BASE_URL}/user/dashboard`, {
+  const response = await apiFetch(`${API_BASE_URL}/user/dashboard`, {
     headers: authHeaders(token),
   });
   return handleResponse<DashboardData>(response);
 }
 
 export async function rebuildDashboard(token: string): Promise<DashboardData> {
-  const response = await fetch(`${API_BASE_URL}/user/dashboard?refresh=1`, {
+  const response = await apiFetch(`${API_BASE_URL}/user/dashboard?refresh=1`, {
     headers: authHeaders(token),
   });
   return handleResponse<DashboardData>(response);
@@ -83,7 +84,7 @@ export async function postSongSession(
   token: string,
   payload: SongSessionPayload
 ): Promise<SongSessionResponse> {
-  const response = await fetch(`${API_BASE_URL}/user-song-session`, {
+  const response = await apiFetch(`${API_BASE_URL}/user-song-session`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -95,7 +96,7 @@ export async function postExerciseSession(
   token: string,
   payload: ExerciseSessionPayload
 ): Promise<ExerciseSessionResponse> {
-  const response = await fetch(`${API_BASE_URL}/user-exercise-session`, {
+  const response = await apiFetch(`${API_BASE_URL}/user-exercise-session`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -107,7 +108,7 @@ export async function postStudyMaterialSession(
   token: string,
   payload: StudyMaterialSessionPayload
 ): Promise<StudyMaterialSessionResponse> {
-  const response = await fetch(`${API_BASE_URL}/user-study-material-session`, {
+  const response = await apiFetch(`${API_BASE_URL}/user-study-material-session`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -119,7 +120,7 @@ export async function postOpenSession(
   token: string,
   payload: OpenSessionPayload
 ): Promise<OpenSessionResponse> {
-  const response = await fetch(`${API_BASE_URL}/user-open-session`, {
+  const response = await apiFetch(`${API_BASE_URL}/user-open-session`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -136,7 +137,7 @@ export async function getSongSessionHistory(
   limit = 50
 ): Promise<SongSessionListResponse> {
   const params = new URLSearchParams({ song_id: String(songId), page: String(page), limit: String(limit) });
-  const response = await fetch(`${API_BASE_URL}/user-song-session?${params}`, {
+  const response = await apiFetch(`${API_BASE_URL}/user-song-session?${params}`, {
     headers: authHeaders(token),
   });
   return handleResponse<SongSessionListResponse>(response);
@@ -149,7 +150,7 @@ export async function getExerciseSessionHistory(
   limit = 50
 ): Promise<ExerciseSessionListResponse> {
   const params = new URLSearchParams({ exercise_id: String(exerciseId), page: String(page), limit: String(limit) });
-  const response = await fetch(`${API_BASE_URL}/user-exercise-session?${params}`, {
+  const response = await apiFetch(`${API_BASE_URL}/user-exercise-session?${params}`, {
     headers: authHeaders(token),
   });
   return handleResponse<ExerciseSessionListResponse>(response);
@@ -162,7 +163,7 @@ export async function getStudyMaterialSessionHistory(
   limit = 50
 ): Promise<StudyMaterialSessionListResponse> {
   const params = new URLSearchParams({ study_material_id: String(studyMaterialId), page: String(page), limit: String(limit) });
-  const response = await fetch(`${API_BASE_URL}/user-study-material-session?${params}`, {
+  const response = await apiFetch(`${API_BASE_URL}/user-study-material-session?${params}`, {
     headers: authHeaders(token),
   });
   return handleResponse<StudyMaterialSessionListResponse>(response);
@@ -171,7 +172,7 @@ export async function getStudyMaterialSessionHistory(
 // ─── Practice stats ───────────────────────────────────────────────────────────
 
 export async function getUserStats(token: string): Promise<PracticeStats> {
-  const response = await fetch(`${API_BASE_URL}/user/stats`, {
+  const response = await apiFetch(`${API_BASE_URL}/user/stats`, {
     headers: authHeaders(token),
   });
   return handleResponse<PracticeStats>(response);
@@ -180,7 +181,7 @@ export async function getUserStats(token: string): Promise<PracticeStats> {
 // ─── Exercise catalog (historical) ───────────────────────────────────────────
 
 export async function getExerciseCatalog(token: string): Promise<CatalogExerciseWithActive[]> {
-  const response = await fetch(`${API_BASE_URL}/exercise/user-catalog`, {
+  const response = await apiFetch(`${API_BASE_URL}/exercise/user-catalog`, {
     headers: authHeaders(token),
   });
   return handleResponse<CatalogExerciseWithActive[]>(response);
@@ -196,7 +197,7 @@ export async function getCatalogSongs(
 ): Promise<CatalogSongsResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (q) params.set("q", q);
-  const response = await fetch(`${API_BASE_URL}/song?${params}`, {
+  const response = await apiFetch(`${API_BASE_URL}/song?${params}`, {
     headers: authHeaders(token),
   });
   return handleResponse<CatalogSongsResponse>(response);
@@ -210,14 +211,14 @@ export async function getCatalogExercises(
 ): Promise<CatalogExercisesResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (q) params.set("q", q);
-  const response = await fetch(`${API_BASE_URL}/exercise?${params}`, {
+  const response = await apiFetch(`${API_BASE_URL}/exercise?${params}`, {
     headers: authHeaders(token),
   });
   return handleResponse<CatalogExercisesResponse>(response);
 }
 
 export async function getSong(token: string, songId: number): Promise<Song> {
-  const response = await fetch(`${API_BASE_URL}/song/${songId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/song/${songId}`, {
     headers: authHeaders(token),
   });
   return handleResponse<Song>(response);
@@ -230,7 +231,7 @@ export async function pushDifficultyScore(
   songId: number,
   difficultyScore: number
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/song/${songId}/difficulty`, {
+  const response = await apiFetch(`${API_BASE_URL}/song/${songId}/difficulty`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ difficulty_score: difficultyScore }),
@@ -244,7 +245,7 @@ export async function registerGpResource(
   filePath: string,
   resourceName: string
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/song/${songId}/resource`, {
+  const response = await apiFetch(`${API_BASE_URL}/song/${songId}/resource`, {
     method: "PATCH",
     headers: authHeaders(token),
     body: JSON.stringify({
@@ -259,14 +260,14 @@ export async function registerGpResource(
 // ─── Artists / Tunings ───────────────────────────────────────────────────────
 
 export async function getArtists(token: string): Promise<{ artists: Artist[] }> {
-  const response = await fetch(`${API_BASE_URL}/artist?all=true`, {
+  const response = await apiFetch(`${API_BASE_URL}/artist?all=true`, {
     headers: authHeaders(token),
   });
   return handleResponse<{ artists: Artist[] }>(response);
 }
 
 export async function getTunings(token: string): Promise<{ tunings: Tuning[] }> {
-  const response = await fetch(`${API_BASE_URL}/tuning?all=true`, {
+  const response = await apiFetch(`${API_BASE_URL}/tuning?all=true`, {
     headers: authHeaders(token),
   });
   return handleResponse<{ tunings: Tuning[] }>(response);
@@ -279,7 +280,7 @@ export async function updateSong(
   songId: number,
   payload: UpdateSongPayload
 ): Promise<Song> {
-  const response = await fetch(`${API_BASE_URL}/song/${songId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/song/${songId}`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -292,7 +293,7 @@ export async function updateExercise(
   exerciseId: number,
   payload: UpdateExercisePayload
 ): Promise<DashboardExercise> {
-  const response = await fetch(`${API_BASE_URL}/exercise/${exerciseId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/exercise/${exerciseId}`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -305,7 +306,7 @@ export async function updateStudyMaterial(
   studyMaterialId: number,
   payload: UpdateStudyMaterialPayload
 ): Promise<DashboardStudyMaterial> {
-  const response = await fetch(`${API_BASE_URL}/study-material/${studyMaterialId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/study-material/${studyMaterialId}`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -317,7 +318,7 @@ export async function createExercise(
   token: string,
   payload: CreateExercisePayload
 ): Promise<DashboardExercise> {
-  const response = await fetch(`${API_BASE_URL}/exercise/`, {
+  const response = await apiFetch(`${API_BASE_URL}/exercise/`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -329,7 +330,7 @@ export async function createStudyMaterial(
   token: string,
   payload: CreateStudyMaterialPayload
 ): Promise<DashboardStudyMaterial> {
-  const response = await fetch(`${API_BASE_URL}/study-material/`, {
+  const response = await apiFetch(`${API_BASE_URL}/study-material/`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -345,7 +346,7 @@ export async function getCatalogStudyMaterials(
 ): Promise<CatalogStudyMaterialsResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (q) params.set("q", q);
-  const response = await fetch(`${API_BASE_URL}/study-material?${params}`, {
+  const response = await apiFetch(`${API_BASE_URL}/study-material?${params}`, {
     headers: authHeaders(token),
   });
   return handleResponse<CatalogStudyMaterialsResponse>(response);
@@ -355,7 +356,7 @@ export async function getStudyMaterialById(
   token: string,
   id: number
 ): Promise<DashboardStudyMaterial> {
-  const response = await fetch(`${API_BASE_URL}/study-material/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/study-material/${id}`, {
     headers: authHeaders(token),
   });
   return handleResponse<DashboardStudyMaterial>(response);
@@ -364,14 +365,14 @@ export async function getStudyMaterialById(
 // ─── Practice plans ───────────────────────────────────────────────────────────
 
 export async function getPracticePlans(token: string): Promise<{ plans: PracticePlan[] }> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan`, {
     headers: authHeaders(token),
   });
   return handleResponse<{ plans: PracticePlan[] }>(response);
 }
 
 export async function getPracticePlan(token: string, id: number): Promise<{ plan: PracticePlanWithEntries }> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan/${id}`, {
     headers: authHeaders(token),
   });
   return handleResponse<{ plan: PracticePlanWithEntries }>(response);
@@ -381,7 +382,7 @@ export async function createPracticePlan(
   token: string,
   data: { name: string; start_date: string; end_date: string }
 ): Promise<{ plan: PracticePlan }> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(data),
@@ -390,7 +391,7 @@ export async function createPracticePlan(
 }
 
 export async function activatePracticePlan(token: string, id: number): Promise<{ plan: PracticePlan }> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan/${id}/activate`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan/${id}/activate`, {
     method: "POST",
     headers: authHeaders(token),
   });
@@ -398,7 +399,7 @@ export async function activatePracticePlan(token: string, id: number): Promise<{
 }
 
 export async function getTodaysPracticePlan(token: string): Promise<{ day: number; entries: TodayEntry[] }> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan/today`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan/today`, {
     headers: authHeaders(token),
   });
   return handleResponse<{ day: number; entries: TodayEntry[] }>(response);
@@ -409,7 +410,7 @@ export async function addPracticePlanEntry(
   planId: number,
   data: { song_section_id: number; day_of_plan: number; block_order: number; block_duration_seconds: number }
 ): Promise<unknown> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan/${planId}/entry`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan/${planId}/entry`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(data),
@@ -422,7 +423,7 @@ export async function updatePracticePlanEntry(
   entryId: number,
   data: Partial<{ block_order: number; block_duration_seconds: number; day_of_plan: number }>
 ): Promise<unknown> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan/entry/${entryId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan/entry/${entryId}`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(data),
@@ -431,7 +432,7 @@ export async function updatePracticePlanEntry(
 }
 
 export async function deletePracticePlanEntry(token: string, entryId: number): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/practice-plan/entry/${entryId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/practice-plan/entry/${entryId}`, {
     method: "DELETE",
     headers: authHeaders(token),
   });
@@ -445,7 +446,7 @@ export async function createSongSection(
   songId: number,
   payload: CreateSongSectionPayload
 ): Promise<SongSection> {
-  const response = await fetch(`${API_BASE_URL}/song/${songId}/section`, {
+  const response = await apiFetch(`${API_BASE_URL}/song/${songId}/section`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -458,7 +459,7 @@ export async function updateSongSection(
   sectionId: number,
   payload: UpdateSongSectionPayload
 ): Promise<SongSection> {
-  const response = await fetch(`${API_BASE_URL}/song/section/${sectionId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/song/section/${sectionId}`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -467,7 +468,7 @@ export async function updateSongSection(
 }
 
 export async function deleteSongSection(token: string, sectionId: number): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/song/section/${sectionId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/song/section/${sectionId}`, {
     method: "DELETE",
     headers: authHeaders(token),
   });

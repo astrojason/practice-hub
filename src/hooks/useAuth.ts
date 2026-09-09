@@ -7,7 +7,15 @@ import {
   storeRefreshToken,
   clearStoredRefreshToken,
   refreshIdToken,
+  TokenRefreshRejectedError,
 } from "../auth/tokens";
+
+// If a refresh mid-session fails to reach the server at all (as opposed to
+// reaching it and being told the token is invalid), the current idToken is
+// still good for a while yet — worth one quiet extra attempt well before the
+// next scheduled refresh, rather than leaving the user running on a token
+// that's closer to expiry than usual.
+const PROACTIVE_REFRESH_RETRY_MS = 5 * 60 * 1000;
 
 // The redirect_uri that Firebase has registered with Google Cloud Console.
 // createAuthUri passes this to Google as redirect_uri; our Tauri auth window
@@ -46,23 +54,36 @@ export function useAuth() {
   // Proactively refresh the token every 50 minutes (Firebase tokens expire after 1 hour)
   useEffect(() => {
     if (state.status !== "authenticated") return;
-    const interval = setInterval(async () => {
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    async function attemptRefresh() {
       const stored = getStoredRefreshToken();
-      if (stored) {
-        try {
-          const { idToken, refreshToken } = await refreshIdToken(stored);
-          storeRefreshToken(refreshToken);
-          setState({ status: "authenticated", token: idToken });
-        } catch (err) {
+      if (!stored) return;
+      try {
+        const { idToken, refreshToken } = await refreshIdToken(stored);
+        storeRefreshToken(refreshToken);
+        setState({ status: "authenticated", token: idToken });
+      } catch (err) {
+        if (err instanceof TokenRefreshRejectedError) {
           clearStoredRefreshToken();
           setAuthError(
-            `You've been signed out because your session couldn't be refreshed — please sign in again. (${err instanceof Error ? err.message : String(err)})`
+            `You've been signed out because your session couldn't be refreshed — please sign in again. (${err.message})`
           );
           setState({ status: "unauthenticated" });
+          return;
         }
+        // A network-level failure mid-session (e.g. a brief wifi drop) — the
+        // current token is still valid, so keep practicing uninterrupted and
+        // quietly try again soon instead of forcing a sign-out.
+        retryTimeout = setTimeout(attemptRefresh, PROACTIVE_REFRESH_RETRY_MS);
       }
-    }, 50 * 60 * 1000);
-    return () => clearInterval(interval);
+    }
+
+    const interval = setInterval(attemptRefresh, 50 * 60 * 1000);
+    return () => {
+      clearInterval(interval);
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
   }, [state.status]);
 
   const signIn = useCallback(async () => {
