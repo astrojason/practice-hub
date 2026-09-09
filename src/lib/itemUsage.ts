@@ -24,3 +24,41 @@ export function getUsageStalenessLevel(
   if (daysSinceLastSession >= ORANGE_THRESHOLD_DAYS) return "orange";
   return "none";
 }
+
+function dayKey(timestamp: number): string {
+  // Local calendar day, matching the en-CA (YYYY-MM-DD) convention used
+  // elsewhere in the app (see SessionView.tsx, LastSessionInfo.tsx).
+  return new Date(timestamp).toLocaleDateString("en-CA");
+}
+
+function previousCalendarDay(d: Date): Date {
+  // Step by calendar date component, not by a fixed 24h of milliseconds, so
+  // this doesn't misfire across a DST transition.
+  const prev = new Date(d);
+  prev.setDate(prev.getDate() - 1);
+  return prev;
+}
+
+/**
+ * Current consecutive-day practice streak, counting back from today. If
+ * today has no session yet, the streak is still "alive" as long as
+ * yesterday was practiced — the day isn't over. Otherwise it's broken (0).
+ */
+export function calculateStreak(sessions: { created_timestamp: number }[], now: number = Date.now()): number {
+  if (sessions.length === 0) return 0;
+
+  const practicedDays = new Set(sessions.map((s) => dayKey(s.created_timestamp)));
+
+  let cursor = new Date(now);
+  if (!practicedDays.has(dayKey(cursor.getTime()))) {
+    cursor = previousCalendarDay(cursor);
+    if (!practicedDays.has(dayKey(cursor.getTime()))) return 0;
+  }
+
+  let streak = 0;
+  while (practicedDays.has(dayKey(cursor.getTime()))) {
+    streak++;
+    cursor = previousCalendarDay(cursor);
+  }
+  return streak;
+}

@@ -17,7 +17,7 @@ import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import type { LastSessionData } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
-import { getUsageStalenessLevel } from "../../lib/itemUsage";
+import { calculateStreak, getUsageStalenessLevel } from "../../lib/itemUsage";
 import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
@@ -27,6 +27,10 @@ function formatElapsed(seconds: number): string {
 }
 
 const STRUGGLING_ASPECTS = ["rhythm_rating", "lead_rating", "singing_rating"] as const;
+
+// A single day of practice isn't a "streak" — only show the badge once
+// there's an actual consecutive run to brag about.
+const STREAK_DISPLAY_THRESHOLD = 2;
 
 /** Returns true if, for songs, any aspect's last 3+ rated sessions are all Awful/Bad;
  * for exercises/study materials, if the last 3+ sessions overall are all Awful/Bad. */
@@ -214,6 +218,8 @@ export function ItemSessionCard({
   const lastSession = sessions[0] ?? null;
   const struggling = isStruggling(sessions, entityType);
   const usageStaleness = itemCreatedTimestamp != null ? getUsageStalenessLevel(itemCreatedTimestamp, usageSessions ?? sessions) : "none";
+  const streak = calculateStreak(usageSessions ?? sessions);
+  const showStreakTag = streak >= STREAK_DISPLAY_THRESHOLD;
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
 
@@ -228,8 +234,9 @@ export function ItemSessionCard({
         <div className="item-info">
           <span className="item-name">{name}</span>
           {subtitle && <span className="item-sub">{subtitle}</span>}
-          {(tags.length > 0 || showSequentialTag) && (
+          {(tags.length > 0 || showSequentialTag || showStreakTag) && (
             <span className="item-tags">
+              {showStreakTag && <span className="tag tag-streak">🔥 {streak}</span>}
               {tags.map((t) => (
                 <span key={t} className="tag">{t}</span>
               ))}

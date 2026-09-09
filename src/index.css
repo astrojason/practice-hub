@@ -426,6 +426,10 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
   background: var(--surface-3); color: var(--muted);
   border: 1px solid var(--border-dim); border-radius: 3px;
 }
+.tag-streak {
+  background: var(--orange-dim); color: var(--orange);
+  border-color: var(--orange-border); font-weight: 600;
+}
 
 .item-actions {
   display: flex; align-items: center; gap: 5px;
