@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "../config";
 import { fetchWithRetry as apiFetch } from "./fetchWithRetry";
+import { catalogStudyMaterialToDashboard } from "./catalogConvert";
 import type {
   Artist,
   DashboardData,
@@ -29,6 +30,7 @@ import type {
   StudyMaterialSessionListResponse,
   PracticeStats,
   CatalogExerciseWithActive,
+  CatalogStudyMaterial,
   PracticePlan,
   PracticePlanWithEntries,
   TodayEntry,
@@ -336,6 +338,28 @@ export async function createStudyMaterial(
     body: JSON.stringify(payload),
   });
   return handleResponse<DashboardStudyMaterial>(response);
+}
+
+// ─── Add/remove from "my" exercises & study materials ─────────────────────────
+
+export async function toggleUserExercise(token: string, exerciseId: number): Promise<DashboardExercise> {
+  const response = await apiFetch(`${API_BASE_URL}/exercise/${exerciseId}/toggle-user-exercise`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  return handleResponse<DashboardExercise>(response);
+}
+
+export async function toggleUserStudyMaterial(
+  token: string,
+  studyMaterialId: number
+): Promise<DashboardStudyMaterial> {
+  const response = await apiFetch(`${API_BASE_URL}/study-material/${studyMaterialId}/toggle-user-study-material`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  const raw = await handleResponse<CatalogStudyMaterial>(response);
+  return catalogStudyMaterialToDashboard(raw);
 }
 
 export async function getCatalogStudyMaterials(

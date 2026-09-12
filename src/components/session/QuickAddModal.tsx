@@ -153,7 +153,7 @@ export function QuickAddModal({
   const visibleMaterials = useMemo(
     () =>
       materials
-        .flatMap((m) => [m, ...(m.child_study_materials ?? [])])
+        .flatMap((m) => [m, ...(m.childStudyMaterials ?? [])])
         .filter((m) => !existingStudyMaterialIds.has(m.id) && !addedMaterialIds.has(m.id)),
     [materials, existingStudyMaterialIds, addedMaterialIds]
   );

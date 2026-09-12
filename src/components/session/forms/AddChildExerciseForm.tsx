@@ -37,7 +37,11 @@ export function AddChildExerciseForm({ token, parentExerciseId, onSuccess, onCan
     };
     try {
       const created = await createExercise(token, payload);
-      onSuccess({ ...created, child_exercises: created.child_exercises ?? [] });
+      onSuccess({
+        ...created,
+        child_exercises: created.child_exercises ?? [],
+        meta: created.meta ?? { user_exercise: null, sessions: [] },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {

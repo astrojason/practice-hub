@@ -641,6 +641,7 @@ export interface CatalogExercise {
   resources: Resource[] | null;
   parent_exercise_id: number | null;
   child_exercises: CatalogExercise[];
+  meta?: DashboardExercise["meta"];
 }
 
 export interface CatalogExercisesResponse {
@@ -657,7 +658,11 @@ export interface CatalogStudyMaterial {
   type?: string;
   instrument: number | null;
   parent_study_material_id: number | null;
-  child_study_materials?: CatalogStudyMaterial[];
+  // The backend keys this camelCase on the catalog list, get-by-id, and
+  // toggle-user-study-material responses — unlike every other entity, which
+  // is snake_case throughout.
+  childStudyMaterials?: CatalogStudyMaterial[];
+  meta?: DashboardStudyMaterial["meta"];
 }
 
 export interface CatalogStudyMaterialsResponse {

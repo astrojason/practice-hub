@@ -4,7 +4,17 @@ import { ItemSessionCard } from "./ItemSessionCard";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import { ExerciseEditForm } from "./forms/ExerciseEditForm";
 import { AddChildExerciseForm } from "./forms/AddChildExerciseForm";
-import type { DashboardExercise, ExerciseSession, Resource } from "../../api/types";
+import { ErrorModal } from "../ErrorModal";
+import { toggleUserExercise } from "../../api/client";
+import type { DashboardExercise, ExerciseSession, Resource, UserExerciseMeta } from "../../api/types";
+
+/** The toggle response is always the full group (parent + children) — find this
+ * item's own updated membership whether it's the top-level exercise or a child. */
+function findUserExerciseMeta(response: DashboardExercise, targetId: number): UserExerciseMeta | null {
+  if (response.id === targetId) return response.meta.user_exercise;
+  const child = response.child_exercises.find((c) => c.id === targetId);
+  return child ? child.meta.user_exercise : null;
+}
 
 interface CardProps {
   token: string;
@@ -36,6 +46,8 @@ interface CardProps {
   onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
   /** Only set for the top-level (non-child) card — enables the "Add child" button. */
   onAddChild?: (child: DashboardExercise) => void;
+  /** Called after a successful add/remove-from-my-exercises toggle, with this item's new membership. */
+  onToggled?: (id: number, userExercise: UserExerciseMeta | null) => void;
 }
 
 function ExerciseSingleCard({
@@ -65,7 +77,25 @@ function ExerciseSingleCard({
   onToggleChildren,
   onEntityEdited,
   onAddChild,
+  onToggled,
 }: CardProps) {
+  const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  async function handleToggleUserList() {
+    if (toggling) return;
+    setToggling(true);
+    setToggleError(null);
+    try {
+      const response = await toggleUserExercise(token, exercise.id);
+      onToggled?.(exercise.id, findUserExerciseMeta(response, exercise.id));
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setToggling(false);
+    }
+  }
+
   const ue = exercise.meta.user_exercise;
   const tags: string[] = [];
   if (ue?.randomize_sub_exercises) tags.push("randomize");
@@ -90,82 +120,87 @@ function ExerciseSingleCard({
       ].sort((a, b) => b.created_timestamp - a.created_timestamp);
 
   return (
-    <ItemSessionCard
-      token={token}
-      name={exercise.name}
-      extraTags={tags}
-      sequentialItemCount={onStartSequential ? exercise.child_exercises.length : undefined}
-      modalMeta={tags.length > 0 ? (
-        <div className="modal-meta">
-          {tags.map((t) => (
-            <span key={t} className="tag">{t}</span>
-          ))}
-        </div>
-      ) : undefined}
-      resources={resources}
-      sessions={sessions}
-      usageSessions={usageSessions}
-      entityType="exercise"
-      entityId={exercise.id}
-      itemCreatedTimestamp={exercise.created_timestamp}
-      isChild={isChild}
-      isCompletedToday={isCompletedToday}
-      isSkippedToday={isSkippedToday}
-      isTimerActive={isTimerActive}
-      isTimerPaused={isTimerPaused}
-      timerElapsed={timerElapsed}
-      isFormOpen={isFormOpen}
-      onStart={onStart}
-      onPause={onPause}
-      onStopAndSave={onStopAndSave}
-      onCancel={onCancel}
-      onFormOpen={onFormOpen}
-      onFormClose={onFormClose}
-      onSessionSubmit={onSessionSubmit}
-      onSkip={onSkip}
-      onOpenFile={onOpenFile}
-      onGpView={onGpView}
-      onStartSequential={onStartSequential}
-      onOpenChat={onOpenChat}
-      isMediaActive={isMediaActive}
-      childrenCollapsed={childrenCollapsed}
-      onToggleChildren={onToggleChildren}
-      editTitle={`Edit: ${exercise.name}`}
-      renderSessionForm={({ initialNotes, timerElapsed, lastSession, onSubmit, onCancel }) => (
-        <ExerciseSessionForm
-          token={token}
-          exerciseId={exercise.id}
-          inUserExercise={exercise.meta.user_exercise !== null}
-          initialSeconds={timerElapsed}
-          initialNotes={initialNotes}
-          lastSession={lastSession}
-          onSubmit={onSubmit}
-          onCancel={onCancel}
-        />
-      )}
-      renderEditForm={({ onSuccess, onCancel }) => (
-        <ExerciseEditForm
-          token={token}
-          exercise={exercise}
-          onSuccess={(id, name, resources) => {
-            onSuccess();
-            onEntityEdited?.(id, name, resources);
-          }}
-          onCancel={onCancel}
-        />
-      )}
-      renderAddChildForm={onAddChild ? ({ onSuccess, onCancel }) => (
-        <AddChildExerciseForm
-          token={token}
-          parentExerciseId={exercise.id}
-          onSuccess={(child) => {
-            onSuccess();
-            onAddChild(child);
-          }}
-          onCancel={onCancel}
-        />
-      ) : undefined}
-    />
+    <>
+      {toggleError && <ErrorModal error={toggleError} onDismiss={() => setToggleError(null)} />}
+      <ItemSessionCard
+        token={token}
+        name={exercise.name}
+        extraTags={tags}
+        sequentialItemCount={onStartSequential ? exercise.child_exercises.length : undefined}
+        modalMeta={tags.length > 0 ? (
+          <div className="modal-meta">
+            {tags.map((t) => (
+              <span key={t} className="tag">{t}</span>
+            ))}
+          </div>
+        ) : undefined}
+        resources={resources}
+        sessions={sessions}
+        usageSessions={usageSessions}
+        entityType="exercise"
+        entityId={exercise.id}
+        itemCreatedTimestamp={exercise.created_timestamp}
+        isChild={isChild}
+        isCompletedToday={isCompletedToday}
+        isSkippedToday={isSkippedToday}
+        isTimerActive={isTimerActive}
+        isTimerPaused={isTimerPaused}
+        timerElapsed={timerElapsed}
+        isFormOpen={isFormOpen}
+        onStart={onStart}
+        onPause={onPause}
+        onStopAndSave={onStopAndSave}
+        onCancel={onCancel}
+        onFormOpen={onFormOpen}
+        onFormClose={onFormClose}
+        onSessionSubmit={onSessionSubmit}
+        onSkip={onSkip}
+        onOpenFile={onOpenFile}
+        onGpView={onGpView}
+        onStartSequential={onStartSequential}
+        onOpenChat={onOpenChat}
+        isMediaActive={isMediaActive}
+        childrenCollapsed={childrenCollapsed}
+        onToggleChildren={onToggleChildren}
+        isInUserList={exercise.meta.user_exercise != null}
+        onToggleUserList={onToggled ? handleToggleUserList : undefined}
+        editTitle={`Edit: ${exercise.name}`}
+        renderSessionForm={({ initialNotes, timerElapsed, lastSession, onSubmit, onCancel }) => (
+          <ExerciseSessionForm
+            token={token}
+            exerciseId={exercise.id}
+            inUserExercise={exercise.meta.user_exercise !== null}
+            initialSeconds={timerElapsed}
+            initialNotes={initialNotes}
+            lastSession={lastSession}
+            onSubmit={onSubmit}
+            onCancel={onCancel}
+          />
+        )}
+        renderEditForm={({ onSuccess, onCancel }) => (
+          <ExerciseEditForm
+            token={token}
+            exercise={exercise}
+            onSuccess={(id, name, resources) => {
+              onSuccess();
+              onEntityEdited?.(id, name, resources);
+            }}
+            onCancel={onCancel}
+          />
+        )}
+        renderAddChildForm={onAddChild ? ({ onSuccess, onCancel }) => (
+          <AddChildExerciseForm
+            token={token}
+            parentExerciseId={exercise.id}
+            onSuccess={(child) => {
+              onSuccess();
+              onAddChild(child);
+            }}
+            onCancel={onCancel}
+          />
+        ) : undefined}
+      />
+    </>
   );
 }
 
@@ -195,6 +230,7 @@ interface ExerciseCardProps {
   isMediaActive?: boolean;
   onEntityEdited?: (id: number, name: string, resources: Resource[] | null) => void;
   onChildAdded?: (parentId: number, child: DashboardExercise) => void;
+  onToggled?: (id: number, userExercise: UserExerciseMeta | null) => void;
 }
 
 export function ExerciseCard({
@@ -216,6 +252,7 @@ export function ExerciseCard({
   isMediaActive,
   onEntityEdited,
   onChildAdded,
+  onToggled,
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(true);
@@ -251,6 +288,7 @@ export function ExerciseCard({
           onChildAdded(exercise.id, child);
           setChildrenCollapsed(false);
         } : undefined}
+        onToggled={onToggled}
       />
       {!childrenCollapsed && exercise.child_exercises.map((child) => {
         const childState = getState(child.id);
@@ -279,6 +317,7 @@ export function ExerciseCard({
             isMediaActive={isMediaActive}
             isChild
             onEntityEdited={onEntityEdited}
+            onToggled={onToggled}
           />
         );
       })}

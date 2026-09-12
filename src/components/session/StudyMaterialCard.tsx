@@ -5,7 +5,19 @@ import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { StudyMaterialEditForm } from "./forms/StudyMaterialEditForm";
 import { AddChildStudyMaterialForm } from "./forms/AddChildStudyMaterialForm";
 import { inferResourceType } from "./forms/shared/inferResourceType";
+import { ErrorModal } from "../ErrorModal";
+import { toggleUserStudyMaterial } from "../../api/client";
 import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
+
+type UserStudyMaterialMeta = DashboardStudyMaterial["meta"]["user_study_material"];
+
+/** The toggle response is always the full group (parent + children) — find this
+ * item's own updated membership whether it's the top-level material or a child. */
+function findUserStudyMaterialMeta(response: DashboardStudyMaterial, targetId: number): UserStudyMaterialMeta {
+  if (response.id === targetId) return response.meta.user_study_material;
+  const child = (response.child_study_materials ?? []).find((c) => c.id === targetId);
+  return child ? child.meta.user_study_material : null;
+}
 
 interface SingleCardProps {
   token: string;
@@ -37,6 +49,8 @@ interface SingleCardProps {
   onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
   /** Only set for the top-level (non-child) card — enables the "Add child" button. */
   onAddChild?: (child: DashboardStudyMaterial) => void;
+  /** Called after a successful add/remove-from-my-study-materials toggle, with this item's new membership. */
+  onToggled?: (id: number, userStudyMaterial: UserStudyMaterialMeta) => void;
 }
 
 function StudyMaterialSingleCard({
@@ -66,7 +80,25 @@ function StudyMaterialSingleCard({
   onToggleChildren,
   onEntityEdited,
   onAddChild,
+  onToggled,
 }: SingleCardProps) {
+  const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  async function handleToggleUserList() {
+    if (toggling) return;
+    setToggling(true);
+    setToggleError(null);
+    try {
+      const response = await toggleUserStudyMaterial(token, material.id);
+      onToggled?.(material.id, findUserStudyMaterialMeta(response, material.id));
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setToggling(false);
+    }
+  }
+
   const resources: Resource[] = material.url
     ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type) }]
     : [];
@@ -87,73 +119,78 @@ function StudyMaterialSingleCard({
       ].sort((a, b) => b.created_timestamp - a.created_timestamp);
 
   return (
-    <ItemSessionCard
-      token={token}
-      name={material.name}
-      sequentialItemCount={onStartSequential ? (material.child_study_materials ?? []).length : undefined}
-      resources={resources}
-      sessions={sessions}
-      usageSessions={usageSessions}
-      entityType="study_material"
-      entityId={material.id}
-      itemCreatedTimestamp={material.created_timestamp}
-      isChild={isChild}
-      isCompletedToday={isCompletedToday}
-      isSkippedToday={isSkippedToday}
-      isTimerActive={isTimerActive}
-      isTimerPaused={isTimerPaused}
-      timerElapsed={timerElapsed}
-      isFormOpen={isFormOpen}
-      onStart={onStart}
-      onPause={onPause}
-      onStopAndSave={onStopAndSave}
-      onCancel={onCancel}
-      onFormOpen={onFormOpen}
-      onFormClose={onFormClose}
-      onSessionSubmit={onSessionSubmit}
-      onSkip={onSkip}
-      onOpenFile={onOpenFile}
-      onGpView={onGpView}
-      onStartSequential={onStartSequential}
-      onOpenChat={onOpenChat}
-      isMediaActive={isMediaActive}
-      childrenCollapsed={childrenCollapsed}
-      onToggleChildren={onToggleChildren}
-      editTitle={`Edit: ${material.name}`}
-      renderSessionForm={({ initialNotes, timerElapsed, lastSession, onSubmit, onCancel }) => (
-        <StudyMaterialSessionForm
-          token={token}
-          studyMaterialId={material.id}
-          initialSeconds={timerElapsed}
-          initialNotes={initialNotes}
-          lastSession={lastSession}
-          onSubmit={onSubmit}
-          onCancel={onCancel}
-        />
-      )}
-      renderEditForm={({ onSuccess, onCancel }) => (
-        <StudyMaterialEditForm
-          token={token}
-          material={material}
-          onSuccess={(id, name, url, type) => {
-            onSuccess();
-            onEntityEdited?.(id, name, url, type);
-          }}
-          onCancel={onCancel}
-        />
-      )}
-      renderAddChildForm={onAddChild ? ({ onSuccess, onCancel }) => (
-        <AddChildStudyMaterialForm
-          token={token}
-          parentStudyMaterialId={material.id}
-          onSuccess={(child) => {
-            onSuccess();
-            onAddChild(child);
-          }}
-          onCancel={onCancel}
-        />
-      ) : undefined}
-    />
+    <>
+      {toggleError && <ErrorModal error={toggleError} onDismiss={() => setToggleError(null)} />}
+      <ItemSessionCard
+        token={token}
+        name={material.name}
+        sequentialItemCount={onStartSequential ? (material.child_study_materials ?? []).length : undefined}
+        resources={resources}
+        sessions={sessions}
+        usageSessions={usageSessions}
+        entityType="study_material"
+        entityId={material.id}
+        itemCreatedTimestamp={material.created_timestamp}
+        isChild={isChild}
+        isCompletedToday={isCompletedToday}
+        isSkippedToday={isSkippedToday}
+        isTimerActive={isTimerActive}
+        isTimerPaused={isTimerPaused}
+        timerElapsed={timerElapsed}
+        isFormOpen={isFormOpen}
+        onStart={onStart}
+        onPause={onPause}
+        onStopAndSave={onStopAndSave}
+        onCancel={onCancel}
+        onFormOpen={onFormOpen}
+        onFormClose={onFormClose}
+        onSessionSubmit={onSessionSubmit}
+        onSkip={onSkip}
+        onOpenFile={onOpenFile}
+        onGpView={onGpView}
+        onStartSequential={onStartSequential}
+        onOpenChat={onOpenChat}
+        isMediaActive={isMediaActive}
+        childrenCollapsed={childrenCollapsed}
+        onToggleChildren={onToggleChildren}
+        isInUserList={material.meta.user_study_material != null}
+        onToggleUserList={onToggled ? handleToggleUserList : undefined}
+        editTitle={`Edit: ${material.name}`}
+        renderSessionForm={({ initialNotes, timerElapsed, lastSession, onSubmit, onCancel }) => (
+          <StudyMaterialSessionForm
+            token={token}
+            studyMaterialId={material.id}
+            initialSeconds={timerElapsed}
+            initialNotes={initialNotes}
+            lastSession={lastSession}
+            onSubmit={onSubmit}
+            onCancel={onCancel}
+          />
+        )}
+        renderEditForm={({ onSuccess, onCancel }) => (
+          <StudyMaterialEditForm
+            token={token}
+            material={material}
+            onSuccess={(id, name, url, type) => {
+              onSuccess();
+              onEntityEdited?.(id, name, url, type);
+            }}
+            onCancel={onCancel}
+          />
+        )}
+        renderAddChildForm={onAddChild ? ({ onSuccess, onCancel }) => (
+          <AddChildStudyMaterialForm
+            token={token}
+            parentStudyMaterialId={material.id}
+            onSuccess={(child) => {
+              onSuccess();
+              onAddChild(child);
+            }}
+            onCancel={onCancel}
+          />
+        ) : undefined}
+      />
+    </>
   );
 }
 
@@ -183,6 +220,7 @@ export interface StudyMaterialCardProps {
   isMediaActive?: boolean;
   onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
   onChildAdded?: (parentId: number, child: DashboardStudyMaterial) => void;
+  onToggled?: (id: number, userStudyMaterial: UserStudyMaterialMeta) => void;
 }
 
 export function StudyMaterialCard({
@@ -204,6 +242,7 @@ export function StudyMaterialCard({
   isMediaActive,
   onEntityEdited,
   onChildAdded,
+  onToggled,
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(true);
@@ -240,6 +279,7 @@ export function StudyMaterialCard({
           onChildAdded(material.id, child);
           setChildrenCollapsed(false);
         } : undefined}
+        onToggled={onToggled}
       />
       {!childrenCollapsed && (material.child_study_materials ?? []).map((child) => {
         const childState = getState(child.id);
@@ -268,6 +308,7 @@ export function StudyMaterialCard({
             isMediaActive={isMediaActive}
             isChild
             onEntityEdited={onEntityEdited}
+            onToggled={onToggled}
           />
         );
       })}

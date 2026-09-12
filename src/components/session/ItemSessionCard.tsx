@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  BookmarkIcon,
+  BookmarkSlashIcon,
   ChatBubbleLeftRightIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -120,6 +122,10 @@ export interface ItemSessionCardProps {
   renderEditForm: (ctx: RenderEditCtx) => React.ReactNode;
   /** When set (only for top-level, non-child cards), shows an "Add child" button that opens this form. */
   renderAddChildForm?: (ctx: RenderEditCtx) => React.ReactNode;
+  /** Whether this item is currently in the user's active exercise/study-material list. */
+  isInUserList?: boolean;
+  /** When set, shows a bookmark button that adds/removes this item from the user's active list. */
+  onToggleUserList?: () => void;
 }
 
 export function ItemSessionCard({
@@ -161,6 +167,8 @@ export function ItemSessionCard({
   renderSessionForm,
   renderEditForm,
   renderAddChildForm,
+  isInUserList,
+  onToggleUserList,
 }: ItemSessionCardProps) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
@@ -222,6 +230,8 @@ export function ItemSessionCard({
   const showStreakTag = streak >= STREAK_DISPLAY_THRESHOLD;
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
+  const userListNoun = entityType === "exercise" ? "exercises" : "study materials";
+  const toggleUserListTitle = isInUserList ? `Remove from my ${userListNoun}` : `Add to my ${userListNoun}`;
 
   return (
     <div
@@ -261,6 +271,15 @@ export function ItemSessionCard({
               title="Add child"
             >
               <FolderPlusIcon className="icon" />
+            </button>
+          )}
+          {!inSession && onToggleUserList && (
+            <button
+              className="btn-ghost"
+              onClick={onToggleUserList}
+              title={toggleUserListTitle}
+            >
+              {isInUserList ? <BookmarkIcon className="icon" /> : <BookmarkSlashIcon className="icon" />}
             </button>
           )}
           {!inSession && (

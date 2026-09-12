@@ -16,7 +16,7 @@ export function catalogExerciseToDashboard(ex: CatalogExercise): DashboardExerci
     created_timestamp: 0,
     updated_timestamp: 0,
     child_exercises: ex.child_exercises.map(catalogExerciseToDashboard),
-    meta: { user_exercise: null, sessions: [] },
+    meta: ex.meta ?? { user_exercise: null, sessions: [] },
   };
 }
 
@@ -31,7 +31,7 @@ export function catalogStudyMaterialToDashboard(sm: CatalogStudyMaterial): Dashb
     session_type: "study_material",
     created_timestamp: 0,
     updated_timestamp: 0,
-    child_study_materials: (sm.child_study_materials ?? []).map(catalogStudyMaterialToDashboard),
-    meta: { user_study_material: null, sessions: [] },
+    child_study_materials: (sm.childStudyMaterials ?? []).map(catalogStudyMaterialToDashboard),
+    meta: sm.meta ?? { user_study_material: null, sessions: [] },
   };
 }

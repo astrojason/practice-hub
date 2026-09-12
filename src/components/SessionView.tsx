@@ -20,6 +20,7 @@ import type {
   Song,
   SongSession,
   StudyMaterialSession,
+  UserExerciseMeta,
   UserProfile,
 } from "../api/types";
 import { ChatPanel } from "./chat/ChatPanel";
@@ -702,6 +703,47 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     setAdditionalStudyMaterials((prev) => prev.map(mergeSm));
   }
 
+  // ── Add/remove-from-dashboard toggle handlers ─────────────────────────────────
+  // A top-level exercise/study material that's no longer in the user's active
+  // list shouldn't stay on the dashboard at all; a child that's toggled just
+  // has its membership flag updated in place (inactive children are already a
+  // supported, visible state — see the usageSessions filtering above).
+  function handleExerciseToggled(id: number, userExercise: UserExerciseMeta | null) {
+    const applyToggle = (exercises: DashboardExercise[]): DashboardExercise[] => {
+      if (exercises.some((ex) => ex.id === id)) {
+        if (userExercise === null) return exercises.filter((ex) => ex.id !== id);
+        return exercises.map((ex) => (ex.id === id ? { ...ex, meta: { ...ex.meta, user_exercise: userExercise } } : ex));
+      }
+      return exercises.map((ex) => ({
+        ...ex,
+        child_exercises: ex.child_exercises.map((c) =>
+          c.id === id ? { ...c, meta: { ...c.meta, user_exercise: userExercise } } : c
+        ),
+      }));
+    };
+    setDashboard((prev) => prev && { ...prev, exercises: applyToggle(prev.exercises) });
+    setAdditionalExercises((prev) => applyToggle(prev));
+  }
+
+  function handleStudyMaterialToggled(id: number, userStudyMaterial: DashboardStudyMaterial["meta"]["user_study_material"]) {
+    const applyToggle = (materials: DashboardStudyMaterial[]): DashboardStudyMaterial[] => {
+      if (materials.some((sm) => sm.id === id)) {
+        if (userStudyMaterial === null) return materials.filter((sm) => sm.id !== id);
+        return materials.map((sm) =>
+          sm.id === id ? { ...sm, meta: { ...sm.meta, user_study_material: userStudyMaterial } } : sm
+        );
+      }
+      return materials.map((sm) => ({
+        ...sm,
+        child_study_materials: (sm.child_study_materials ?? []).map((c) =>
+          c.id === id ? { ...c, meta: { ...c.meta, user_study_material: userStudyMaterial } } : c
+        ),
+      }));
+    };
+    setDashboard((prev) => prev && { ...prev, study_materials: applyToggle(prev.study_materials) });
+    setAdditionalStudyMaterials((prev) => applyToggle(prev));
+  }
+
   // ── Quick Add handlers ────────────────────────────────────────────────────────
   function handleAddSong(song: Song) {
     setAdditionalSongs((prev) => [...prev, song]);
@@ -1085,6 +1127,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               isMediaActive={playerState !== null}
               onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
               onChildAdded={handleExerciseChildAdded}
+              onToggled={handleExerciseToggled}
             />
           ))}
         </ItemGroup>
@@ -1130,6 +1173,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               isMediaActive={playerState !== null}
               onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
               onChildAdded={handleStudyMaterialChildAdded}
+              onToggled={handleStudyMaterialToggled}
             />
           ))}
         </ItemGroup>
@@ -1286,6 +1330,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 isMediaActive={playerState !== null}
                 onEntityEdited={(id, name, resources) => handleExerciseEdited(id, name, resources)}
                 onChildAdded={handleExerciseChildAdded}
+                onToggled={handleExerciseToggled}
               />
             ))}
             {additionalStudyMaterials.map((sm) => (
@@ -1318,6 +1363,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 isMediaActive={playerState !== null}
                 onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
                 onChildAdded={handleStudyMaterialChildAdded}
+                onToggled={handleStudyMaterialToggled}
               />
             ))}
           </ItemGroup>

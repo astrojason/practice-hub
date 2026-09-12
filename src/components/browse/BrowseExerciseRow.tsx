@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { ChevronDownIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/16/solid";
+import { BookmarkIcon, BookmarkSlashIcon, ChevronDownIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/16/solid";
 import { SessionModal } from "../session/SessionModal";
 import { ExerciseEditForm } from "../session/forms/ExerciseEditForm";
 import { AddChildExerciseForm } from "../session/forms/AddChildExerciseForm";
+import { ErrorModal } from "../ErrorModal";
+import { toggleUserExercise } from "../../api/client";
 import type { DashboardExercise } from "../../api/types";
 
 interface Props {
@@ -17,8 +19,29 @@ export function BrowseExerciseRow({ token, exercise, isChild }: Props) {
   const [collapsed, setCollapsed] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [addChildOpen, setAddChildOpen] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const hasChildren = children.length > 0;
+  const inList = current.meta.user_exercise != null;
+
+  async function handleToggle() {
+    if (toggling) return;
+    setToggling(true);
+    setToggleError(null);
+    try {
+      const response = await toggleUserExercise(token, current.id);
+      const updatedMeta =
+        response.id === current.id
+          ? response.meta
+          : response.child_exercises.find((c) => c.id === current.id)?.meta ?? { user_exercise: null, sessions: [] };
+      setCurrent((prev) => ({ ...prev, meta: updatedMeta }));
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setToggling(false);
+    }
+  }
 
   return (
     <div className="browse-group">
@@ -36,6 +59,13 @@ export function BrowseExerciseRow({ token, exercise, isChild }: Props) {
               {collapsed ? <ChevronRightIcon className="icon-sm" /> : <ChevronDownIcon className="icon-sm" />}
             </button>
           )}
+          <button
+            className="btn-ghost"
+            onClick={handleToggle}
+            title={inList ? "Remove from my exercises" : "Add to my exercises"}
+          >
+            {inList ? <BookmarkIcon className="icon" /> : <BookmarkSlashIcon className="icon" />}
+          </button>
           <button className="btn-ghost" onClick={() => setAddChildOpen((v) => !v)} title="Add child">
             <PlusIcon className="icon" />
           </button>
@@ -78,6 +108,8 @@ export function BrowseExerciseRow({ token, exercise, isChild }: Props) {
         children.map((child) => (
           <BrowseExerciseRow key={child.id} token={token} exercise={child} isChild />
         ))}
+
+      {toggleError && <ErrorModal error={toggleError} onDismiss={() => setToggleError(null)} />}
     </div>
   );
 }

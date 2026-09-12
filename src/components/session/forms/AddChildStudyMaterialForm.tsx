@@ -31,7 +31,11 @@ export function AddChildStudyMaterialForm({ token, parentStudyMaterialId, onSucc
     };
     try {
       const created = await createStudyMaterial(token, payload);
-      onSuccess({ ...created, child_study_materials: created.child_study_materials ?? [] });
+      onSuccess({
+        ...created,
+        child_study_materials: created.child_study_materials ?? [],
+        meta: created.meta ?? { user_study_material: null, sessions: [] },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
