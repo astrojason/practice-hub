@@ -485,21 +485,33 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     const preset = presetsRef.current[filePath];
     applyPreset(preset);
 
+    let onCanPlay: (() => void) | null = null;
+
     if (isVideo) {
       const vid = videoRef.current;
       if (!vid) return;
       videoLoopCountRef.current = 0;
       videoBreakCountRef.current = 0;
-      vid.src = assetUrl(filePath);
-      vid.load();
       // Restore playback speed from preset
       vid.preservesPitch = true;
       vid.playbackRate = speedRef.current;
-      if (preset?.loopStart) {
-        const ls = parseTimeInput(preset.loopStart, 9999);
-        if (ls !== null) vid.currentTime = ls;
-      }
-      vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
+      // Don't call play() until the video has buffered enough to actually paint
+      // a frame (readyState >= HAVE_FUTURE_DATA, which "canplay" guarantees).
+      // Calling it right after load() — before WebKit's decoder has caught up —
+      // can leave the picture stuck on the first frame while audio keeps
+      // advancing; only a later seek forces a repaint to resync them. The same
+      // readiness gap is why the loop-start seek below has to go through
+      // seekVideo() rather than a raw assignment (see videoSeek.ts).
+      onCanPlay = () => {
+        if (preset?.loopStart) {
+          const ls = parseTimeInput(preset.loopStart, 9999);
+          if (ls !== null) seekVideo(vid, ls);
+        }
+        vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
+      };
+      vid.addEventListener("canplay", onCanPlay, { once: true });
+      vid.src = assetUrl(filePath);
+      vid.load();
       setVideoCurrentTime(0);
       setVideoDuration(0);
       setVideoPlaying(false);
@@ -509,6 +521,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
     return () => {
       if (!isVideo) audioActions.destroy();
+      else if (onCanPlay) videoRef.current?.removeEventListener("canplay", onCanPlay);
       metronome.stop();
       // Flush any pending debounced save before unmounting so settings aren't lost
       if (presetSaveTimerRef.current) {
