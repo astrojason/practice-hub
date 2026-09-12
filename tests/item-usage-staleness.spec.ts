@@ -132,11 +132,12 @@ const parentStudyMaterialWithFreshChild = {
 };
 
 // Same shape, but the only child with a recent session isn't one the user
-// has actually added (meta.user_study_material is null) — its session
-// shouldn't rescue the parent from staleness.
+// has actually added (meta.user_study_material is null) — all child items
+// count toward the parent's usage, not just the ones in the user's active
+// list, so this session should still rescue the parent from staleness.
 const parentStudyMaterialWithOnlyUnsubscribedFreshChild = {
   id: 186,
-  name: "Unrelated Course With A Ghost Session",
+  name: "Unrelated Course With An Unlisted Child's Session",
   url: null,
   instrument: null,
   parent_study_material_id: null,
@@ -199,11 +200,12 @@ const parentExerciseWithFreshChild = {
 };
 
 // Same shape, but the only child with a recent session isn't one the user
-// has actually added (meta.user_exercise is null) — its session shouldn't
-// rescue the parent from staleness.
+// has actually added (meta.user_exercise is null) — all child items count
+// toward the parent's usage, not just the ones in the user's active list, so
+// this session should still rescue the parent from staleness.
 const parentExerciseWithOnlyUnsubscribedFreshChild = {
   id: 22,
-  name: "Unrelated Drill With A Ghost Session",
+  name: "Unrelated Drill With An Unlisted Child's Session",
   order: 6,
   resources: null,
   session_type: "exercise",
@@ -358,16 +360,18 @@ test("a parent exercise is not highlighted when a child was practiced yesterday,
   await expect(card).not.toHaveClass(/stale-red/);
 });
 
-test("a parent study material is still highlighted stale when the only recently-practiced child isn't one the user has added", async ({ page }) => {
+test("a parent study material is not highlighted stale when only an unlisted child was recently practiced", async ({ page }) => {
   await page.locator(".item-group", { hasText: "Study Materials" }).locator(".item-group-header").click();
-  const card = page.locator(".item-card", { hasText: "Unrelated Course With A Ghost Session" }).first();
-  await expect(card).toHaveClass(/stale-red/);
+  const card = page.locator(".item-card", { hasText: "Unrelated Course With An Unlisted Child's Session" }).first();
+  await expect(card).not.toHaveClass(/stale-orange/);
+  await expect(card).not.toHaveClass(/stale-red/);
 });
 
-test("a parent exercise is still highlighted stale when the only recently-practiced child isn't one the user has added", async ({ page }) => {
+test("a parent exercise is not highlighted stale when only an unlisted child was recently practiced", async ({ page }) => {
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
-  const card = page.locator(".item-card", { hasText: "Unrelated Drill With A Ghost Session" }).first();
-  await expect(card).toHaveClass(/stale-red/);
+  const card = page.locator(".item-card", { hasText: "Unrelated Drill With An Unlisted Child's Session" }).first();
+  await expect(card).not.toHaveClass(/stale-orange/);
+  await expect(card).not.toHaveClass(/stale-red/);
 });
 
 test("a stale exercise landing on a zebra-striped row still renders its stale color, not just the zebra tint", async ({ page }) => {

@@ -42,7 +42,11 @@ function previousCalendarDay(d: Date): Date {
 /**
  * Current consecutive-day practice streak, counting back from today. If
  * today has no session yet, the streak is still "alive" as long as
- * yesterday was practiced — the day isn't over. Otherwise it's broken (0).
+ * yesterday was practiced — the day isn't over.
+ *
+ * A single missed day doesn't break the streak ("don't miss twice") — it's
+ * skipped over without adding to the count. Missing two days in a row does
+ * break it.
  */
 export function calculateStreak(sessions: { created_timestamp: number }[], now: number = Date.now()): number {
   if (sessions.length === 0) return 0;
@@ -52,12 +56,18 @@ export function calculateStreak(sessions: { created_timestamp: number }[], now: 
   let cursor = new Date(now);
   if (!practicedDays.has(dayKey(cursor.getTime()))) {
     cursor = previousCalendarDay(cursor);
-    if (!practicedDays.has(dayKey(cursor.getTime()))) return 0;
   }
 
   let streak = 0;
-  while (practicedDays.has(dayKey(cursor.getTime()))) {
-    streak++;
+  let missedInARow = 0;
+  while (missedInARow < 2) {
+    if (practicedDays.has(dayKey(cursor.getTime()))) {
+      streak++;
+      missedInARow = 0;
+    } else {
+      missedInARow++;
+      if (missedInARow >= 2) break;
+    }
     cursor = previousCalendarDay(cursor);
   }
   return streak;

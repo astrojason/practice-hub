@@ -106,17 +106,14 @@ function ExerciseSingleCard({
   const sessions = (exercise.meta.sessions ?? []) as ExerciseSession[];
   // Practicing a sub-exercise counts as practicing the group — a parent
   // with no sessions of its own shouldn't show stale just because the user
-  // always practices it via a child. Only children the user has actually
-  // added (meta.user_exercise set) count — a session logged against a child
-  // that isn't part of the user's active list shouldn't rescue the group.
-  // Children keep their own sessions only.
+  // always practices it via a child. All child items count, whether or not
+  // the user has added them to their own exercise list. Children keep their
+  // own sessions only.
   const usageSessions = isChild
     ? sessions
     : [
         ...sessions,
-        ...exercise.child_exercises
-          .filter((c) => c.meta.user_exercise != null)
-          .flatMap((c) => c.meta.sessions ?? []),
+        ...exercise.child_exercises.flatMap((c) => c.meta.sessions ?? []),
       ].sort((a, b) => b.created_timestamp - a.created_timestamp);
 
   return (

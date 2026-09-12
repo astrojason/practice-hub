@@ -132,6 +132,57 @@ const parentWithStreakingChild = {
   meta: { user_exercise: null, sessions: [] },
 };
 
+// Same shape, but the streaking child isn't one the user has added to their
+// active list (meta.user_exercise is null). All child items count toward the
+// parent's streak, not just the ones in the user's exercises/study materials.
+const parentWithUnlistedStreakingChild = {
+  id: 7,
+  name: "Course With Unlisted Streaking Child",
+  order: 7,
+  resources: null,
+  session_type: "exercise",
+  parent_exercise_id: null,
+  created_timestamp: daysAgo(60),
+  updated_timestamp: daysAgo(60),
+  child_exercises: [
+    {
+      id: 8,
+      name: "Lesson 1 (not added)",
+      order: 1,
+      resources: null,
+      session_type: "exercise",
+      parent_exercise_id: 7,
+      created_timestamp: daysAgo(60),
+      updated_timestamp: daysAgo(60),
+      child_exercises: [],
+      meta: {
+        user_exercise: null,
+        sessions: [session(14, 0), session(15, 1), session(16, 2)],
+      },
+    },
+  ],
+  meta: { user_exercise: null, sessions: [] },
+};
+
+// Practiced today, 2 days ago, 3 days ago, and 4 days ago, but missed
+// yesterday — a single missed day shouldn't break the streak ("don't miss
+// twice"), so it should still count all 4 practiced days.
+const singleMissedDayExercise = {
+  id: 9,
+  name: "One Skipped Day",
+  order: 9,
+  resources: null,
+  session_type: "exercise",
+  parent_exercise_id: null,
+  created_timestamp: daysAgo(30),
+  updated_timestamp: daysAgo(30),
+  child_exercises: [],
+  meta: {
+    user_exercise: null,
+    sessions: [session(17, 0), session(18, 2), session(19, 3), session(20, 4)],
+  },
+};
+
 const mockDashboard = {
   scale: null,
   key_signature: null,
@@ -145,6 +196,8 @@ const mockDashboard = {
     singleDayExercise,
     brokenStreakExercise,
     parentWithStreakingChild,
+    parentWithUnlistedStreakingChild,
+    singleMissedDayExercise,
   ],
   study_materials: [],
   chord: null,
@@ -199,4 +252,14 @@ test("a broken streak only counts the unbroken run and hides the badge below thr
 test("a parent with no sessions of its own inherits its added child's streak", async ({ page }) => {
   const card = page.locator(".item-card", { hasText: "Course With Streaking Child" }).first();
   await expect(card.locator(".tag-streak")).toHaveText("🔥 3");
+});
+
+test("a parent inherits a streak from a child that isn't in the user's active list", async ({ page }) => {
+  const card = page.locator(".item-card", { hasText: "Course With Unlisted Streaking Child" }).first();
+  await expect(card.locator(".tag-streak")).toHaveText("🔥 3");
+});
+
+test("a single missed day doesn't break the streak (don't miss twice)", async ({ page }) => {
+  const card = page.locator(".item-card", { hasText: "One Skipped Day" });
+  await expect(card.locator(".tag-streak")).toHaveText("🔥 4");
 });
