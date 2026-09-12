@@ -31,6 +31,19 @@ function session(id: number, daysAgoOffset: number) {
   };
 }
 
+function smSession(id: number, daysAgoOffset: number) {
+  return {
+    id,
+    study_material_id: 0,
+    notes: null,
+    rating: "Good",
+    bpm: null,
+    seconds: 300,
+    created_timestamp: daysAgo(daysAgoOffset),
+    updated_timestamp: daysAgo(daysAgoOffset),
+  };
+}
+
 // Practiced today, yesterday, and the day before -> current streak of 3.
 const threeDayStreakExercise = {
   id: 1,
@@ -183,6 +196,56 @@ const singleMissedDayExercise = {
   },
 };
 
+// A 9-day course where a different child is the user's active one each day —
+// yesterday's child gets removed from the user's list the moment today's is
+// added. The dashboard's own study_materials list only ever includes the
+// currently-active child (this is what the real /user/dashboard endpoint
+// does — it drops de-listed children entirely, not just their membership
+// flag), so the parent's streak has to come from the full course detail
+// fetched separately, not from the dashboard payload alone.
+const swappedChildrenAllDays = Array.from({ length: 9 }, (_, i) => {
+  const dayNumber = 9 - i;
+  const daysAgoOffset = i;
+  return {
+    id: 335 + i,
+    name: `Day ${dayNumber}`,
+    url: null,
+    instrument: null,
+    parent_study_material_id: 334,
+    session_type: "study_material",
+    created_timestamp: daysAgo(60),
+    updated_timestamp: daysAgo(60),
+    child_study_materials: [],
+    meta: {
+      user_study_material: i === 0 ? { user_id: 1, study_material_id: 335 } : null,
+      sessions: [smSession(101 + i, daysAgoOffset)],
+    },
+  };
+});
+
+const swappedChildrenParent = {
+  id: 334,
+  name: "30-Day Downpicking Course - Bernth",
+  url: null,
+  instrument: null,
+  parent_study_material_id: null,
+  session_type: "study_material",
+  created_timestamp: daysAgo(60),
+  updated_timestamp: daysAgo(60),
+  // The dashboard only carries today's active child (Day 9) — the other 8
+  // days' children were each removed from the user's list once swapped out.
+  child_study_materials: [swappedChildrenAllDays[0]],
+  meta: { user_study_material: null, sessions: [] },
+};
+
+// Full course detail as returned by GET /study-material/334 — every child the
+// course has ever had, each carrying its own session, regardless of whether
+// it's still in the user's active list today.
+const swappedChildrenFullDetail = {
+  ...swappedChildrenParent,
+  child_study_materials: swappedChildrenAllDays,
+};
+
 const mockDashboard = {
   scale: null,
   key_signature: null,
@@ -199,7 +262,7 @@ const mockDashboard = {
     parentWithUnlistedStreakingChild,
     singleMissedDayExercise,
   ],
-  study_materials: [],
+  study_materials: [swappedChildrenParent],
   chord: null,
   progression: null,
   interval: null,
@@ -222,6 +285,9 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route("**/user/dashboard**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) })
+  );
+  await page.route("**/study-material/334", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(swappedChildrenFullDetail) })
   );
 
   await page.goto("/");
@@ -262,4 +328,10 @@ test("a parent inherits a streak from a child that isn't in the user's active li
 test("a single missed day doesn't break the streak (don't miss twice)", async ({ page }) => {
   const card = page.locator(".item-card", { hasText: "One Skipped Day" });
   await expect(card.locator(".tag-streak")).toHaveText("🔥 4");
+});
+
+test("a parent's streak reflects the full course history even when a different child is active each day", async ({ page }) => {
+  await page.locator(".item-group", { hasText: "Study Materials" }).locator(".item-group-header").click();
+  const card = page.locator(".item-card", { hasText: "30-Day Downpicking Course - Bernth" }).first();
+  await expect(card.locator(".tag-streak")).toHaveText("🔥 9");
 });

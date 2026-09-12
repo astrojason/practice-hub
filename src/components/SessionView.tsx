@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getDashboard,
+  getExerciseById,
   getExerciseCatalog,
   getExerciseSessionHistory,
   getStudyMaterialById,
@@ -241,6 +242,62 @@ async function fetchOrphanParents(
   return { parents, errorMessage };
 }
 
+/**
+ * The dashboard's own exercise/study-material lists only include children
+ * currently in the user's active list — swapping a child out (e.g. moving
+ * from one day of a course to the next) drops it from the response
+ * entirely, taking its session history with it. For any top-level item that
+ * currently has children, fetch the full catalog detail (every child, with
+ * complete session history regardless of active-list membership) so
+ * streak/staleness reflect real practice history rather than just today's
+ * listed subset. Individual lookup failures don't block the others.
+ */
+async function fetchFullChildHistory(
+  token: string,
+  exercises: DashboardExercise[],
+  studyMaterials: DashboardStudyMaterial[]
+): Promise<{ exercises: DashboardExercise[]; studyMaterials: DashboardStudyMaterial[]; errorMessage: string | null }> {
+  const exerciseTargets = exercises.filter((e) => e.child_exercises.length > 0);
+  const smTargets = studyMaterials.filter((sm) => (sm.child_study_materials ?? []).length > 0);
+
+  const [exResults, smResults] = await Promise.all([
+    Promise.allSettled(exerciseTargets.map((e) => getExerciseById(token, e.id))),
+    Promise.allSettled(smTargets.map((sm) => getStudyMaterialById(token, sm.id))),
+  ]);
+
+  const failures: string[] = [];
+  const exerciseChildrenById = new Map<number, DashboardExercise[]>();
+  exResults.forEach((result, i) => {
+    if (result.status === "fulfilled") {
+      exerciseChildrenById.set(exerciseTargets[i].id, result.value.child_exercises);
+    } else {
+      const reason = result.reason;
+      failures.push(`exercise "${exerciseTargets[i].name}": ${reason instanceof Error ? reason.message : String(reason)}`);
+    }
+  });
+  const smChildrenById = new Map<number, DashboardStudyMaterial[]>();
+  smResults.forEach((result, i) => {
+    if (result.status === "fulfilled") {
+      smChildrenById.set(smTargets[i].id, result.value.child_study_materials ?? []);
+    } else {
+      const reason = result.reason;
+      failures.push(`study material "${smTargets[i].name}": ${reason instanceof Error ? reason.message : String(reason)}`);
+    }
+  });
+
+  const errorMessage = failures.length > 0
+    ? `Couldn't load full practice history for ${failures.length} item${failures.length > 1 ? "s" : ""}: ${failures.join("; ")}`
+    : null;
+
+  return {
+    exercises: exercises.map((e) => (exerciseChildrenById.has(e.id) ? { ...e, child_exercises: exerciseChildrenById.get(e.id)! } : e)),
+    studyMaterials: studyMaterials.map((sm) =>
+      smChildrenById.has(sm.id) ? { ...sm, child_study_materials: smChildrenById.get(sm.id)! } : sm
+    ),
+    errorMessage,
+  };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -263,6 +320,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildError, setRebuildError] = useState<string | null>(null);
   const [orphanFetchError, setOrphanFetchError] = useState<string | null>(null);
+  const [childHistoryError, setChildHistoryError] = useState<string | null>(null);
   const [historicalExercisesError, setHistoricalExercisesError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [quickAddHistoryError, setQuickAddHistoryError] = useState<string | null>(null);
@@ -397,6 +455,13 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       setServerTotal(user.time_practiced_today ?? 0);
 
       setCompletedIds((prev) => mergeCompletedFromDash(dash, new Set([...prev, ...loadStoredCompletedIds().ids])));
+
+      // Non-blocking: the dashboard above already renders with what it has;
+      // fill in full course history (including swapped-out children) once it loads.
+      fetchFullChildHistory(token, dash.exercises, dash.study_materials).then(({ exercises, studyMaterials, errorMessage }) => {
+        if (errorMessage) setChildHistoryError(errorMessage);
+        setDashboard((prev) => prev && { ...prev, exercises, study_materials: studyMaterials });
+      });
     });
   }, [token, loadTrigger]);
 
@@ -836,6 +901,11 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       const dash = { ...raw, study_materials: nestedSms };
       setDashboard(dash);
       setCompletedIds((prev) => mergeCompletedFromDash(dash, prev));
+
+      fetchFullChildHistory(token, dash.exercises, dash.study_materials).then(({ exercises, studyMaterials, errorMessage }) => {
+        if (errorMessage) setChildHistoryError(errorMessage);
+        setDashboard((prev) => prev && { ...prev, exercises, study_materials: studyMaterials });
+      });
     } catch (err) {
       setRebuildError(err instanceof Error ? err.message : "Rebuild failed. Try again.");
     } finally {
@@ -943,6 +1013,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     <div className="session-view">
       {rebuildError && <ErrorModal error={rebuildError} onDismiss={() => setRebuildError(null)} />}
       {orphanFetchError && <ErrorModal error={orphanFetchError} onDismiss={() => setOrphanFetchError(null)} />}
+      {childHistoryError && <ErrorModal error={childHistoryError} onDismiss={() => setChildHistoryError(null)} />}
       {storageError && <ErrorModal error={storageError} onDismiss={() => setStorageError(null)} />}
       {historicalExercisesError && (
         <ErrorModal error={historicalExercisesError} onDismiss={() => setHistoricalExercisesError(null)} />

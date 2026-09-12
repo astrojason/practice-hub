@@ -29,6 +29,11 @@ const orphanChild = {
   meta: { user_study_material: null, sessions: [] },
 };
 
+// The dashboard load also fetches full detail for any top-level item that
+// already has children nested onto it (here, the orphan-parent fetch itself
+// nests "Chapter 1" under this parent before that second fetch happens) —
+// GET /study-material/999 must echo the same child back or it would wipe it
+// out, so this mirrors what the real single-item endpoint actually returns.
 const fetchedParent = {
   id: 999,
   name: "Music Theory Book",
@@ -38,7 +43,7 @@ const fetchedParent = {
   session_type: "study_material",
   created_timestamp: 0,
   updated_timestamp: 0,
-  child_study_materials: [],
+  child_study_materials: [orphanChild],
   meta: { user_study_material: null, sessions: [] },
 };
 

@@ -189,6 +189,19 @@ export async function getExerciseCatalog(token: string): Promise<CatalogExercise
   return handleResponse<CatalogExerciseWithActive[]>(response);
 }
 
+/**
+ * Full catalog detail for a single (top-level) exercise, including every
+ * child exercise and each child's complete session history for the current
+ * user — unlike the dashboard's exercise list, which only includes children
+ * currently in the user's active list.
+ */
+export async function getExerciseById(token: string, id: number): Promise<DashboardExercise> {
+  const response = await apiFetch(`${API_BASE_URL}/exercise/${id}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<DashboardExercise>(response);
+}
+
 // ─── Quick Add catalog ────────────────────────────────────────────────────────
 
 export async function getCatalogSongs(
