@@ -389,6 +389,20 @@ export async function getCatalogStudyMaterials(
   return handleResponse<CatalogStudyMaterialsResponse>(response);
 }
 
+// Unlike every other snake_case field/entity, the backend keys a study
+// material's children camelCase specifically on the get-by-id response (see
+// the `childStudyMaterials` comment on `CatalogStudyMaterial` in ./types).
+type RawStudyMaterialById = Omit<DashboardStudyMaterial, "child_study_materials"> & {
+  child_study_materials?: RawStudyMaterialById[];
+  childStudyMaterials?: RawStudyMaterialById[];
+};
+
+function normalizeStudyMaterialChildCasing(raw: RawStudyMaterialById): DashboardStudyMaterial {
+  const { child_study_materials, childStudyMaterials, ...rest } = raw;
+  const children = child_study_materials ?? childStudyMaterials ?? [];
+  return { ...rest, child_study_materials: children.map(normalizeStudyMaterialChildCasing) };
+}
+
 export async function getStudyMaterialById(
   token: string,
   id: number
@@ -396,7 +410,8 @@ export async function getStudyMaterialById(
   const response = await apiFetch(`${API_BASE_URL}/study-material/${id}`, {
     headers: authHeaders(token),
   });
-  return handleResponse<DashboardStudyMaterial>(response);
+  const raw = await handleResponse<RawStudyMaterialById>(response);
+  return normalizeStudyMaterialChildCasing(raw);
 }
 
 // ─── Practice plans ───────────────────────────────────────────────────────────
