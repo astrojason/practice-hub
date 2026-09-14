@@ -3,7 +3,7 @@ import { postExerciseSession } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
-import type { ExerciseSessionPayload } from "../../../api/types";
+import type { ExerciseSession, ExerciseSessionPayload } from "../../../api/types";
 import { RATING_OPTIONS } from "./shared/ratingOptions";
 import { useRatingKeyShortcut } from "./shared/useRatingKeyShortcut";
 import { BpmField } from "./shared/BpmField";
@@ -15,7 +15,7 @@ interface Props {
   initialSeconds: number;
   initialNotes?: string;
   lastSession?: LastSessionData | null;
-  onSubmit: (dailyPracticeTime: number) => void;
+  onSubmit: (dailyPracticeTime: number, newSession: ExerciseSession) => void;
   onCancel: () => void;
 }
 
@@ -53,7 +53,7 @@ export function ExerciseSessionForm({
         in_user_exercise: inUserExercise,
       };
       const res = await postExerciseSession(token, payload);
-      onSubmit(res.daily_practice_time);
+      onSubmit(res.daily_practice_time, res);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setSubmitting(false);

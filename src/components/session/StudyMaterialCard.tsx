@@ -7,7 +7,7 @@ import { AddChildStudyMaterialForm } from "./forms/AddChildStudyMaterialForm";
 import { inferResourceType } from "./forms/shared/inferResourceType";
 import { ErrorModal } from "../ErrorModal";
 import { toggleUserStudyMaterial } from "../../api/client";
-import type { DashboardStudyMaterial, Resource, StudyMaterialSession } from "../../api/types";
+import type { DashboardStudyMaterial, ExerciseSession, Resource, StudyMaterialSession } from "../../api/types";
 
 type UserStudyMaterialMeta = DashboardStudyMaterial["meta"]["user_study_material"];
 
@@ -34,7 +34,7 @@ interface SingleCardProps {
   onCancel: () => void;
   onFormOpen: () => void;
   onFormClose: () => void;
-  onSessionSubmit: (dailyPracticeTime: number) => void;
+  onSessionSubmit: (dailyPracticeTime: number, newSession?: ExerciseSession | StudyMaterialSession) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
@@ -208,7 +208,7 @@ export interface StudyMaterialCardProps {
   onCancel: (id: number) => void;
   onFormOpen: (id: number) => void;
   onFormClose: (id: number) => void;
-  onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
+  onSessionSubmit: (id: number, dailyPracticeTime: number, newSession?: ExerciseSession | StudyMaterialSession) => void;
   onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
@@ -262,7 +262,7 @@ export function StudyMaterialCard({
         onCancel={() => onCancel(material.id)}
         onFormOpen={() => onFormOpen(material.id)}
         onFormClose={() => onFormClose(material.id)}
-        onSessionSubmit={(dpt) => onSessionSubmit(material.id, dpt)}
+        onSessionSubmit={(dpt, newSession) => onSessionSubmit(material.id, dpt, newSession)}
         onSkip={() => onSkip(material.id)}
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(material.id) : undefined}
         onOpenFile={onOpenFile}
@@ -297,7 +297,7 @@ export function StudyMaterialCard({
             onCancel={() => onCancel(child.id)}
             onFormOpen={() => onFormOpen(child.id)}
             onFormClose={() => onFormClose(child.id)}
-            onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
+            onSessionSubmit={(dpt, newSession) => onSessionSubmit(child.id, dpt, newSession)}
             onSkip={() => onSkip(child.id)}
             onOpenFile={onOpenFile ? (path, mt, _itemKey, resources) => onOpenFile(path, mt, makeItemKey("studymaterial", child.id), resources) : undefined}
             onGpView={onGpView}

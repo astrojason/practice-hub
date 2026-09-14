@@ -6,7 +6,7 @@ import { ExerciseEditForm } from "./forms/ExerciseEditForm";
 import { AddChildExerciseForm } from "./forms/AddChildExerciseForm";
 import { ErrorModal } from "../ErrorModal";
 import { toggleUserExercise } from "../../api/client";
-import type { DashboardExercise, ExerciseSession, Resource, UserExerciseMeta } from "../../api/types";
+import type { DashboardExercise, ExerciseSession, Resource, StudyMaterialSession, UserExerciseMeta } from "../../api/types";
 
 /** The toggle response is always the full group (parent + children) — find this
  * item's own updated membership whether it's the top-level exercise or a child. */
@@ -31,7 +31,7 @@ interface CardProps {
   onCancel: () => void;
   onFormOpen: () => void;
   onFormClose: () => void;
-  onSessionSubmit: (dailyPracticeTime: number) => void;
+  onSessionSubmit: (dailyPracticeTime: number, newSession?: ExerciseSession | StudyMaterialSession) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
@@ -218,7 +218,7 @@ interface ExerciseCardProps {
   onCancel: (id: number) => void;
   onFormOpen: (id: number) => void;
   onFormClose: (id: number) => void;
-  onSessionSubmit: (id: number, dailyPracticeTime: number) => void;
+  onSessionSubmit: (id: number, dailyPracticeTime: number, newSession?: ExerciseSession | StudyMaterialSession) => void;
   onSkip: (id: number) => void;
   onStartSequential?: (parentId: number) => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
@@ -271,7 +271,7 @@ export function ExerciseCard({
         onCancel={() => onCancel(exercise.id)}
         onFormOpen={() => onFormOpen(exercise.id)}
         onFormClose={() => onFormClose(exercise.id)}
-        onSessionSubmit={(dpt) => onSessionSubmit(exercise.id, dpt)}
+        onSessionSubmit={(dpt, newSession) => onSessionSubmit(exercise.id, dpt, newSession)}
         onSkip={() => onSkip(exercise.id)}
         onStartSequential={hasChildren && onStartSequential ? () => onStartSequential(exercise.id) : undefined}
         onOpenFile={onOpenFile}
@@ -306,7 +306,7 @@ export function ExerciseCard({
             onCancel={() => onCancel(child.id)}
             onFormOpen={() => onFormOpen(child.id)}
             onFormClose={() => onFormClose(child.id)}
-            onSessionSubmit={(dpt) => onSessionSubmit(child.id, dpt)}
+            onSessionSubmit={(dpt, newSession) => onSessionSubmit(child.id, dpt, newSession)}
             onSkip={() => onSkip(child.id)}
             onOpenFile={onOpenFile ? (path, mt, _itemKey, resources) => onOpenFile(path, mt, makeItemKey("exercise", child.id), resources) : undefined}
             onGpView={onGpView}

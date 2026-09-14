@@ -58,7 +58,7 @@ interface RenderFormCtx {
   initialNotes: string;
   timerElapsed: number;
   lastSession: LastSessionData | null;
-  onSubmit: (dailyPracticeTime: number) => void;
+  onSubmit: (dailyPracticeTime: number, newSession?: ExerciseSession | StudyMaterialSession) => void;
   onCancel: () => void;
 }
 
@@ -106,7 +106,7 @@ export interface ItemSessionCardProps {
   onCancel: () => void;
   onFormOpen: () => void;
   onFormClose: () => void;
-  onSessionSubmit: (dailyPracticeTime: number) => void;
+  onSessionSubmit: (dailyPracticeTime: number, newSession?: ExerciseSession | StudyMaterialSession) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string) => void;
@@ -216,8 +216,8 @@ export function ItemSessionCard({
     setShowHistory(false);
   }
 
-  function handleFormSubmit(dpt: number) {
-    onSessionSubmit(dpt);
+  function handleFormSubmit(dpt: number, newSession?: ExerciseSession | StudyMaterialSession) {
+    onSessionSubmit(dpt, newSession);
     setModalOpen(false);
     setNotes("");
     setShowHistory(false);
@@ -228,6 +228,20 @@ export function ItemSessionCard({
   const usageStaleness = itemCreatedTimestamp != null ? getUsageStalenessLevel(itemCreatedTimestamp, usageSessions ?? sessions) : "none";
   const streak = calculateStreak(usageSessions ?? sessions);
   const showStreakTag = streak >= STREAK_DISPLAY_THRESHOLD;
+
+  // Flash the badge for a beat whenever the streak grows, rather than on
+  // every render (e.g. mount, or an unrelated prop change).
+  const prevStreakRef = useRef<number | null>(null);
+  const [streakBumped, setStreakBumped] = useState(false);
+  useEffect(() => {
+    const prev = prevStreakRef.current;
+    prevStreakRef.current = streak;
+    if (prev !== null && streak > prev) {
+      setStreakBumped(true);
+      const timer = setTimeout(() => setStreakBumped(false), 700);
+      return () => clearTimeout(timer);
+    }
+  }, [streak]);
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
   const userListNoun = entityType === "exercise" ? "exercises" : "study materials";
@@ -246,7 +260,9 @@ export function ItemSessionCard({
           {subtitle && <span className="item-sub">{subtitle}</span>}
           {(tags.length > 0 || showSequentialTag || showStreakTag) && (
             <span className="item-tags">
-              {showStreakTag && <span className="tag tag-streak">🔥 {streak}</span>}
+              {showStreakTag && (
+                <span className={`tag tag-streak ${streakBumped ? "tag-streak--bump" : ""}`}>🔥 {streak}</span>
+              )}
               {tags.map((t) => (
                 <span key={t} className="tag">{t}</span>
               ))}

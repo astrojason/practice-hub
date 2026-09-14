@@ -128,6 +128,48 @@ function autoCompleteParents(
   return next;
 }
 
+// Appends a just-logged session to the matching exercise (top-level or
+// child) in local state, so streak/staleness recompute immediately instead
+// of waiting for the next dashboard reload.
+function appendExerciseSession(exercises: DashboardExercise[], id: number, session: ExerciseSession): DashboardExercise[] {
+  return exercises.map((ex) => {
+    if (ex.id === id) {
+      return { ...ex, meta: { ...ex.meta, sessions: [session, ...ex.meta.sessions] } };
+    }
+    if (ex.child_exercises.some((c) => c.id === id)) {
+      return {
+        ...ex,
+        child_exercises: ex.child_exercises.map((c) =>
+          c.id === id ? { ...c, meta: { ...c.meta, sessions: [session, ...c.meta.sessions] } } : c
+        ),
+      };
+    }
+    return ex;
+  });
+}
+
+function appendStudyMaterialSession(
+  studyMaterials: DashboardStudyMaterial[],
+  id: number,
+  session: StudyMaterialSession
+): DashboardStudyMaterial[] {
+  return studyMaterials.map((sm) => {
+    if (sm.id === id) {
+      return { ...sm, meta: { ...sm.meta, sessions: [session, ...sm.meta.sessions] } };
+    }
+    const children = sm.child_study_materials ?? [];
+    if (children.some((c) => c.id === id)) {
+      return {
+        ...sm,
+        child_study_materials: children.map((c) =>
+          c.id === id ? { ...c, meta: { ...c.meta, sessions: [session, ...c.meta.sessions] } } : c
+        ),
+      };
+    }
+    return sm;
+  });
+}
+
 function mergeCompletedFromDash(dash: DashboardData, prev: Set<string>): Set<string> {
   let next = new Set(prev);
   for (const ex of dash.exercises) {
@@ -633,7 +675,11 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     });
   }
 
-  function handleSessionSubmit(dailyPracticeTime: number, itemKey: string) {
+  function handleSessionSubmit(
+    dailyPracticeTime: number,
+    itemKey: string,
+    newSession?: ExerciseSession | StudyMaterialSession
+  ) {
     setServerTotal(dailyPracticeTime);
     setCompletedIds((prev) => {
       const withKey = new Set(prev).add(itemKey);
@@ -645,6 +691,20 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     });
     clearTimer(itemKey);
     setOpenForm(null);
+
+    // Append the just-logged session locally so the streak badge (and any
+    // other session-derived display) updates immediately, without waiting
+    // for a reload of /user/dashboard.
+    const parsed = parseItemKey(itemKey);
+    if (newSession && parsed?.type === "exercise") {
+      const session = newSession as ExerciseSession;
+      setDashboard((prev) => prev && { ...prev, exercises: appendExerciseSession(prev.exercises, parsed.id, session) });
+      setAdditionalExercises((prev) => appendExerciseSession(prev, parsed.id, session));
+    } else if (newSession && parsed?.type === "studymaterial") {
+      const session = newSession as StudyMaterialSession;
+      setDashboard((prev) => prev && { ...prev, study_materials: appendStudyMaterialSession(prev.study_materials, parsed.id, session) });
+      setAdditionalStudyMaterials((prev) => appendStudyMaterialSession(prev, parsed.id, session));
+    }
   }
 
   // ── Exercise helpers (exercise cards use IDs rather than keys directly) ──────
@@ -1180,8 +1240,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onCancel={(id) => cancelSession(makeItemKey("exercise", id))}
               onFormOpen={(id) => setOpenForm(makeItemKey("exercise", id))}
               onFormClose={() => setOpenForm(null)}
-              onSessionSubmit={(id, dpt) =>
-                handleSessionSubmit(dpt, makeItemKey("exercise", id))
+              onSessionSubmit={(id, dpt, newSession) =>
+                handleSessionSubmit(dpt, makeItemKey("exercise", id), newSession)
               }
               onSkip={(id) => {
                 if (id === ex.id) {
@@ -1226,8 +1286,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onCancel={(id) => cancelSession(makeItemKey("studymaterial", id))}
               onFormOpen={(id) => setOpenForm(makeItemKey("studymaterial", id))}
               onFormClose={() => setOpenForm(null)}
-              onSessionSubmit={(id, dpt) =>
-                handleSessionSubmit(dpt, makeItemKey("studymaterial", id))
+              onSessionSubmit={(id, dpt, newSession) =>
+                handleSessionSubmit(dpt, makeItemKey("studymaterial", id), newSession)
               }
               onSkip={(id) => {
                 if (id === sm.id) {
@@ -1383,8 +1443,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onCancel={(id) => cancelSession(makeItemKey("exercise", id))}
                 onFormOpen={(id) => setOpenForm(makeItemKey("exercise", id))}
                 onFormClose={() => setOpenForm(null)}
-                onSessionSubmit={(id, dpt) =>
-                  handleSessionSubmit(dpt, makeItemKey("exercise", id))
+                onSessionSubmit={(id, dpt, newSession) =>
+                  handleSessionSubmit(dpt, makeItemKey("exercise", id), newSession)
                 }
                 onSkip={(id) => {
                   if (id === ex.id) {
@@ -1416,8 +1476,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onCancel={(id) => cancelSession(makeItemKey("studymaterial", id))}
                 onFormOpen={(id) => setOpenForm(makeItemKey("studymaterial", id))}
                 onFormClose={() => setOpenForm(null)}
-                onSessionSubmit={(id, dpt) =>
-                  handleSessionSubmit(dpt, makeItemKey("studymaterial", id))
+                onSessionSubmit={(id, dpt, newSession) =>
+                  handleSessionSubmit(dpt, makeItemKey("studymaterial", id), newSession)
                 }
                 onSkip={(id) => {
                   if (id === sm.id) {

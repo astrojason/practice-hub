@@ -3,7 +3,7 @@ import { postStudyMaterialSession } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import { LastSessionInfo } from "../LastSessionInfo";
 import type { LastSessionData } from "../LastSessionInfo";
-import type { StudyMaterialSessionPayload } from "../../../api/types";
+import type { StudyMaterialSession, StudyMaterialSessionPayload } from "../../../api/types";
 import { RATING_OPTIONS } from "./shared/ratingOptions";
 import { useRatingKeyShortcut } from "./shared/useRatingKeyShortcut";
 
@@ -13,7 +13,7 @@ interface Props {
   initialSeconds: number;
   initialNotes?: string;
   lastSession?: LastSessionData | null;
-  onSubmit: (dailyPracticeTime: number) => void;
+  onSubmit: (dailyPracticeTime: number, newSession: StudyMaterialSession) => void;
   onCancel: () => void;
 }
 
@@ -46,7 +46,9 @@ export function StudyMaterialSessionForm({
         notes: notes.trim() || null,
       };
       const res = await postStudyMaterialSession(token, payload);
-      onSubmit(res.daily_practice_time);
+      // user_id isn't in the session-post response and isn't read anywhere
+      // in the UI — it's only present to satisfy StudyMaterialSession's shape.
+      onSubmit(res.daily_practice_time, { ...res, user_id: 0 });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setSubmitting(false);
