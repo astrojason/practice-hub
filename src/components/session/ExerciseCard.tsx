@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { makeItemKey } from "../../lib/itemKey";
+import { mergeSessionsById } from "../../lib/itemUsage";
 import { ItemSessionCard } from "./ItemSessionCard";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import { ExerciseEditForm } from "./forms/ExerciseEditForm";
@@ -107,14 +108,20 @@ function ExerciseSingleCard({
   // Practicing a sub-exercise counts as practicing the group — a parent
   // with no sessions of its own shouldn't show stale just because the user
   // always practices it via a child. All child items count, whether or not
-  // the user has added them to their own exercise list. Children keep their
-  // own sessions only.
+  // the user has added them to their own exercise list — including a child
+  // that's since been swapped out of the active list, via
+  // catalogChildSessions (the full catalog course's history, distinct from
+  // child_exercises which stays limited to the currently-active children
+  // actually rendered below). Falls back to today's active children only
+  // until that full-history fetch resolves. Children keep their own
+  // sessions only.
   const usageSessions = isChild
     ? sessions
-    : [
-        ...sessions,
-        ...exercise.child_exercises.flatMap((c) => c.meta.sessions ?? []),
-      ].sort((a, b) => b.created_timestamp - a.created_timestamp);
+    : mergeSessionsById(
+        sessions,
+        exercise.catalogChildSessions ?? exercise.child_exercises.flatMap((c) => c.meta.sessions ?? []),
+        exercise.child_exercises.flatMap((c) => c.meta.sessions ?? [])
+      );
 
   return (
     <>

@@ -227,6 +227,14 @@ export interface DashboardExercise {
     user_exercise: UserExerciseMeta | null;
     sessions: ExerciseSession[];
   };
+  /**
+   * Client-only, not part of the API response: every session across the
+   * full catalog course (every child that has ever existed, whether or not
+   * it's in the user's current active list), for streak/staleness
+   * aggregation. `child_exercises` above must stay limited to the active
+   * list — it's what actually renders as practiceable child cards.
+   */
+  catalogChildSessions?: ExerciseSession[];
 }
 
 // ─── Study material (dashboard shape) ─────────────────────────────────────────
@@ -246,6 +254,14 @@ export interface DashboardStudyMaterial {
     user_study_material: { user_id: number; study_material_id: number } | null;
     sessions: StudyMaterialSession[];
   };
+  /**
+   * Client-only, not part of the API response: every session across the
+   * full catalog course (every child that has ever existed, whether or not
+   * it's in the user's current active list), for streak/staleness
+   * aggregation. `child_study_materials` above must stay limited to the
+   * active list — it's what actually renders as practiceable child cards.
+   */
+  catalogChildSessions?: StudyMaterialSession[];
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

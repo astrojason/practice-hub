@@ -290,9 +290,14 @@ async function fetchOrphanParents(
  * from one day of a course to the next) drops it from the response
  * entirely, taking its session history with it. For any top-level item that
  * currently has children, fetch the full catalog detail (every child, with
- * complete session history regardless of active-list membership) so
- * streak/staleness reflect real practice history rather than just today's
- * listed subset. Individual lookup failures don't block the others.
+ * complete session history regardless of active-list membership) and store
+ * it as `catalogChildSessions` — a flat, client-only list consumed only for
+ * streak/staleness aggregation. This must NOT touch `child_exercises`/
+ * `child_study_materials`, which stay limited to the active list the
+ * dashboard actually returned — that's what renders as practiceable child
+ * cards, and the catalog detail includes swapped-out siblings that
+ * shouldn't appear there. Individual lookup failures don't block the
+ * others.
  */
 async function fetchFullChildHistory(
   token: string,
@@ -308,19 +313,19 @@ async function fetchFullChildHistory(
   ]);
 
   const failures: string[] = [];
-  const exerciseChildrenById = new Map<number, DashboardExercise[]>();
+  const exerciseSessionsById = new Map<number, ExerciseSession[]>();
   exResults.forEach((result, i) => {
     if (result.status === "fulfilled") {
-      exerciseChildrenById.set(exerciseTargets[i].id, result.value.child_exercises);
+      exerciseSessionsById.set(exerciseTargets[i].id, result.value.child_exercises.flatMap((c) => c.meta.sessions ?? []));
     } else {
       const reason = result.reason;
       failures.push(`exercise "${exerciseTargets[i].name}": ${reason instanceof Error ? reason.message : String(reason)}`);
     }
   });
-  const smChildrenById = new Map<number, DashboardStudyMaterial[]>();
+  const smSessionsById = new Map<number, StudyMaterialSession[]>();
   smResults.forEach((result, i) => {
     if (result.status === "fulfilled") {
-      smChildrenById.set(smTargets[i].id, result.value.child_study_materials ?? []);
+      smSessionsById.set(smTargets[i].id, (result.value.child_study_materials ?? []).flatMap((c) => c.meta.sessions ?? []));
     } else {
       const reason = result.reason;
       failures.push(`study material "${smTargets[i].name}": ${reason instanceof Error ? reason.message : String(reason)}`);
@@ -332,9 +337,9 @@ async function fetchFullChildHistory(
     : null;
 
   return {
-    exercises: exercises.map((e) => (exerciseChildrenById.has(e.id) ? { ...e, child_exercises: exerciseChildrenById.get(e.id)! } : e)),
+    exercises: exercises.map((e) => (exerciseSessionsById.has(e.id) ? { ...e, catalogChildSessions: exerciseSessionsById.get(e.id)! } : e)),
     studyMaterials: studyMaterials.map((sm) =>
-      smChildrenById.has(sm.id) ? { ...sm, child_study_materials: smChildrenById.get(sm.id)! } : sm
+      smSessionsById.has(sm.id) ? { ...sm, catalogChildSessions: smSessionsById.get(sm.id)! } : sm
     ),
     errorMessage,
   };

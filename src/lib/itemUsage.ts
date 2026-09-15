@@ -25,6 +25,21 @@ export function getUsageStalenessLevel(
   return "none";
 }
 
+/**
+ * Combines session lists that may overlap (e.g. a frozen full-catalog
+ * snapshot and the live, possibly newer, active-children list) into one
+ * list ordered most-recent-first, de-duplicated by session id.
+ */
+export function mergeSessionsById<T extends { id: number; created_timestamp: number }>(
+  ...lists: T[][]
+): T[] {
+  const byId = new Map<number, T>();
+  for (const list of lists) {
+    for (const session of list) byId.set(session.id, session);
+  }
+  return [...byId.values()].sort((a, b) => b.created_timestamp - a.created_timestamp);
+}
+
 function dayKey(timestamp: number): string {
   // Local calendar day, matching the en-CA (YYYY-MM-DD) convention used
   // elsewhere in the app (see SessionView.tsx, LastSessionInfo.tsx).

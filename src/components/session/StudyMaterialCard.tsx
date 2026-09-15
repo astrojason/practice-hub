@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { makeItemKey } from "../../lib/itemKey";
+import { mergeSessionsById } from "../../lib/itemUsage";
 import { ItemSessionCard } from "./ItemSessionCard";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
 import { StudyMaterialEditForm } from "./forms/StudyMaterialEditForm";
@@ -106,14 +107,20 @@ function StudyMaterialSingleCard({
   // Practicing a sub-item counts as practicing the group — a parent with no
   // sessions of its own shouldn't show stale just because the user always
   // practices it via a child. All child items count, whether or not the
-  // user has added them to their own study materials list. Children keep
+  // user has added them to their own study materials list — including a
+  // child that's since been swapped out of the active list, via
+  // catalogChildSessions (the full catalog course's history, distinct from
+  // child_study_materials which stays limited to the currently-active
+  // children actually rendered below). Falls back to today's active
+  // children only until that full-history fetch resolves. Children keep
   // their own sessions only.
   const usageSessions = isChild
     ? sessions
-    : [
-        ...sessions,
-        ...(material.child_study_materials ?? []).flatMap((c) => c.meta.sessions ?? []),
-      ].sort((a, b) => b.created_timestamp - a.created_timestamp);
+    : mergeSessionsById(
+        sessions,
+        material.catalogChildSessions ?? (material.child_study_materials ?? []).flatMap((c) => c.meta.sessions ?? []),
+        (material.child_study_materials ?? []).flatMap((c) => c.meta.sessions ?? [])
+      );
 
   return (
     <>
