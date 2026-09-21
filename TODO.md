@@ -1,6 +1,8 @@
 ## Bugs
 
 ## Features
+- [ ] Enable opening resources for editing (section information), without being in a session.
+- [ ] Add the ability to set a bpm for a section, and for the display to show the relative bpm (calculated based on percentage)
 
 ## Enhancements
 
