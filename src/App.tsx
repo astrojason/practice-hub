@@ -10,6 +10,7 @@ import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
 import { PracticeTimeReport } from "./components/reports/PracticeTimeReport";
 import { ErrorModal } from "./components/ErrorModal";
+import { LeaderboardView } from "./components/leaderboard/LeaderboardView";
 import { AlbumBadgesView } from "./components/badges/AlbumBadgesView";
 import { BadgeUnlockModal } from "./components/badges/BadgeUnlockModal";
 import { getAlbumBadges } from "./api/client";
@@ -21,7 +22,7 @@ import pkgJson from "../package.json";
 
 const APP_VERSION: string = pkgJson.version;
 
-type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog" | "settings" | "reports" | "badges";
+type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog" | "settings" | "reports" | "badges" | "leaderboard";
 
 const MUSIC_QUOTES = [
   { text: "Without music, life would be a mistake.", author: "Nietzsche" },
@@ -111,6 +112,8 @@ export function App() {
     overlay = <SettingsView onBack={() => setView("session")} />;
   } else if (view === "reports") {
     overlay = <PracticeTimeReport token={token} onBack={() => setView("session")} />;
+  } else if (view === "leaderboard") {
+    overlay = <LeaderboardView token={token} onBack={() => setView("session")} />;
   } else if (view === "badges") {
     overlay = <AlbumBadgesView data={albumBadges} onBack={() => setView("session")} />;
   }
@@ -129,6 +132,7 @@ export function App() {
           onSettings={() => setView("settings")}
           onReports={() => setView("reports")}
           onBadges={() => setView("badges")}
+          onLeaderboard={() => setView("leaderboard")}
           onGpView={openGpFile}
         />
       </div>

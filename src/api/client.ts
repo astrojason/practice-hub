@@ -42,6 +42,9 @@ import type {
   Album,
   CreateAlbumPayload,
   AlbumBadgesResponse,
+  LeaderboardPeriod,
+  LeaderboardProfile,
+  LeaderboardResponse,
 } from "./types";
 
 function authHeaders(token: string): HeadersInit {
@@ -121,6 +124,28 @@ export async function postStudyMaterialSession(
     body: JSON.stringify(payload),
   });
   return handleResponse<StudyMaterialSessionResponse>(response);
+}
+
+export async function getLeaderboard(token: string, period: LeaderboardPeriod): Promise<LeaderboardResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/leaderboard?period=${period}`, { headers: authHeaders(token) });
+  return handleResponse<LeaderboardResponse>(response);
+}
+
+export async function getLeaderboardProfile(token: string): Promise<LeaderboardProfile> {
+  const response = await apiFetch(`${API_BASE_URL}/leaderboard/profile`, { headers: authHeaders(token) });
+  return handleResponse<LeaderboardProfile>(response);
+}
+
+export async function updateLeaderboardProfile(
+  token: string,
+  payload: { opted_in: boolean; display_name?: string }
+): Promise<LeaderboardProfile> {
+  const response = await apiFetch(`${API_BASE_URL}/leaderboard/profile`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<LeaderboardProfile>(response);
 }
 
 export async function getAlbums(token: string, artistId?: number): Promise<{ albums: Album[] }> {

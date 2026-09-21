@@ -361,10 +361,11 @@ interface Props {
   onSettings: () => void;
   onReports: () => void;
   onBadges: () => void;
+  onLeaderboard: () => void;
   onGpView?: (path: string) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onSettings, onReports, onBadges, onGpView }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -1142,6 +1143,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onSignOut={onSignOut}
         onReports={onReports}
         onBadges={onBadges}
+        onLeaderboard={onLeaderboard}
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
         onBrowse={onBrowse}

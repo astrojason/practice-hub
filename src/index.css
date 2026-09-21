@@ -2848,3 +2848,27 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .badge-progress-label span:last-child { margin-left: auto; }
 .badge-progress-bar { height: 8px; background: var(--surface-3); border-radius: 4px; overflow: hidden; }
 .badge-progress-fill { height: 100%; background: var(--orange); }
+
+/* ── Leaderboard ────────────────────────────────────────────────────────── */
+.lb-view { padding: 24px; height: 100vh; overflow-y: auto; max-width: 640px; margin: 0 auto; }
+.lb-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.lb-header h2 { margin: 0; }
+.lb-leave { margin-left: auto; }
+.lb-join { display: flex; flex-direction: column; gap: 10px; max-width: 360px; }
+.lb-tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+.lb-tab {
+  background: none; border: none; color: var(--text-dim); padding: 8px 14px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.lb-tab--active { color: var(--text); border-bottom-color: var(--accent); }
+.lb-note, .lb-empty { color: var(--text-dim); font-size: 13px; }
+.lb-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.lb-row {
+  display: flex; align-items: center; gap: 14px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--border-dim); border-radius: 8px;
+}
+.lb-row--me { border-color: var(--accent); background: var(--accent-dim); }
+.lb-rank { width: 28px; font-weight: 700; color: var(--accent-light); }
+.lb-name { flex: 1; }
+.lb-time { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.lb-me-summary { margin-top: 14px; color: var(--accent-light); font-weight: 600; }

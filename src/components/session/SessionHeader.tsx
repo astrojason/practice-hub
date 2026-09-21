@@ -8,6 +8,7 @@ import {
   PlusIcon,
   RectangleStackIcon,
   TrophyIcon,
+  UsersIcon,
 } from "@heroicons/react/16/solid";
 
 interface Props {
@@ -25,6 +26,7 @@ interface Props {
   onSignOut: () => void;
   onReports: () => void;
   onBadges: () => void;
+  onLeaderboard: () => void;
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
@@ -54,6 +56,7 @@ export function SessionHeader({
   onSignOut,
   onReports,
   onBadges,
+  onLeaderboard,
   onGpLibrary,
   onCalendar,
   onBrowse,
@@ -92,6 +95,9 @@ export function SessionHeader({
           </button>
           <button onClick={onBadges} className="btn-ghost" title="Album badges">
             <TrophyIcon className="icon-sm" /> Badges
+          </button>
+          <button onClick={onLeaderboard} className="btn-ghost" title="Leaderboard">
+            <UsersIcon className="icon-sm" /> Leaderboard
           </button>
           <button onClick={onGpLibrary} className="btn-ghost" title="Guitar Pro library scanner">
             <MusicalNoteIcon className="icon-sm" /> GP Library

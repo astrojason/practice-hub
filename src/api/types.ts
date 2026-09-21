@@ -751,3 +751,27 @@ export interface AlbumBadgesResponse {
   /** Badges granted by this very request. */
   newly_awarded: AlbumBadge[];
 }
+
+export type LeaderboardPeriod = "daily" | "weekly" | "monthly" | "all_time";
+
+export interface LeaderboardEntry {
+  rank: number;
+  display_name: string;
+  seconds: number;
+  is_me: boolean;
+}
+
+export interface LeaderboardResponse {
+  period: LeaderboardPeriod;
+  opted_in: boolean;
+  window_start: number | null;
+  window_end: number | null;
+  entries: LeaderboardEntry[];
+  /** The viewer's own standing; rank is null when they have no practice in the window. */
+  me: { rank: number | null; seconds: number } | null;
+}
+
+export interface LeaderboardProfile {
+  opted_in: boolean;
+  display_name: string | null;
+}
