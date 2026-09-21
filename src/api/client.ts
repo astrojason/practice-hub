@@ -37,6 +37,11 @@ import type {
   SongSection,
   CreateSongSectionPayload,
   UpdateSongSectionPayload,
+  StreakTokenUse,
+  UseStreakTokenPayload,
+  Album,
+  CreateAlbumPayload,
+  AlbumBadgesResponse,
 } from "./types";
 
 function authHeaders(token: string): HeadersInit {
@@ -116,6 +121,40 @@ export async function postStudyMaterialSession(
     body: JSON.stringify(payload),
   });
   return handleResponse<StudyMaterialSessionResponse>(response);
+}
+
+export async function getAlbums(token: string, artistId?: number): Promise<{ albums: Album[] }> {
+  const query = artistId != null ? `?artist_id=${artistId}` : "";
+  const response = await apiFetch(`${API_BASE_URL}/album${query}`, { headers: authHeaders(token) });
+  return handleResponse<{ albums: Album[] }>(response);
+}
+
+export async function createAlbum(token: string, payload: CreateAlbumPayload): Promise<Album> {
+  const response = await apiFetch(`${API_BASE_URL}/album`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Album>(response);
+}
+
+export async function getAlbumBadges(token: string): Promise<AlbumBadgesResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/user-album-badge`, { headers: authHeaders(token) });
+  return handleResponse<AlbumBadgesResponse>(response);
+}
+
+export async function getStreakTokenUses(token: string): Promise<{ uses: StreakTokenUse[] }> {
+  const response = await apiFetch(`${API_BASE_URL}/user-streak-token`, { headers: authHeaders(token) });
+  return handleResponse<{ uses: StreakTokenUse[] }>(response);
+}
+
+export async function postStreakTokenUse(token: string, payload: UseStreakTokenPayload): Promise<StreakTokenUse> {
+  const response = await apiFetch(`${API_BASE_URL}/user-streak-token`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<StreakTokenUse>(response);
 }
 
 export async function postOpenSession(

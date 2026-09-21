@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { getArtists, getTunings, updateSong } from "../../../api/client";
+import { createAlbum, getAlbums, getArtists, getTunings, updateSong } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
-import type { Artist, Resource, Song, Tuning, UpdateSongPayload } from "../../../api/types";
+import type { Album, Artist, Resource, Song, Tuning, UpdateSongPayload } from "../../../api/types";
 import { ResourceListEditor, type ResourceRow } from "./shared/ResourceListEditor";
 import { findResourceNameError } from "./shared/findResourceNameError";
 
@@ -48,6 +48,12 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
   const [name, setName] = useState(song.name);
   const [artistId, setArtistId] = useState(song.artist_id);
   const [tuningId, setTuningId] = useState(song.tuning_id);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  // "" = no album, "new" = create one inline, otherwise an existing album's id.
+  const [albumId, setAlbumId] = useState<number | "" | "new">(song.album_id ?? "");
+  const [newAlbumName, setNewAlbumName] = useState("");
+  const [newAlbumYear, setNewAlbumYear] = useState<number | "">("");
+  const [newAlbumTracks, setNewAlbumTracks] = useState<number | "">("");
   const [length, setLength] = useState(secsToMmSs(song.seconds));
   const [bpm, setBpm] = useState<number | "">(song.bpm ?? "");
   const [hasLead, setHasLead] = useState(song.has_lead);
@@ -72,6 +78,12 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
     getTunings(token).then(({ tunings }) => setTunings(tunings)).catch((err) => setError(err instanceof Error ? err.message : "Failed to load tunings"));
   }, [token]);
 
+  useEffect(() => {
+    getAlbums(token, artistId)
+      .then(({ albums }) => setAlbums(albums))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load albums"));
+  }, [token, artistId]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !artistId || !tuningId) return;
@@ -80,12 +92,37 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
       setError(resourceNameError);
       return;
     }
+    if (albumId === "new" && !newAlbumName.trim()) {
+      setError("Enter a name for the new album, or pick an existing one.");
+      return;
+    }
     setSaving(true);
     setError(null);
+    try {
+      let resolvedAlbumId: number | null = albumId === "" ? null : albumId === "new" ? null : albumId;
+      if (albumId === "new") {
+        const created = await createAlbum(token, {
+          name: newAlbumName.trim(),
+          artist_id: artistId,
+          year: newAlbumYear !== "" ? Number(newAlbumYear) : null,
+          track_count: newAlbumTracks !== "" ? Number(newAlbumTracks) : null,
+        });
+        resolvedAlbumId = created.id;
+      }
+      await saveSong(resolvedAlbumId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveSong(resolvedAlbumId: number | null) {
     const payload: UpdateSongPayload = {
       name: name.trim(),
       artist_id: artistId,
       tuning_id: tuningId,
+      album_id: resolvedAlbumId,
       seconds: length ? mmSsToSecs(length) : (song.seconds ?? 0),
       bpm: bpm !== "" ? Number(bpm) : null,
       resources: resources
@@ -104,14 +141,8 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
       singing_difficulty: hasSinging && singingDifficulty !== "" ? Number(singingDifficulty) : null,
       date_learned: dateLearned || null,
     };
-    try {
-      const updated = await updateSong(token, song.id, payload);
-      onSuccess(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setSaving(false);
-    }
+    const updated = await updateSong(token, song.id, payload);
+    onSuccess(updated);
   }
 
   return (
@@ -131,7 +162,11 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
         <select
           id="ef-artist"
           value={artistId}
-          onChange={(e) => setArtistId(Number(e.target.value))}
+          onChange={(e) => {
+            setArtistId(Number(e.target.value));
+            // Albums belong to an artist, so a previous pick no longer applies.
+            setAlbumId("");
+          }}
           required
         >
           {artists.map((a) => (
@@ -152,6 +187,51 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
           ))}
         </select>
       </div>
+      <div className="edit-form-row">
+        <label htmlFor="ef-album">Album</label>
+        <select
+          id="ef-album"
+          value={albumId}
+          onChange={(e) => {
+            const v = e.target.value;
+            setAlbumId(v === "" ? "" : v === "new" ? "new" : Number(v));
+          }}
+        >
+          <option value="">— none —</option>
+          {albums.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}{a.year ? ` (${a.year})` : ""}</option>
+          ))}
+          <option value="new">New album…</option>
+        </select>
+      </div>
+      {albumId === "new" && (
+        <div className="edit-form-grid">
+          <div className="edit-form-row">
+            <label htmlFor="ef-new-album-name">Album name</label>
+            <input id="ef-new-album-name" type="text" value={newAlbumName} onChange={(e) => setNewAlbumName(e.target.value)} />
+          </div>
+          <div className="edit-form-row">
+            <label htmlFor="ef-new-album-year">Year</label>
+            <input
+              id="ef-new-album-year"
+              type="number"
+              min={1}
+              value={newAlbumYear}
+              onChange={(e) => setNewAlbumYear(e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          </div>
+          <div className="edit-form-row">
+            <label htmlFor="ef-new-album-tracks">Total tracks</label>
+            <input
+              id="ef-new-album-tracks"
+              type="number"
+              min={1}
+              value={newAlbumTracks}
+              onChange={(e) => setNewAlbumTracks(e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          </div>
+        </div>
+      )}
       <div className="edit-form-grid">
         <div className="edit-form-row">
           <label htmlFor="ef-length">Length (mm:ss)</label>

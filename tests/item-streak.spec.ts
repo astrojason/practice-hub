@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 const DAY_MS = 86_400_000;
 const now = Date.now();
@@ -333,5 +333,5 @@ test("a single missed day doesn't break the streak (don't miss twice)", async ({
 test("a parent's streak reflects the full course history even when a different child is active each day", async ({ page }) => {
   await page.locator(".item-group", { hasText: "Study Materials" }).locator(".item-group-header").click();
   const card = page.locator(".item-card", { hasText: "30-Day Downpicking Course - Bernth" }).first();
-  await expect(card.locator(".tag-streak")).toHaveText("🔥 9");
+  await expect(card.locator(".tag-streak")).toContainText("🔥 9");
 });

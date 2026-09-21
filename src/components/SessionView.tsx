@@ -5,8 +5,10 @@ import {
   getExerciseCatalog,
   getExerciseSessionHistory,
   getStudyMaterialById,
+  getStreakTokenUses,
   getStudyMaterialSessionHistory,
   getUser,
+  postStreakTokenUse,
   rebuildDashboard,
 } from "../api/client";
 import type {
@@ -20,6 +22,8 @@ import type {
   Resource,
   Song,
   SongSession,
+  StreakItemType,
+  StreakTokenUse,
   StudyMaterialSession,
   UserExerciseMeta,
   UserProfile,
@@ -27,6 +31,7 @@ import type {
 import { ChatPanel } from "./chat/ChatPanel";
 import type { ChatEntity } from "./chat/ChatPanel";
 import { ErrorModal } from "./ErrorModal";
+import { StreakTokenContext } from "./session/StreakTokenContext";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { makeItemKey, parseItemKey } from "../lib/itemKey";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../hooks/useLocalStorageJSON";
@@ -355,10 +360,11 @@ interface Props {
   onBrowse: () => void;
   onSettings: () => void;
   onReports: () => void;
+  onBadges: () => void;
   onGpView?: (path: string) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onSettings, onReports, onGpView }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onSettings, onReports, onBadges, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -511,6 +517,30 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       });
     });
   }, [token, loadTrigger]);
+
+  // ── Streak tokens ─────────────────────────────────────────────────────────────
+  const [streakTokenUses, setStreakTokenUses] = useState<StreakTokenUse[]>([]);
+  const [streakTokenError, setStreakTokenError] = useState<string | null>(null);
+  useEffect(() => {
+    getStreakTokenUses(token)
+      .then((res) => setStreakTokenUses(res.uses))
+      .catch((err) => setStreakTokenError(err instanceof Error ? err.message : String(err)));
+  }, [token, loadTrigger]);
+  const streakTokenContext = useMemo(
+    () => ({
+      uses: streakTokenUses,
+      spend: async (itemType: StreakItemType, itemId: number, coveredFrom: string, coveredTo: string) => {
+        const use = await postStreakTokenUse(token, {
+          item_type: itemType,
+          item_id: itemId,
+          covered_from: coveredFrom,
+          covered_to: coveredTo,
+        });
+        setStreakTokenUses((prev) => [...prev, use]);
+      },
+    }),
+    [token, streakTokenUses]
+  );
 
   // ── Persist completedIds for today across restarts ────────────────────────────
   useEffect(() => {
@@ -1075,7 +1105,9 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const reviewSongs = dashboard.to_review?.songs ?? [];
 
   return (
+    <StreakTokenContext.Provider value={streakTokenContext}>
     <div className="session-view">
+      {streakTokenError && <ErrorModal error={streakTokenError} onDismiss={() => setStreakTokenError(null)} />}
       {rebuildError && <ErrorModal error={rebuildError} onDismiss={() => setRebuildError(null)} />}
       {orphanFetchError && <ErrorModal error={orphanFetchError} onDismiss={() => setOrphanFetchError(null)} />}
       {childHistoryError && <ErrorModal error={childHistoryError} onDismiss={() => setChildHistoryError(null)} />}
@@ -1109,6 +1141,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onQuickAdd={() => setShowQuickAddModal((v) => !v)}
         onSignOut={onSignOut}
         onReports={onReports}
+        onBadges={onBadges}
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
         onBrowse={onBrowse}
@@ -1506,5 +1539,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         )}
       </main>
     </div>
+    </StreakTokenContext.Provider>
   );
 }

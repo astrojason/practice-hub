@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 const mockUser = {
   id: 1, firebase_uid: "test-uid", email: "test@example.com", display_name: "Test User",

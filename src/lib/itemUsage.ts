@@ -46,44 +46,91 @@ function dayKey(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-CA");
 }
 
-function previousCalendarDay(d: Date): Date {
-  // Step by calendar date component, not by a fixed 24h of milliseconds, so
-  // this doesn't misfire across a DST transition.
-  const prev = new Date(d);
-  prev.setDate(prev.getDate() - 1);
-  return prev;
+/** A streak token is earned each time the streak reaches a multiple of this. */
+export const STREAK_TOKEN_INTERVAL = 7;
+
+export interface StreakGap {
+  /** First missed local calendar day, YYYY-MM-DD. */
+  from: string;
+  /** Second missed local calendar day, YYYY-MM-DD. */
+  to: string;
+}
+
+export interface StreakStatus {
+  /** Current streak; 0 while an open gap is waiting on a token decision. */
+  streak: number;
+  /** Tokens earned across the item's whole history (1 per 7 completed days). */
+  tokensEarned: number;
+  /** Earned minus spent; never negative. */
+  tokenBalance: number;
+  /**
+   * The two most recent days were missed (today still pending) on a 7+ day
+   * streak, and a token is available to cover them. Spending it keeps the
+   * streak alive; the next completion continues it. `streakAtRisk` is the
+   * count that would be lost.
+   */
+  openGap: (StreakGap & { streakAtRisk: number }) | null;
 }
 
 /**
- * Current consecutive-day practice streak, counting back from today. If
- * today has no session yet, the streak is still "alive" as long as
- * yesterday was practiced — the day isn't over.
+ * Current consecutive-day practice streak, counting forward from the first
+ * practiced day up to today. Today doesn't count as a miss while it's still
+ * in progress, so the streak stays alive as long as yesterday was practiced.
  *
  * A single missed day doesn't break the streak ("don't miss twice") — it's
- * skipped over without adding to the count. Missing two days in a row does
- * break it.
+ * skipped over without adding to the count. Missing two days in a row breaks
+ * it, unless the user spent a streak token on exactly that gap (`uses`): the
+ * token forgives it without adding to the count, and the next completion
+ * continues the streak. Tokens are never applied automatically.
+ *
+ * A token is earned each time the completed-day count reaches a multiple of 7
+ * (only real completions count — skipped and forgiven days don't) and
+ * accumulates; each recorded use spends one. A 3+ day miss can't be covered.
  */
-export function calculateStreak(sessions: { created_timestamp: number }[], now: number = Date.now()): number {
-  if (sessions.length === 0) return 0;
+export function getStreakStatus(
+  sessions: { created_timestamp: number }[],
+  uses: { covered_from: string }[] = [],
+  now: number = Date.now()
+): StreakStatus {
+  if (sessions.length === 0) return { streak: 0, tokensEarned: 0, tokenBalance: 0, openGap: null };
 
-  const practicedDays = new Set(sessions.map((s) => dayKey(s.created_timestamp)));
-
-  let cursor = new Date(now);
-  if (!practicedDays.has(dayKey(cursor.getTime()))) {
-    cursor = previousCalendarDay(cursor);
-  }
+  // Work in whole local calendar days (UTC-midnight day numbers built from the
+  // local YYYY-MM-DD key, so DST can't skew the gaps) and step gap-to-gap
+  // rather than day-by-day, so long histories stay cheap.
+  const dayNumber = (timestamp: number): number => {
+    const [y, m, d] = dayKey(timestamp).split("-").map(Number);
+    return Date.UTC(y, m - 1, d) / DAY_MS;
+  };
+  const isoOfDay = (day: number): string => new Date(day * DAY_MS).toISOString().slice(0, 10);
+  const practiced = [...new Set(sessions.map((s) => dayNumber(s.created_timestamp)))].sort((a, b) => a - b);
+  const covered = new Set(uses.map((u) => u.covered_from));
 
   let streak = 0;
-  let missedInARow = 0;
-  while (missedInARow < 2) {
-    if (practicedDays.has(dayKey(cursor.getTime()))) {
-      streak++;
-      missedInARow = 0;
-    } else {
-      missedInARow++;
-      if (missedInARow >= 2) break;
+  let tokensEarned = 0;
+  let pendingGap: (StreakGap & { streakAtRisk: number }) | null = null;
+
+  // Apply `missed` consecutive unpracticed days starting the day after `lastDay`.
+  const applyMisses = (missed: number, lastDay: number, trailing: boolean) => {
+    if (missed < 2) return;
+    if (missed === 2 && covered.has(isoOfDay(lastDay + 1))) return;
+    if (trailing && missed === 2 && streak >= STREAK_TOKEN_INTERVAL) {
+      pendingGap = { from: isoOfDay(lastDay + 1), to: isoOfDay(lastDay + 2), streakAtRisk: streak };
     }
-    cursor = previousCalendarDay(cursor);
+    streak = 0;
+  };
+
+  let prev = practiced[0];
+  for (const day of practiced) {
+    if (day !== prev) applyMisses(day - prev - 1, prev, false);
+    streak++;
+    if (streak % STREAK_TOKEN_INTERVAL === 0) tokensEarned++;
+    prev = day;
   }
-  return streak;
+
+  // Days after the last practice up to (not including) today are misses;
+  // today itself is still in progress.
+  applyMisses(Math.max(0, dayNumber(now) - prev - 1), prev, true);
+
+  const tokenBalance = Math.max(0, tokensEarned - uses.length);
+  return { streak, tokensEarned, tokenBalance, openGap: tokenBalance > 0 ? pendingGap : null };
 }

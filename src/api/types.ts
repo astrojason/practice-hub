@@ -16,6 +16,7 @@ export interface UpdateSongPayload {
   name: string;
   artist_id: number;
   tuning_id: number;
+  album_id: number | null;
   seconds: number;
   bpm: number | null;
   resources: { name: string; url: string; type: string }[];
@@ -168,6 +169,8 @@ export interface Song {
   artist_name: string;
   tuning_id: number;
   tuning_name: string;
+  /** Album this song is on, if any. Optional: older payloads omit it. */
+  album_id?: number | null;
   bpm: number | null;
   has_lead: boolean;
   has_singing: boolean;
@@ -686,4 +689,65 @@ export interface CatalogStudyMaterialsResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+export type StreakItemType = "exercise" | "study_material";
+
+/** A streak token spent to forgive a two-day miss (two local YYYY-MM-DD days). */
+export interface StreakTokenUse {
+  id: number;
+  item_type: StreakItemType;
+  item_id: number;
+  covered_from: string;
+  covered_to: string;
+  created_timestamp: number;
+}
+
+export interface UseStreakTokenPayload {
+  item_type: StreakItemType;
+  item_id: number;
+  covered_from: string;
+  covered_to: string;
+}
+
+export interface Album {
+  id: number;
+  name: string;
+  artist_id: number;
+  artist_name: string | null;
+  year: number | null;
+  track_count: number | null;
+}
+
+export interface CreateAlbumPayload {
+  name: string;
+  artist_id: number;
+  year: number | null;
+  track_count: number | null;
+}
+
+interface AlbumSummary {
+  album_id: number;
+  album_name: string;
+  artist_id: number;
+  artist_name: string | null;
+  year: number | null;
+}
+
+/** An album whose every song the user has in their repertoire. */
+export interface AlbumBadge extends AlbumSummary {
+  awarded_timestamp: number;
+  song_count: number;
+}
+
+export interface AlbumProgress extends AlbumSummary {
+  learned: number;
+  required: number;
+}
+
+export interface AlbumBadgesResponse {
+  badges: AlbumBadge[];
+  in_progress: AlbumProgress[];
+  /** Badges granted by this very request. */
+  newly_awarded: AlbumBadge[];
 }

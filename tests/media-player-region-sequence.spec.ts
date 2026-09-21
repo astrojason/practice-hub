@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 // A minimal valid, decodable WAV file (silence) so the audio engine reports a
 // real, nonzero duration — region/sequence actions are gated on `dur > 0`.

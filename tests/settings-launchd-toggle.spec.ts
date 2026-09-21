@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./base";
 
 const mockUser = {
   id: 1,

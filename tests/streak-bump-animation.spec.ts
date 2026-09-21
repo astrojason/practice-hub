@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./base";
 
 const DAY_MS = 86_400_000;
 const now = Date.now();

@@ -19,7 +19,9 @@ import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import type { LastSessionData } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
-import { calculateStreak, getUsageStalenessLevel } from "../../lib/itemUsage";
+import { getStreakStatus, getUsageStalenessLevel } from "../../lib/itemUsage";
+import { useStreakTokens } from "./StreakTokenContext";
+import { ErrorModal } from "../ErrorModal";
 import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
@@ -226,8 +228,29 @@ export function ItemSessionCard({
   const lastSession = sessions[0] ?? null;
   const struggling = isStruggling(sessions, entityType);
   const usageStaleness = itemCreatedTimestamp != null ? getUsageStalenessLevel(itemCreatedTimestamp, usageSessions ?? sessions) : "none";
-  const streak = calculateStreak(usageSessions ?? sessions);
+  // Tokens only apply to exercises and study materials (the backend has no
+  // song support), so songs get the plain streak without token UI.
+  const tokensEnabled = entityType !== "song";
+  const { uses: allTokenUses, spend: spendStreakToken } = useStreakTokens();
+  const tokenUses = tokensEnabled ? allTokenUses.filter((u) => u.item_type === entityType && u.item_id === entityId) : [];
+  const { streak: liveStreak, tokenBalance, openGap } = getStreakStatus(usageSessions ?? sessions, tokenUses);
+  // While a two-day gap awaits a token decision the live streak reads 0, but
+  // the badge should keep showing what's at stake.
+  const streak = openGap ? openGap.streakAtRisk : liveStreak;
   const showStreakTag = streak >= STREAK_DISPLAY_THRESHOLD;
+  const [spendingToken, setSpendingToken] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  async function handleUseToken() {
+    if (!openGap || entityType === "song") return;
+    setSpendingToken(true);
+    try {
+      await spendStreakToken(entityType, entityId, openGap.from, openGap.to);
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSpendingToken(false);
+    }
+  }
 
   // Flash the badge for a beat whenever the streak grows, rather than on
   // every render (e.g. mount, or an unrelated prop change).
@@ -248,6 +271,8 @@ export function ItemSessionCard({
   const toggleUserListTitle = isInUserList ? `Remove from my ${userListNoun}` : `Add to my ${userListNoun}`;
 
   return (
+    <>
+    {tokenError && <ErrorModal error={tokenError} onDismiss={() => setTokenError(null)} />}
     <div
       className={`item-card ${isChild ? "child-card" : ""} ${isSkippedToday ? "skipped" : isCompletedToday ? "completed" : ""} ${isTimerActive ? "active" : ""} ${usageStaleness !== "none" ? `stale-${usageStaleness}` : ""}`}
     >
@@ -258,10 +283,26 @@ export function ItemSessionCard({
         <div className="item-info">
           <span className="item-name">{name}</span>
           {subtitle && <span className="item-sub">{subtitle}</span>}
-          {(tags.length > 0 || showSequentialTag || showStreakTag) && (
+          {(tags.length > 0 || showSequentialTag || showStreakTag || openGap) && (
             <span className="item-tags">
               {showStreakTag && (
-                <span className={`tag tag-streak ${streakBumped ? "tag-streak--bump" : ""}`}>🔥 {streak}</span>
+                <span className={`tag tag-streak ${streakBumped ? "tag-streak--bump" : ""}`}>🔥 {streak}
+                  {tokensEnabled && tokenBalance > 0 && (
+                    <span className="streak-token" title={`${tokenBalance} streak token${tokenBalance === 1 ? "" : "s"} banked`}>
+                      {" "}🛡️ {tokenBalance}
+                    </span>
+                  )}
+                </span>
+              )}
+              {openGap && (
+                <button
+                  className="tag tag-streak-use-token"
+                  onClick={handleUseToken}
+                  disabled={spendingToken}
+                  title="You missed two days — spend a token to keep this streak alive"
+                >
+                  Use streak token
+                </button>
               )}
               {tags.map((t) => (
                 <span key={t} className="tag">{t}</span>
@@ -443,5 +484,6 @@ export function ItemSessionCard({
         </SessionModal>
       )}
     </div>
+    </>
   );
 }

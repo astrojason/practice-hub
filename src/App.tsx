@@ -10,6 +10,10 @@ import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
 import { PracticeTimeReport } from "./components/reports/PracticeTimeReport";
 import { ErrorModal } from "./components/ErrorModal";
+import { AlbumBadgesView } from "./components/badges/AlbumBadgesView";
+import { BadgeUnlockModal } from "./components/badges/BadgeUnlockModal";
+import { getAlbumBadges } from "./api/client";
+import type { AlbumBadge, AlbumBadgesResponse } from "./api/types";
 import { HelpModal } from "./components/HelpModal";
 import { Metronome } from "./components/player/Metronome";
 import { AppFooter } from "./components/AppFooter";
@@ -17,7 +21,7 @@ import pkgJson from "../package.json";
 
 const APP_VERSION: string = pkgJson.version;
 
-type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog" | "settings" | "reports";
+type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog" | "settings" | "reports" | "badges";
 
 const MUSIC_QUOTES = [
   { text: "Without music, life would be a mistake.", author: "Nietzsche" },
@@ -38,6 +42,27 @@ export function App() {
   const [gpOpenError, setGpOpenError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
+  const [albumBadges, setAlbumBadges] = useState<AlbumBadgesResponse | null>(null);
+  const [badgeError, setBadgeError] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState<AlbumBadge[]>([]);
+
+  // Awarding happens server-side whenever badges are fetched, and songs join
+  // the repertoire in several places (including the website), so re-check on
+  // load and whenever the window regains focus.
+  useEffect(() => {
+    if (!token) return;
+    function refresh() {
+      getAlbumBadges(token as string)
+        .then((res) => {
+          setAlbumBadges(res);
+          if (res.newly_awarded.length > 0) setUnlocked((prev) => [...prev, ...res.newly_awarded]);
+        })
+        .catch((err) => setBadgeError(err instanceof Error ? err.message : String(err)));
+    }
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [token]);
 
   // Guitar Pro files open in the real Guitar Pro app (via the OS's default
   // file-type handler) rather than an in-app viewer.
@@ -86,6 +111,8 @@ export function App() {
     overlay = <SettingsView onBack={() => setView("session")} />;
   } else if (view === "reports") {
     overlay = <PracticeTimeReport token={token} onBack={() => setView("session")} />;
+  } else if (view === "badges") {
+    overlay = <AlbumBadgesView data={albumBadges} onBack={() => setView("session")} />;
   }
 
   return (
@@ -101,12 +128,15 @@ export function App() {
           onBrowse={() => setView("browse")}
           onSettings={() => setView("settings")}
           onReports={() => setView("reports")}
+          onBadges={() => setView("badges")}
           onGpView={openGpFile}
         />
       </div>
       {overlay}
       {metronomeOpen && <Metronome onClose={() => setMetronomeOpen(false)} />}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {badgeError && <ErrorModal error={badgeError} onDismiss={() => setBadgeError(null)} />}
+      {unlocked.length > 0 && <BadgeUnlockModal badges={unlocked} onDismiss={() => setUnlocked([])} />}
       {gpOpenError && <ErrorModal error={gpOpenError} onDismiss={() => setGpOpenError(null)} />}
       <AppFooter
         version={APP_VERSION}
