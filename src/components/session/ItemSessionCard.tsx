@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   FolderPlusIcon,
   ForwardIcon,
+  MusicalNoteIcon,
   NoSymbolIcon,
   PauseIcon,
   PencilSquareIcon,
@@ -174,6 +175,11 @@ export function ItemSessionCard({
 }: ItemSessionCardProps) {
   const inSession = isTimerActive || isTimerPaused;
   const [modalOpen, setModalOpen] = useState(false);
+  // Set when the modal was opened via "Edit regions" rather than Start/Log
+  // session — shows just the resource list (no timer, no log-session form,
+  // no session-completion side effects), so a resource's loop regions/bpm
+  // can be edited without practicing it.
+  const [resourcesOnly, setResourcesOnly] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [addChildOpen, setAddChildOpen] = useState(false);
   const [notes, setNotes] = useState("");
@@ -208,6 +214,7 @@ export function ItemSessionCard({
   function handleClose() {
     if (isFormOpen) onFormClose();
     setModalOpen(false);
+    setResourcesOnly(false);
     setShowHistory(false);
   }
 
@@ -357,6 +364,15 @@ export function ItemSessionCard({
               <PencilSquareIcon className="icon" />
             </button>
           )}
+          {!inSession && onOpenFile && resources.length > 0 && (
+            <button
+              className="btn-ghost"
+              onClick={() => { setResourcesOnly(true); setModalOpen(true); }}
+              title="Edit regions"
+            >
+              <MusicalNoteIcon className="icon" />
+            </button>
+          )}
           <button
             className={`btn-ghost btn-chat ${struggling ? "btn-chat--struggling" : ""}`}
             onClick={onOpenChat}
@@ -404,8 +420,18 @@ export function ItemSessionCard({
           onClose={handleClose}
           onOpenFile={onOpenFile ? handleOpenFile : undefined}
           onGpView={onGpView}
+          // Without this, SessionModal falls back to onClose when media
+          // opens — a full close that also resets resourcesOnly (and, for
+          // an in-progress log-session form, its notes). This just hides
+          // the modal; the mediaWasOpenedRef effect below reopens it as-is
+          // once the media player closes.
+          onMediaOpen={() => setModalOpen(false)}
         >
-          {isFormOpen ? (
+          {resourcesOnly ? (
+            <p className="modal-resources-only-hint">
+              Select a resource above to open it and edit its loop regions and bpm.
+            </p>
+          ) : isFormOpen ? (
             renderSessionForm({
               initialNotes: notes,
               timerElapsed,

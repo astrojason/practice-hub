@@ -1,7 +1,6 @@
 ## Bugs
 
 ## Features
-- [ ] Enable opening resources for editing (section information), without being in a session.
 
 ## Enhancements
 
