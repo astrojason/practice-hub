@@ -40,6 +40,21 @@ export function mergeSessionsById<T extends { id: number; created_timestamp: num
   return [...byId.values()].sort((a, b) => b.created_timestamp - a.created_timestamp);
 }
 
+/** Sum of `seconds` across sessions (already de-duplicated by the caller). */
+export function totalSessionSeconds(sessions: { seconds: number }[]): number {
+  return sessions.reduce((sum, s) => sum + (s.seconds ?? 0), 0);
+}
+
+/** Compact duration: "45s", "35m", "1h 5m". */
+export function formatPracticeDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${Math.round(totalSeconds)}s`;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
 function dayKey(timestamp: number): string {
   // Local calendar day, matching the en-CA (YYYY-MM-DD) convention used
   // elsewhere in the app (see SessionView.tsx, LastSessionInfo.tsx).

@@ -19,7 +19,7 @@ import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import type { LastSessionData } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
-import { getStreakStatus, getUsageStalenessLevel } from "../../lib/itemUsage";
+import { formatPracticeDuration, getStreakStatus, getUsageStalenessLevel, totalSessionSeconds } from "../../lib/itemUsage";
 import { useStreakTokens } from "./StreakTokenContext";
 import { ErrorModal } from "../ErrorModal";
 import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
@@ -265,6 +265,10 @@ export function ItemSessionCard({
       return () => clearTimeout(timer);
     }
   }, [streak]);
+  // Parents with children: total time across the item and every child
+  // (usageSessions is the de-duplicated merge of all of them).
+  const showTotalTime = !isChild && !!onToggleChildren;
+  const totalPracticeSeconds = totalSessionSeconds(usageSessions ?? sessions);
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
   const userListNoun = entityType === "exercise" ? "exercises" : "study materials";
@@ -283,7 +287,7 @@ export function ItemSessionCard({
         <div className="item-info">
           <span className="item-name">{name}</span>
           {subtitle && <span className="item-sub">{subtitle}</span>}
-          {(tags.length > 0 || showSequentialTag || showStreakTag || openGap) && (
+          {(tags.length > 0 || showSequentialTag || showStreakTag || showTotalTime || openGap) && (
             <span className="item-tags">
               {showStreakTag && (
                 <span className={`tag tag-streak ${streakBumped ? "tag-streak--bump" : ""}`}>🔥 {streak}
@@ -308,6 +312,11 @@ export function ItemSessionCard({
                 <span key={t} className="tag">{t}</span>
               ))}
               {showSequentialTag && <span className="tag">{sequentialItemCount} items</span>}
+              {showTotalTime && (
+                <span className="tag tag-total-time" title="Total practiced across this item and its children">
+                  ⏱ {formatPracticeDuration(totalPracticeSeconds)}
+                </span>
+              )}
             </span>
           )}
         </div>
