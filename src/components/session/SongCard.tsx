@@ -58,6 +58,11 @@ export function SongCard({
 }: Props) {
   const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
   const sessions = (song.meta.sessions ?? []) as SongSession[];
+  // Guarded like resources/sessions above: an edit's PUT response can be
+  // leaner than the dashboard shape (e.g. omit denormalized display fields
+  // like tags), and this renders right after that response replaces the
+  // song in state.
+  const tags = song.tags ?? [];
 
   return (
     <ItemSessionCard
@@ -65,12 +70,12 @@ export function SongCard({
       name={song.name}
       subtitle={song.artist_name}
       extraTags={[decodeHtml(song.tuning_name)]}
-      modalMeta={(song.bpm != null || song.tags.length > 0) ? (
+      modalMeta={(song.bpm != null || tags.length > 0) ? (
         <div className="modal-meta">
           {song.bpm != null && (
             <span className="modal-meta-bpm">{song.bpm} bpm</span>
           )}
-          {song.tags.map((t) => (
+          {tags.map((t) => (
             <span key={t} className="tag">{t}</span>
           ))}
         </div>

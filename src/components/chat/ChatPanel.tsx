@@ -77,7 +77,7 @@ function buildSystemPrompt(ctx: ChatContext): string {
     const s = entity.item;
     entityDesc = `Song: "${s.name}" by ${s.artist_name}`;
     if (s.bpm) entityDesc += `, ${s.bpm} BPM`;
-    if (s.tags.length > 0) entityDesc += `\nTags: ${s.tags.join(", ")}`;
+    if ((s.tags ?? []).length > 0) entityDesc += `\nTags: ${(s.tags ?? []).join(", ")}`;
   } else if (entity.type === "exercise") {
     entityDesc = `Exercise: "${entity.item.name}"`;
   } else {
@@ -126,7 +126,7 @@ function buildSystemPrompt(ctx: ChatContext): string {
   // ── Project songs ────────────────────────────────────────────────────────────
   const projectSongsDesc = projectSongs.length > 0
     ? projectSongs.map((s) => {
-        const tags = s.tags.length > 0 ? ` [${s.tags.join(", ")}]` : "";
+        const tags = (s.tags ?? []).length > 0 ? ` [${(s.tags ?? []).join(", ")}]` : "";
         return `  - "${s.name}" by ${s.artist_name}${tags}`;
       }).join("\n")
     : "  None";
@@ -148,7 +148,7 @@ function buildSystemPrompt(ctx: ChatContext): string {
   // ── To Learn list ────────────────────────────────────────────────────────────
   const toLearnDesc = toLearnSongs.length > 0
     ? toLearnSongs.map((s) => {
-        const tags = s.tags.length > 0 ? ` [${s.tags.join(", ")}]` : "";
+        const tags = (s.tags ?? []).length > 0 ? ` [${(s.tags ?? []).join(", ")}]` : "";
         return `  - "${s.name}" by ${s.artist_name}${tags}`;
       }).join("\n")
     : "  None";
