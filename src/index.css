@@ -1385,6 +1385,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   text-align: right;
 }
 
+.media-player__region-bpm {
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 /* Loop controls */
 
 .media-player__loop-controls {
@@ -1890,6 +1896,18 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   color: var(--text);
   height: 26px;
   min-width: 0;
+}
+
+.mp-region-bpm-input {
+  width: 64px;
+  flex: none;
+  padding: 2px 6px;
+  font-size: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  height: 26px;
 }
 
 .mp-empty-state {

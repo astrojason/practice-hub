@@ -2,9 +2,10 @@
 
 ## Features
 - [ ] Enable opening resources for editing (section information), without being in a session.
-- [ ] Add the ability to set a bpm for a section, and for the display to show the relative bpm (calculated based on percentage)
 
 ## Enhancements
+
+- [ ] Sync a region's bpm to the backend SongSection (needs a `practice.astrojason.com` migration + API field), so it survives clearing local storage / syncs across devices for songs. Exercises/study materials already persist region bpm locally via the player preset — no backend concept exists for their sections at all.
 
 ### Ratings & Difficulty Engine — Phase 2 (all auto-population of difficulty)
 

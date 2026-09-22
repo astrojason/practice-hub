@@ -210,6 +210,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
   // ── Regions ──────────────────────────────────────────────────────────────────
   const [regionNameInput, setRegionNameInput] = useState("");
+  const [regionBpmInput, setRegionBpmInput] = useState("");
   const [editingRegionId, setEditingRegionId] = useState<string | null>(null);
   const [editingRegionName, setEditingRegionName] = useState("");
   const regionState = useRegions({
@@ -396,6 +397,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       markerState.loadMarkers([]);
       regionState.loadRegions([]);
       setRegionNameInput("");
+      setRegionBpmInput("");
       setSequenceLoopLocal(false);
       sequenceLoopRef.current = false;
       setPresetStatusText("Not saved");
@@ -446,6 +448,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     regionState.loadRegions(preset.regions);
     regionState.setSelectedIds(preset.sequenceRegionIds ?? []);
     setRegionNameInput("");
+    setRegionBpmInput("");
     const seqLoop = Boolean(preset.sequenceLoop);
     setSequenceLoopLocal(seqLoop);
     sequenceLoopRef.current = seqLoop;
@@ -959,6 +962,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       return;
     }
     const name = regionNameInput.trim() || `Region ${regionState.regionsRef.current.length + 1}`;
+    const bpm = regionBpmInput.trim() ? Number(regionBpmInput) : null;
     const newRegion = await regionState.createRegion({
       name,
       start: ls,
@@ -967,8 +971,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       speedIncreasePercent: loopIncreaseBy,
       speedIncreaseInterval: loopIncreaseAt,
       increaseEnabled: loopIncreaseEnabled,
+      bpm,
     });
     setRegionNameInput("");
+    setRegionBpmInput("");
     setLoopStartInput("");
     setLoopEndInput("");
     audioActions.setLoopStart(null);
@@ -1014,6 +1020,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     if (regionState.activeRegionIdRef.current === id) {
       regionState.setActiveRegionId(null);
       setRegionNameInput("");
+      setRegionBpmInput("");
       setLoopStartInput("");
       setLoopEndInput("");
       audioActions.setLoopStart(null);
@@ -1042,6 +1049,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     audioActions.setLoopIncreaseEnabled(incEnabled);
     regionState.setActiveRegionId(id);
     setRegionNameInput(region.name ?? "");
+    setRegionBpmInput(region.bpm != null ? String(region.bpm) : "");
     showToast(`Region "${region.name}" applied (${formatTime(region.start)} → ${formatTime(region.end)})`, { icon: "🎯" });
     if (isVideo && videoRef.current) seekVideo(videoRef.current, region.start);
     else audioActions.seek(region.start);
@@ -1051,7 +1059,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   const deleteRegion = (id: string) => {
     const wasActive = regionState.activeRegionIdRef.current === id;
     regionState.removeRegion(id);
-    if (wasActive) setRegionNameInput("");
+    if (wasActive) { setRegionNameInput(""); setRegionBpmInput(""); }
     setPresetStatus("Region removed");
     showToast("Region removed.", { icon: "🗑", tone: "warning" });
     savePreset({ silent: true });
@@ -1073,6 +1081,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
     }
     const existing = regionState.regionsRef.current.find(r => r.id === id);
     const name = regionNameInput.trim() || existing?.name || "";
+    const bpm = regionBpmInput.trim() ? Number(regionBpmInput) : null;
     regionState.updateRegionAt(id, {
       name,
       start: ls,
@@ -1081,6 +1090,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
       speedIncreasePercent: loopIncreaseBy,
       speedIncreaseInterval: loopIncreaseAt,
       increaseEnabled: loopIncreaseEnabled,
+      bpm,
     });
     setPresetStatus("Region updated");
     showToast(`Region "${name}" updated.`, { icon: "✏️" });
@@ -1292,6 +1302,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
 
   const atNormalSpeed = Math.abs((parseFloat(speedInput) || 1) - 1) < 0.001;
 
+  // The active region's own bpm, adjusted live by the *current* playback
+  // speed (not the region's saved speed) — recalculates as the speed
+  // changes, whether from the slider, typed input, or an automatic loop
+  // speed-increase, same pattern as the metronome's speed-follow display.
+  const activeRegion = regionState.regions.find(r => r.id === regionState.activeRegionId);
+  const activeRegionBpm = activeRegion?.bpm != null
+    ? Math.round(activeRegion.bpm * (parseFloat(speedInput) || 1))
+    : null;
+
   return (
     <div className="media-player" data-testid="media-player">
       {persistError && <ErrorModal error={persistError} onDismiss={() => setPersistError(null)} />}
@@ -1458,6 +1477,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           >
             {Math.round((parseFloat(speedInput) || 1) * 100)}%
           </span>
+          {activeRegionBpm != null && (
+            <span className="media-player__region-bpm" id="regionBpmIndicator" title="Active region's bpm, adjusted for the current playback speed">
+              {activeRegionBpm} BPM
+            </span>
+          )}
         </div>
       </div>
 
@@ -1762,6 +1786,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                   value={regionNameInput}
                   onChange={e => setRegionNameInput(e.target.value)}
                 />
+                <input
+                  type="number"
+                  id="regionBpmInput"
+                  className="mp-region-bpm-input"
+                  placeholder="BPM"
+                  min="1"
+                  value={regionBpmInput}
+                  onChange={e => setRegionBpmInput(e.target.value)}
+                  title="The region's own native tempo — shown adjusted for playback speed"
+                />
                 <button className="btn-ghost btn-xs" id="addRegionBtn" onClick={saveRegion} title="Save current loop as a new region">Save Region</button>
                 {regionState.activeRegionId && (
                   <button className="btn-ghost btn-xs" id="updateRegionBtn" onClick={updateActiveRegion} title="Update the applied region with the current loop bounds, name, and speed">Update Region</button>
@@ -1773,6 +1807,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                     const speedLabel = `${Math.round((region.playbackSpeed ?? 1) * 100)}%`;
                     const incStr = region.increaseEnabled && region.speedIncreasePercent > 0
                       ? ` · +${region.speedIncreasePercent}% every ${region.speedIncreaseInterval} loops`
+                      : "";
+                    // The region's own bpm as adjusted by its own saved playback speed
+                    // — e.g. a 120 BPM riff saved at 80% reads as 96 BPM here.
+                    const bpmStr = region.bpm != null
+                      ? ` · ${Math.round(region.bpm * (region.playbackSpeed ?? 1))} BPM`
                       : "";
                     const isEditing = editingRegionId === region.id;
                     return (
@@ -1819,7 +1858,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
                           )}
                         </div>
                         <div className="mp-region-meta">
-                          {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{incStr}
+                          {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{bpmStr}{incStr}
                           {region.dailyBoostEnabled ? " · 📈 +1%/day" : ""}
                         </div>
                         <div className="mp-region-actions">

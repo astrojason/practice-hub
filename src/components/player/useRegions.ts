@@ -16,6 +16,8 @@ export interface Region {
   dailyBoostEnabled?: boolean;
   /** Local YYYY-MM-DD the boost last checked/applied — prevents more than one nudge per day. */
   lastBoostDate?: string;
+  /** The region's own native tempo, independent of playback speed — e.g. "this riff is 120 BPM". */
+  bpm?: number | null;
 }
 
 function createRegionId(): string {
@@ -30,6 +32,7 @@ interface NewRegionParams {
   speedIncreasePercent: number;
   speedIncreaseInterval: number;
   increaseEnabled: boolean;
+  bpm?: number | null;
 }
 
 interface Options {
@@ -101,6 +104,7 @@ export function useRegions({ token, songId, onServerError }: Options) {
       increaseEnabled: params.increaseEnabled,
       createdAt: Date.now(),
       section_id: sectionId,
+      bpm: params.bpm ?? null,
     };
     const next = [...regionsRef.current, newRegion];
     setRegionsState(next);
