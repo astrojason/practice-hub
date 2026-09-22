@@ -12,6 +12,16 @@ export interface Tuning {
 
 // ─── Edit payloads ────────────────────────────────────────────────────────────
 
+// A resource's own native/reference tempo lives only on local_file/youtube
+// (media) resources — other types (url, guitar_pro, local_folder) always
+// send/receive bpm as null/omitted.
+export interface ResourcePayload {
+  name: string;
+  url: string;
+  type: string;
+  bpm?: number | null;
+}
+
 export interface UpdateSongPayload {
   name: string;
   artist_id: number;
@@ -19,7 +29,7 @@ export interface UpdateSongPayload {
   album_id: number | null;
   seconds: number;
   bpm: number | null;
-  resources: { name: string; url: string; type: string }[];
+  resources: ResourcePayload[];
   song_lists: number[];
   has_lead: boolean;
   has_singing: boolean;
@@ -31,7 +41,7 @@ export interface UpdateSongPayload {
 
 export interface UpdateExercisePayload {
   name: string;
-  resources: { name: string; url: string; type: string }[];
+  resources: ResourcePayload[];
 }
 
 export interface UpdateStudyMaterialPayload {
@@ -39,12 +49,13 @@ export interface UpdateStudyMaterialPayload {
   url: string;
   type: string;
   parent_study_material_id: number | null;
+  bpm?: number | null;
 }
 
 export interface CreateExercisePayload {
   name: string;
   parent_exercise_id: number | null;
-  resources: { name: string; url: string; type: string }[];
+  resources: ResourcePayload[];
 }
 
 export interface CreateStudyMaterialPayload {
@@ -52,6 +63,7 @@ export interface CreateStudyMaterialPayload {
   url: string;
   type: string;
   parent_study_material_id: number | null;
+  bpm?: number | null;
 }
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
@@ -68,6 +80,8 @@ export interface Resource {
   name: string;
   url: string;
   type?: "url" | "local_file" | "youtube" | "guitar_pro" | "local_folder";
+  /** The resource's own native/reference tempo — only meaningful for media types (local_file/youtube). */
+  bpm?: number | null;
 }
 
 // ─── Session records (as returned by POST and inside meta.sessions) ───────────
@@ -249,6 +263,8 @@ export interface DashboardStudyMaterial {
   type?: string;
   instrument: number | null;
   parent_study_material_id: number | null;
+  /** The material's own native/reference tempo — only meaningful for media types (local_file/youtube). */
+  bpm?: number | null;
   session_type: "study_material";
   created_timestamp: number;
   updated_timestamp: number;

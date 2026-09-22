@@ -829,14 +829,15 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     setAdditionalExercises((prev) => prev.map(mergeEx));
   }
 
-  function handleStudyMaterialEdited(id: number, name: string, url: string | null, type: string) {
+  function handleStudyMaterialEdited(id: number, name: string, url: string | null, type: string, bpm: number | null) {
     const mergeSm = (sm: DashboardStudyMaterial): DashboardStudyMaterial => ({
       ...sm,
       name: sm.id === id ? name : sm.name,
       url: sm.id === id ? url : sm.url,
       type: sm.id === id ? type : sm.type,
+      bpm: sm.id === id ? bpm : sm.bpm,
       child_study_materials: (sm.child_study_materials ?? []).map((c) =>
-        c.id === id ? { ...c, name, url, type } : c
+        c.id === id ? { ...c, name, url, type, bpm } : c
       ),
     });
     setDashboard((prev) =>
@@ -1342,7 +1343,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
               onGpView={onGpView}
               onOpenChat={(id) => openChat("study_material", id)}
               isMediaActive={playerState !== null}
-              onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
+              onEntityEdited={(id, name, url, type, bpm) => handleStudyMaterialEdited(id, name, url, type, bpm)}
               onChildAdded={handleStudyMaterialChildAdded}
               onToggled={handleStudyMaterialToggled}
             />
@@ -1532,7 +1533,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onGpView={onGpView}
                 onOpenChat={(id) => openChat("study_material", id)}
                 isMediaActive={playerState !== null}
-                onEntityEdited={(id, name, url, type) => handleStudyMaterialEdited(id, name, url, type)}
+                onEntityEdited={(id, name, url, type, bpm) => handleStudyMaterialEdited(id, name, url, type, bpm)}
                 onChildAdded={handleStudyMaterialChildAdded}
                 onToggled={handleStudyMaterialToggled}
               />

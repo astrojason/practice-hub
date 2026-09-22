@@ -47,7 +47,7 @@ interface SingleCardProps {
   /** Collapse toggle for parent cards with children */
   childrenCollapsed?: boolean;
   onToggleChildren?: () => void;
-  onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
+  onEntityEdited?: (id: number, name: string, url: string | null, type: string, bpm: number | null) => void;
   /** Only set for the top-level (non-child) card — enables the "Add child" button. */
   onAddChild?: (child: DashboardStudyMaterial) => void;
   /** Called after a successful add/remove-from-my-study-materials toggle, with this item's new membership. */
@@ -175,9 +175,9 @@ function StudyMaterialSingleCard({
           <StudyMaterialEditForm
             token={token}
             material={material}
-            onSuccess={(id, name, url, type) => {
+            onSuccess={(id, name, url, type, bpm) => {
               onSuccess();
-              onEntityEdited?.(id, name, url, type);
+              onEntityEdited?.(id, name, url, type, bpm);
             }}
             onCancel={onCancel}
           />
@@ -222,7 +222,7 @@ export interface StudyMaterialCardProps {
   onGpView?: (path: string) => void;
   onOpenChat?: (id: number) => void;
   isMediaActive?: boolean;
-  onEntityEdited?: (id: number, name: string, url: string | null, type: string) => void;
+  onEntityEdited?: (id: number, name: string, url: string | null, type: string, bpm: number | null) => void;
   onChildAdded?: (parentId: number, child: DashboardStudyMaterial) => void;
   onToggled?: (id: number, userStudyMaterial: UserStudyMaterialMeta) => void;
 }

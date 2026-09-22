@@ -2,13 +2,13 @@ import { useState } from "react";
 import { updateStudyMaterial } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { DashboardStudyMaterial, UpdateStudyMaterialPayload } from "../../../api/types";
-import { SingleResourceField, resourceUrlLabel } from "./shared/ResourceListEditor";
+import { SingleResourceField, isMediaResourceType, resourceUrlLabel } from "./shared/ResourceListEditor";
 import { inferResourceType } from "./shared/inferResourceType";
 
 interface Props {
   token: string;
   material: DashboardStudyMaterial;
-  onSuccess: (id: number, name: string, url: string | null, type: string) => void;
+  onSuccess: (id: number, name: string, url: string | null, type: string, bpm: number | null) => void;
   onCancel: () => void;
 }
 
@@ -16,6 +16,7 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
   const [name, setName] = useState(material.name);
   const [url, setUrl] = useState(material.url ?? "");
   const [type, setType] = useState<string>(inferResourceType(material.url ?? "", material.type));
+  const [bpm, setBpm] = useState<number | "">(material.bpm ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,15 +25,17 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
     if (!name.trim()) return;
     setSaving(true);
     setError(null);
+    const resolvedBpm = isMediaResourceType(type) && bpm !== "" ? bpm : null;
     const payload: UpdateStudyMaterialPayload = {
       name: name.trim(),
       url: url || "",
       type,
       parent_study_material_id: material.parent_study_material_id,
+      bpm: resolvedBpm,
     };
     try {
       await updateStudyMaterial(token, material.id, payload);
-      onSuccess(material.id, payload.name, url || null, type);
+      onSuccess(material.id, payload.name, url || null, type, resolvedBpm);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -70,6 +73,19 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
         <label htmlFor="sm-ef-url">{resourceUrlLabel(type)}</label>
         <SingleResourceField id="sm-ef-url" url={url} type={type} onUrlChange={setUrl} onError={setError} />
       </div>
+      {isMediaResourceType(type) && (
+        <div className="edit-form-row">
+          <label htmlFor="sm-ef-bpm">BPM</label>
+          <input
+            id="sm-ef-bpm"
+            type="number"
+            placeholder="BPM"
+            min="1"
+            value={bpm}
+            onChange={(e) => setBpm(e.target.value === "" ? "" : Number(e.target.value))}
+          />
+        </div>
+      )}
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
       <div className="edit-form-actions">
         <button type="submit" className="btn-primary" disabled={saving}>

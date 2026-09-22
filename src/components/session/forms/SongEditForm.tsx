@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createAlbum, getAlbums, getArtists, getTunings, updateSong } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { Album, Artist, Resource, Song, Tuning, UpdateSongPayload } from "../../../api/types";
-import { ResourceListEditor, type ResourceRow } from "./shared/ResourceListEditor";
+import { ResourceListEditor, isMediaResourceType, type ResourceRow } from "./shared/ResourceListEditor";
 import { findResourceNameError } from "./shared/findResourceNameError";
 import { decodeHtml } from "../../../lib/decodeHtml";
 
@@ -69,6 +69,7 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
       name: r.name,
       url: r.url,
       type: r.type ?? "url",
+      bpm: r.bpm ?? "",
     }))
   );
   const [saving, setSaving] = useState(false);
@@ -128,7 +129,12 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
       bpm: bpm !== "" ? Number(bpm) : null,
       resources: resources
         .filter((r) => r.url)
-        .map((r) => ({ name: r.name.trim(), url: r.url, type: r.type })),
+        .map((r) => ({
+          name: r.name.trim(),
+          url: r.url,
+          type: r.type,
+          bpm: isMediaResourceType(r.type) && r.bpm !== "" ? r.bpm : null,
+        })),
       song_lists: [
         ...new Set([
           ...(song.meta.song_lists ?? []).map((l) => l.id),

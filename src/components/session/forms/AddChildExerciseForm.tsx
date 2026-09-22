@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createExercise } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { CreateExercisePayload, DashboardExercise } from "../../../api/types";
-import { ResourceListEditor, type ResourceRow } from "./shared/ResourceListEditor";
+import { ResourceListEditor, isMediaResourceType, type ResourceRow } from "./shared/ResourceListEditor";
 import { findResourceNameError } from "./shared/findResourceNameError";
 
 interface Props {
@@ -33,7 +33,12 @@ export function AddChildExerciseForm({ token, parentExerciseId, onSuccess, onCan
       parent_exercise_id: parentExerciseId,
       resources: resources
         .filter((r) => r.url)
-        .map((r) => ({ name: r.name.trim(), url: r.url, type: r.type })),
+        .map((r) => ({
+          name: r.name.trim(),
+          url: r.url,
+          type: r.type,
+          bpm: isMediaResourceType(r.type) && r.bpm !== "" ? r.bpm : null,
+        })),
     };
     try {
       const created = await createExercise(token, payload);

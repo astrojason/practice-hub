@@ -589,6 +589,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   flex-shrink: 0; width: 80px; min-width: 80px;
 }
 
+.edit-resource-bpm {
+  flex-shrink: 0; width: 56px; min-width: 56px;
+}
+
 .edit-resource-remove {
   flex-shrink: 0; width: 26px; height: 26px; padding: 0;
   background: transparent; color: var(--muted); border-radius: 4px;

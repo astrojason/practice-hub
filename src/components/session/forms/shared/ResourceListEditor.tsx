@@ -6,6 +6,13 @@ export interface ResourceRow {
   name: string;
   url: string;
   type: string;
+  /** The resource's own native/reference tempo — only shown/sent for media types (local_file/youtube). */
+  bpm?: number | "";
+}
+
+/** Types that play as audio/video (in-app for local_file, externally for youtube) — the only ones a bpm is meaningful for. */
+export function isMediaResourceType(type: string): boolean {
+  return type === "local_file" || type === "youtube";
 }
 
 function resourceUrlPlaceholder(type: string): string {
@@ -60,7 +67,7 @@ export function ResourceListEditor({ resources, onChange, onError }: ListProps) 
     onChange(resources.filter((r) => r.id !== id));
   }
 
-  function updateResource(id: string, field: keyof ResourceRow, value: string) {
+  function updateResource(id: string, field: keyof ResourceRow, value: string | number) {
     onChange(resources.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   }
 
@@ -103,6 +110,17 @@ export function ResourceListEditor({ resources, onChange, onError }: ListProps) 
                 <option value="local_folder">Folder</option>
                 <option value="guitar_pro">Guitar Pro</option>
               </select>
+              {isMediaResourceType(r.type) && (
+                <input
+                  type="number"
+                  className="edit-resource-bpm"
+                  placeholder="BPM"
+                  min="1"
+                  value={r.bpm ?? ""}
+                  onChange={(e) => updateResource(r.id, "bpm", e.target.value === "" ? "" : Number(e.target.value))}
+                  title="This resource's own native tempo"
+                />
+              )}
               {isLocalResourceType(r.type) && (
                 <button
                   type="button"

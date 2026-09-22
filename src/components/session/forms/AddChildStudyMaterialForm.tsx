@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createStudyMaterial } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { CreateStudyMaterialPayload, DashboardStudyMaterial } from "../../../api/types";
-import { SingleResourceField, resourceUrlLabel } from "./shared/ResourceListEditor";
+import { SingleResourceField, isMediaResourceType, resourceUrlLabel } from "./shared/ResourceListEditor";
 
 interface Props {
   token: string;
@@ -15,6 +15,7 @@ export function AddChildStudyMaterialForm({ token, parentStudyMaterialId, onSucc
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [type, setType] = useState("url");
+  const [bpm, setBpm] = useState<number | "">("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,6 +29,7 @@ export function AddChildStudyMaterialForm({ token, parentStudyMaterialId, onSucc
       url: url || "",
       type,
       parent_study_material_id: parentStudyMaterialId,
+      bpm: isMediaResourceType(type) && bpm !== "" ? bpm : null,
     };
     try {
       const created = await createStudyMaterial(token, payload);
@@ -75,6 +77,19 @@ export function AddChildStudyMaterialForm({ token, parentStudyMaterialId, onSucc
         <label htmlFor="acsm-url">{resourceUrlLabel(type)}</label>
         <SingleResourceField id="acsm-url" url={url} type={type} onUrlChange={setUrl} onError={setError} />
       </div>
+      {isMediaResourceType(type) && (
+        <div className="edit-form-row">
+          <label htmlFor="acsm-bpm">BPM</label>
+          <input
+            id="acsm-bpm"
+            type="number"
+            placeholder="BPM"
+            min="1"
+            value={bpm}
+            onChange={(e) => setBpm(e.target.value === "" ? "" : Number(e.target.value))}
+          />
+        </div>
+      )}
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
       <div className="edit-form-actions">
         <button type="submit" className="btn-primary" disabled={saving}>
