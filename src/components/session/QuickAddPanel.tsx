@@ -7,12 +7,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/16/solid";
 import type { Song } from "../../api/types";
-
-function decodeHtml(html: string): string {
-  const ta = document.createElement("textarea");
-  ta.innerHTML = html;
-  return ta.value;
-}
+import { decodeHtml } from "../../lib/decodeHtml";
 
 interface Props {
   overdueSongs: Song[];

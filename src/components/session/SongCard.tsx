@@ -2,12 +2,7 @@ import { ItemSessionCard } from "./ItemSessionCard";
 import { SongSessionForm } from "./forms/SongSessionForm";
 import { SongEditForm } from "./forms/SongEditForm";
 import type { Resource, Song, SongSession } from "../../api/types";
-
-function decodeHtml(html: string): string {
-  const ta = document.createElement("textarea");
-  ta.innerHTML = html;
-  return ta.value;
-}
+import { decodeHtml } from "../../lib/decodeHtml";
 
 interface Props {
   token: string;

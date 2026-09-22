@@ -4,6 +4,7 @@ import { ErrorModal } from "../../ErrorModal";
 import type { Album, Artist, Resource, Song, Tuning, UpdateSongPayload } from "../../../api/types";
 import { ResourceListEditor, type ResourceRow } from "./shared/ResourceListEditor";
 import { findResourceNameError } from "./shared/findResourceNameError";
+import { decodeHtml } from "../../../lib/decodeHtml";
 
 // Matches the backend's DifficultyRating enum (Simple/Easy/Average/Challenging/Hard)
 // x10, so singing_difficulty shares the same 1-100 scale as rhythm/lead.
@@ -170,7 +171,7 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
           required
         >
           {artists.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
+            <option key={a.id} value={a.id}>{decodeHtml(a.name)}</option>
           ))}
         </select>
       </div>
@@ -183,7 +184,7 @@ export function SongEditForm({ token, song, currentListId, onSuccess, onCancel }
           required
         >
           {tunings.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
+            <option key={t.id} value={t.id}>{decodeHtml(t.name)}</option>
           ))}
         </select>
       </div>
