@@ -49,6 +49,7 @@ import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
 import { useSessionTimers } from "../hooks/useSessionTimers";
 import { useSequentialSession } from "../hooks/useSequentialSession";
+import { totalSessionSecondsToday } from "../lib/itemUsage";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -449,6 +450,48 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [additionalSongs, setAdditionalSongs] = useState<Song[]>([]);
   const [additionalExercises, setAdditionalExercises] = useState<DashboardExercise[]>([]);
   const [additionalStudyMaterials, setAdditionalStudyMaterials] = useState<DashboardStudyMaterial[]>([]);
+
+  // When the player is open on a child item, find its parent so the header
+  // can name both and the timer can show child/parent.
+  const playerParent = (() => {
+    const parsed = playerState?.itemKey ? parseItemKey(playerState.itemKey) : null;
+    if (!parsed) return null;
+    if (parsed.type === "exercise") {
+      const all = [...(dashboard?.exercises ?? []), ...additionalExercises];
+      for (const ex of all) {
+        const child = ex.child_exercises.find((c) => c.id === parsed.id);
+        if (child) {
+          return {
+            parentName: ex.name,
+            childName: child.name,
+            savedSeconds: totalSessionSecondsToday([
+              ...(ex.meta.sessions ?? []),
+              ...ex.child_exercises.flatMap((c) => c.meta.sessions ?? []),
+            ]),
+            keys: [makeItemKey("exercise", ex.id), ...ex.child_exercises.map((c) => makeItemKey("exercise", c.id))],
+          };
+        }
+      }
+    } else if (parsed.type === "studymaterial") {
+      const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
+      for (const sm of all) {
+        const children = sm.child_study_materials ?? [];
+        const child = children.find((c) => c.id === parsed.id);
+        if (child) {
+          return {
+            parentName: sm.name,
+            childName: child.name,
+            savedSeconds: totalSessionSecondsToday([
+              ...((sm.meta.sessions ?? []) as { seconds: number; created_timestamp: number }[]),
+              ...children.flatMap((c) => (c.meta.sessions ?? []) as { seconds: number; created_timestamp: number }[]),
+            ]),
+            keys: [makeItemKey("studymaterial", sm.id), ...children.map((c) => makeItemKey("studymaterial", c.id))],
+          };
+        }
+      }
+    }
+    return null;
+  })();
 
   // ── Visual-state-shift guards ────────────────────────────────────────────────
   const goalFiredRef = useRef(false);
@@ -1198,9 +1241,12 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         <MediaPlayer
           filePath={playerState.path}
           mediaType={playerState.mediaType}
-          itemName={playerState.itemName}
+          itemName={playerParent ? `${playerParent.parentName} › ${playerParent.childName}` : playerState.itemName}
           onClose={() => setPlayerState(null)}
           timerElapsed={playerState.itemKey ? getElapsed(playerState.itemKey) : undefined}
+          parentTimerElapsed={playerParent
+            ? playerParent.savedSeconds + playerParent.keys.reduce((sum, k) => sum + getElapsed(k), 0)
+            : undefined}
           isTimerActive={playerState.itemKey ? activeTimers.has(playerState.itemKey) : false}
           token={token}
           songId={playerState.songId}

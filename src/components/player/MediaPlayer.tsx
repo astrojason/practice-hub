@@ -29,6 +29,8 @@ interface Props {
   onClose: () => void;
   /** Session practice timer for the item associated with this file */
   timerElapsed?: number;
+  /** When playing a child item: the parent's total for today (saved + running), shown as child/parent. */
+  parentTimerElapsed?: number;
   isTimerActive?: boolean;
   /** When set, automatically seeks to and activates the region matching this section id */
   activeSectionId?: number | null;
@@ -140,7 +142,7 @@ let toastCounter = 0;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimerActive, activeSectionId, token, songId, resources, onOpenFile, onGpView }: Props) {
+export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentTimerElapsed, isTimerActive, activeSectionId, token, songId, resources, onOpenFile, onGpView }: Props) {
   const detectedType = getMediaTypeFromPath(filePath);
   const isVideo = detectedType === "video";
   const [resourcesOpen, setResourcesOpen] = useState(false);
@@ -1392,7 +1394,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           )}
           {timerElapsed !== undefined && (
             <span className={`media-player__session-timer${isTimerActive ? " media-player__session-timer--active" : ""}`}>
-              {formatTime(timerElapsed)}
+              {formatTime(timerElapsed)}{parentTimerElapsed !== undefined && `/${formatTime(parentTimerElapsed)}`}
             </span>
           )}
         </div>
