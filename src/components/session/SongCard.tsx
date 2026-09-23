@@ -56,7 +56,7 @@ export function SongCard({
   onEntityEdited,
   trackUsage,
 }: Props) {
-  const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
+  const resources = (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm }));
   const sessions = (song.meta.sessions ?? []) as SongSession[];
   // Guarded like resources/sessions above: an edit's PUT response can be
   // leaner than the dashboard shape (e.g. omit denormalized display fields

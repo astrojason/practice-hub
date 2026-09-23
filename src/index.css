@@ -1389,8 +1389,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   text-align: right;
 }
 
+.media-player__bpm-row {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
 .media-player__region-bpm {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--accent);
   white-space: nowrap;
 }

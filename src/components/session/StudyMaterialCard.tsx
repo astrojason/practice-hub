@@ -101,7 +101,7 @@ function StudyMaterialSingleCard({
   }
 
   const resources: Resource[] = material.url
-    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type) }]
+    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type), bpm: material.bpm }]
     : [];
   const sessions = (material.meta.sessions ?? []) as StudyMaterialSession[];
   // Practicing a sub-item counts as practicing the group — a parent with no

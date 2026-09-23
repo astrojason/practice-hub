@@ -1307,8 +1307,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
   // changes, whether from the slider, typed input, or an automatic loop
   // speed-increase, same pattern as the metronome's speed-follow display.
   const activeRegion = regionState.regions.find(r => r.id === regionState.activeRegionId);
-  const activeRegionBpm = activeRegion?.bpm != null
-    ? Math.round(activeRegion.bpm * (parseFloat(speedInput) || 1))
+  // Falls back to the playing resource's own bpm when no region supplies one.
+  const resourceBpm = resources?.find(r => r.url === filePath)?.bpm ?? null;
+  const baseBpm = activeRegion?.bpm ?? resourceBpm;
+  const activeRegionBpm = baseBpm != null
+    ? Math.round(baseBpm * (parseFloat(speedInput) || 1))
     : null;
 
   return (
@@ -1477,11 +1480,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           >
             {Math.round((parseFloat(speedInput) || 1) * 100)}%
           </span>
-          {activeRegionBpm != null && (
-            <span className="media-player__region-bpm" id="regionBpmIndicator" title="Active region's bpm, adjusted for the current playback speed">
-              {activeRegionBpm} BPM
-            </span>
-          )}
         </div>
       </div>
 
@@ -1535,6 +1533,14 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, isTimer
           </div>
         )}
       </div>
+
+      {activeRegionBpm != null && (
+        <div className="media-player__bpm-row">
+          <span className="media-player__region-bpm" id="regionBpmIndicator" title="Active region's bpm (or the resource's, if no region has one), adjusted for the current playback speed">
+            {activeRegionBpm} BPM
+          </span>
+        </div>
+      )}
 
       {/* Markers — sits directly under the timeline */}
       <section className="mp-section mp-markers-bar">

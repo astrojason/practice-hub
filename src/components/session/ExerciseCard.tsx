@@ -103,7 +103,7 @@ function ExerciseSingleCard({
   if (ue?.use_keys) tags.push("keys");
   if (ue?.use_scales) tags.push("scales");
 
-  const resources = (exercise.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type }));
+  const resources = (exercise.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm }));
   const sessions = (exercise.meta.sessions ?? []) as ExerciseSession[];
   // Practicing a sub-exercise counts as practicing the group — a parent
   // with no sessions of its own shouldn't show stale just because the user

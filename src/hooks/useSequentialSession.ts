@@ -74,7 +74,7 @@ export function useSequentialSession({
       children = incompleteChildren.map((child) => ({
         id: child.id,
         name: child.name,
-        resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type })),
+        resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm })),
         lastSession: child.meta.sessions?.[0] ?? null,
         inUserExercise: child.meta.user_exercise !== null,
       }));
