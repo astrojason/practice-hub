@@ -46,16 +46,26 @@ function exercise(id: number, name: string, parentId: number | null, sessions: u
   };
 }
 
-// Parent: 10m of its own + children 20m and 5m -> 35m total.
+// Only today's time counts. Today: Lesson A 15m + Lesson B 5m + parent 2m = 22m.
+// Earlier days (10m parent, 5m Lesson A, 5m Lesson B) must be excluded.
 const parent = exercise(
   1,
   "Course With Time",
   null,
-  [exSession(1, 1, 600, 3)],
+  [exSession(1, 1, 600, 3), exSession(6, 1, 120, 0)],
   [
-    exercise(2, "Lesson A", 1, [exSession(2, 2, 900, 2), exSession(3, 2, 300, 1)], []),
-    exercise(3, "Lesson B", 1, [exSession(4, 3, 300, 1)], []),
+    exercise(2, "Lesson A", 1, [exSession(2, 2, 900, 0), exSession(3, 2, 300, 1)], []),
+    exercise(3, "Lesson B", 1, [exSession(4, 3, 300, 0), exSession(7, 3, 300, 2)], []),
   ]
+);
+
+// Has children, but nothing was practiced today -> no badge.
+const stale = exercise(
+  5,
+  "Course Not Practiced Today",
+  null,
+  [exSession(8, 5, 600, 3)],
+  [exercise(6, "Old Lesson", 5, [exSession(9, 6, 900, 2)], [])]
 );
 
 // Childless items don't get a total-time tag.
@@ -68,7 +78,7 @@ const mockDashboard = {
   to_review: { songs: [] },
   to_learn: { songs: [] },
   project: { songs: [] },
-  exercises: [parent, solo],
+  exercises: [parent, stale, solo],
   study_materials: [],
   chord: null,
   progression: null,
@@ -97,9 +107,15 @@ test.beforeEach(async ({ page }) => {
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
 });
 
-test("a parent shows total practice time summed from itself and its children", async ({ page }) => {
+test("a parent shows only today\u2019s practice time summed from itself and its children", async ({ page }) => {
   const card = page.locator(".item-card", { hasText: "Course With Time" }).first();
-  await expect(card.locator(".tag-total-time")).toHaveText("⏱ 35m");
+  await expect(card.locator(".tag-total-time")).toHaveText("⏱ 22m");
+});
+
+test("a parent with nothing practiced today shows no total-time tag", async ({ page }) => {
+  const card = page.locator(".item-card", { hasText: "Course Not Practiced Today" }).first();
+  await expect(card).toBeVisible();
+  await expect(card.locator(".tag-total-time")).toHaveCount(0);
 });
 
 test("child cards show no total-time tag", async ({ page }) => {

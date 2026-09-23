@@ -45,6 +45,15 @@ export function totalSessionSeconds(sessions: { seconds: number }[]): number {
   return sessions.reduce((sum, s) => sum + (s.seconds ?? 0), 0);
 }
 
+/** Sum of `seconds` across sessions created on the local calendar day of `now`. */
+export function totalSessionSecondsToday(
+  sessions: { seconds: number; created_timestamp: number }[],
+  now: number = Date.now()
+): number {
+  const today = dayKey(now);
+  return totalSessionSeconds(sessions.filter((s) => dayKey(s.created_timestamp) === today));
+}
+
 /** Compact duration: "45s", "35m", "1h 5m". */
 export function formatPracticeDuration(totalSeconds: number): string {
   if (totalSeconds < 60) return `${Math.round(totalSeconds)}s`;

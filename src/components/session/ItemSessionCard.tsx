@@ -20,7 +20,7 @@ import { SessionModal } from "./SessionModal";
 import { LastSessionInfo } from "./LastSessionInfo";
 import type { LastSessionData } from "./LastSessionInfo";
 import { RatingTrendChart } from "../reports/RatingTrendChart";
-import { formatPracticeDuration, getStreakStatus, getUsageStalenessLevel, totalSessionSeconds } from "../../lib/itemUsage";
+import { formatPracticeDuration, getStreakStatus, getUsageStalenessLevel, totalSessionSecondsToday } from "../../lib/itemUsage";
 import { useStreakTokens } from "./StreakTokenContext";
 import { ErrorModal } from "../ErrorModal";
 import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
@@ -272,10 +272,11 @@ export function ItemSessionCard({
       return () => clearTimeout(timer);
     }
   }, [streak]);
-  // Parents with children: total time across the item and every child
-  // (usageSessions is the de-duplicated merge of all of them).
-  const showTotalTime = !isChild && !!onToggleChildren;
-  const totalPracticeSeconds = totalSessionSeconds(usageSessions ?? sessions);
+  // Parents with children: time practiced today across the item and every
+  // child (usageSessions is the de-duplicated merge of all of them). Hidden
+  // when nothing was practiced today.
+  const totalPracticeSeconds = totalSessionSecondsToday(usageSessions ?? sessions);
+  const showTotalTime = !isChild && !!onToggleChildren && totalPracticeSeconds > 0;
   const showSequentialTag = !!onStartSequential && !isChild && sequentialItemCount != null;
   const tags = extraTags ?? [];
   const userListNoun = entityType === "exercise" ? "exercises" : "study materials";
@@ -320,7 +321,7 @@ export function ItemSessionCard({
               ))}
               {showSequentialTag && <span className="tag">{sequentialItemCount} items</span>}
               {showTotalTime && (
-                <span className="tag tag-total-time" title="Total practiced across this item and its children">
+                <span className="tag tag-total-time" title="Practiced today across this item and its children">
                   ⏱ {formatPracticeDuration(totalPracticeSeconds)}
                 </span>
               )}
