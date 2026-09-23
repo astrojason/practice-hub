@@ -1,3 +1,4 @@
+import { sortByName } from "../../lib/sortByName";
 import { useState } from "react";
 import { BookmarkIcon, BookmarkSlashIcon, ChevronDownIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/16/solid";
 import { SessionModal } from "../session/SessionModal";
@@ -105,7 +106,7 @@ export function BrowseExerciseRow({ token, exercise, isChild }: Props) {
       )}
 
       {!collapsed &&
-        children.map((child) => (
+        sortByName(children).map((child) => (
           <BrowseExerciseRow key={child.id} token={token} exercise={child} isChild />
         ))}
 

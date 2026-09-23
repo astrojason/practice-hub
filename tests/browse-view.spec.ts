@@ -317,3 +317,34 @@ test("a 409 conflict from add-child-exercise is surfaced via ErrorModal, not swa
 
   await expect(page.getByText(/already exists/i)).toBeVisible();
 });
+
+test("browse tabs list items alphabetically", async ({ page }) => {
+  const song = (id: number, name: string) => ({ ...catalogSong, id, name });
+  const ex = (id: number, name: string) => ({ ...exerciseNoChildren, id, name });
+  const sm = (id: number, name: string) => ({ ...studyMaterialNoChildren, id, name });
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+
+  await page.route("**/song?**", (route) =>
+    route.fulfill(json({ songs: [song(1, "zebra"), song(2, "Apple"), song(3, "mango")], total: 3, page: 1, limit: 25 }))
+  );
+  await page.route("**/exercise?**", (route) =>
+    route.fulfill(json({ exercises: [ex(1, "Warmup"), ex(2, "arpeggios"), ex(3, "Scales")], total: 3, page: 1, limit: 25 }))
+  );
+  await page.route("**/study-material?**", (route) =>
+    route.fulfill(json({ study_material: [sm(1, "Theory"), sm(2, "chords"), sm(3, "Ear training")], total: 3, page: 1, limit: 25 }))
+  );
+
+  await page.locator('button[title="Browse catalog"]').click();
+  const names = () => page.locator(".browse-row .browse-row-name").allInnerTexts();
+
+  await expect(page.locator(".browse-row").first()).toBeVisible();
+  expect((await names()).map((n) => n.trim())).toEqual(["Apple", "mango", "zebra"]);
+
+  await page.locator(".browse-tabs button", { hasText: "Exercises" }).click();
+  await expect(page.locator(".browse-row", { hasText: "Warmup" })).toBeVisible();
+  expect((await names()).map((n) => n.trim())).toEqual(["arpeggios", "Scales", "Warmup"]);
+
+  await page.locator(".browse-tabs button", { hasText: "Study" }).click();
+  await expect(page.locator(".browse-row", { hasText: "Theory" })).toBeVisible();
+  expect((await names()).map((n) => n.trim())).toEqual(["chords", "Ear training", "Theory"]);
+});

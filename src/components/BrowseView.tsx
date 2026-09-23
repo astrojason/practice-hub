@@ -1,3 +1,4 @@
+import { sortByName } from "../lib/sortByName";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeftIcon, MagnifyingGlassIcon } from "@heroicons/react/16/solid";
 import { getCatalogSongs, getCatalogExercises, getCatalogStudyMaterials } from "../api/client";
@@ -151,7 +152,7 @@ export function BrowseView({ token, onBack }: Props) {
       <div className="browse-list">
         {tab === "songs" && (
           <>
-            {songs.map((s) => (
+            {sortByName(songs).map((s) => (
               <BrowseSongRow key={s.id} token={token} song={s} />
             ))}
             {songs.length === 0 && !songsLoading && <div className="browse-empty">No songs found</div>}
@@ -168,7 +169,7 @@ export function BrowseView({ token, onBack }: Props) {
 
         {tab === "exercises" && (
           <>
-            {exercises.map((ex) => (
+            {sortByName(exercises).map((ex) => (
               <BrowseExerciseRow key={ex.id} token={token} exercise={ex} />
             ))}
             {exercises.length === 0 && !exercisesLoading && (
@@ -187,7 +188,7 @@ export function BrowseView({ token, onBack }: Props) {
 
         {tab === "study_materials" && (
           <>
-            {materials.map((m) => (
+            {sortByName(materials).map((m) => (
               <BrowseStudyMaterialRow key={m.id} token={token} material={m} />
             ))}
             {materials.length === 0 && !materialsLoading && (
