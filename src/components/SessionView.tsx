@@ -1,3 +1,4 @@
+import { sortByName } from "../lib/sortByName";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getDashboard,
@@ -1315,7 +1316,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           completedCount={exerciseCompletedCount()}
           totalCount={exerciseTotalCount()}
         >
-          {dashboard.exercises.map((ex) => (
+          {sortByName(dashboard.exercises).map((ex) => (
             <ExerciseCard
               key={ex.id}
               token={token}
@@ -1361,7 +1362,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             dashboard.study_materials.reduce((n, sm) => n + 1 + (sm.child_study_materials ?? []).length, 0)
           }
         >
-          {dashboard.study_materials.map((sm) => (
+          {sortByName(dashboard.study_materials).map((sm) => (
             <StudyMaterialCard
               key={sm.id}
               token={token}
@@ -1404,7 +1405,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           }
           totalCount={projectSongs.length}
         >
-          {projectSongs.map((song) => (
+          {sortByName(projectSongs).map((song) => (
             <SongCard
               key={song.id}
               token={token}
@@ -1447,7 +1448,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           }
           totalCount={reviewSongs.length}
         >
-          {reviewSongs.map((song) => (
+          {sortByName(reviewSongs).map((song) => (
             <SongCard
               key={song.id}
               token={token}
@@ -1487,7 +1488,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             completedCount={additionalCompletedCount()}
             totalCount={additionalTotalCount()}
           >
-            {additionalSongs.map((song) => (
+            {sortByName(additionalSongs).map((song) => (
               <SongCard
                 key={song.id}
                 token={token}
@@ -1518,7 +1519,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onEntityEdited={handleSongEdited}
               />
             ))}
-            {additionalExercises.map((ex) => (
+            {sortByName(additionalExercises).map((ex) => (
               <ExerciseCard
                 key={ex.id}
                 token={token}
@@ -1551,7 +1552,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
                 onToggled={handleExerciseToggled}
               />
             ))}
-            {additionalStudyMaterials.map((sm) => (
+            {sortByName(additionalStudyMaterials).map((sm) => (
               <StudyMaterialCard
                 key={sm.id}
                 token={token}

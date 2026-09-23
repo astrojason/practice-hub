@@ -1,3 +1,4 @@
+import { sortByName } from "../../lib/sortByName";
 import { useState } from "react";
 import { makeItemKey } from "../../lib/itemKey";
 import { mergeSessionsById } from "../../lib/itemUsage";
@@ -285,7 +286,7 @@ export function StudyMaterialCard({
         } : undefined}
         onToggled={onToggled}
       />
-      {!childrenCollapsed && (material.child_study_materials ?? []).map((child) => {
+      {!childrenCollapsed && sortByName(material.child_study_materials ?? []).map((child) => {
         const childState = getState(child.id);
         return (
           <StudyMaterialSingleCard

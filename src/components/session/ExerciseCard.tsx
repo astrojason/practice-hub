@@ -1,3 +1,4 @@
+import { sortByName } from "../../lib/sortByName";
 import { useState } from "react";
 import { makeItemKey } from "../../lib/itemKey";
 import { mergeSessionsById } from "../../lib/itemUsage";
@@ -294,7 +295,7 @@ export function ExerciseCard({
         } : undefined}
         onToggled={onToggled}
       />
-      {!childrenCollapsed && exercise.child_exercises.map((child) => {
+      {!childrenCollapsed && sortByName(exercise.child_exercises).map((child) => {
         const childState = getState(child.id);
         return (
           <ExerciseSingleCard
