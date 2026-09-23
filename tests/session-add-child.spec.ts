@@ -272,3 +272,55 @@ test("adding a child exercise whose response omits `meta` and `child_exercises` 
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
   await expect(page.locator(".item-card", { hasText: "Scales" })).toBeVisible();
 });
+
+test("adding a child exercise that already exists surfaces the server's conflict error", async ({ page }) => {
+  await page.route("**/user/dashboard**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(makeDashboard({ exercises: [exerciseNoChildren] })),
+    })
+  );
+  await page.route("**/exercise/", (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "An exercise with this name already exists" }),
+    })
+  );
+
+  await page.goto("/");
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  await page.locator(".item-card", { hasText: "Scales" }).first().locator('button[title="Add child"]').click();
+  await page.locator("#ace-name").fill("Warmup A");
+  await page.locator(".add-child-exercise-form button[type=\"submit\"]").click();
+
+  await expect(page.locator(".error-modal-message")).toContainText("An exercise with this name already exists");
+});
+
+test("adding a child study material that already exists surfaces the server's conflict error", async ({ page }) => {
+  await page.route("**/user/dashboard**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(makeDashboard({ study_materials: [studyMaterialNoChildren] })),
+    })
+  );
+  await page.route("**/study-material/", (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "StudyMaterial with that name already exists" }),
+    })
+  );
+
+  await page.goto("/");
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Study Materials" }).locator(".item-group-header").click();
+  await page.locator(".item-card", { hasText: "Music Theory" }).first().locator('button[title="Add child"]').click();
+  await page.locator("#acsm-name").fill("Intervals");
+  await page.locator(".add-child-study-material-form button[type=\"submit\"]").click();
+
+  await expect(page.locator(".error-modal-message")).toContainText("StudyMaterial with that name already exists");
+});
