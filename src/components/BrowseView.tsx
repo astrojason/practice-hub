@@ -1,17 +1,18 @@
 import { sortByName } from "../lib/sortByName";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeftIcon, MagnifyingGlassIcon } from "@heroicons/react/16/solid";
-import { getCatalogSongs, getCatalogExercises, getCatalogStudyMaterials } from "../api/client";
+import { getCatalogSongs, getCatalogExercises, getCatalogStudyMaterials, getUserPlaylists } from "../api/client";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { BrowseSongRow } from "./browse/BrowseSongRow";
 import { BrowseExerciseRow } from "./browse/BrowseExerciseRow";
 import { BrowseStudyMaterialRow } from "./browse/BrowseStudyMaterialRow";
+import { BrowsePlaylistRow } from "./browse/BrowsePlaylistRow";
 import { ErrorModal } from "./ErrorModal";
-import type { Song, DashboardExercise, DashboardStudyMaterial } from "../api/types";
+import type { Song, DashboardExercise, DashboardStudyMaterial, UserPlaylist } from "../api/types";
 
 const LIMIT = 25;
 
-type Tab = "songs" | "study_materials" | "exercises";
+type Tab = "songs" | "study_materials" | "exercises" | "playlists";
 
 interface Props {
   token: string;
@@ -37,6 +38,11 @@ export function BrowseView({ token, onBack }: Props) {
   const [materialsTotal, setMaterialsTotal] = useState(0);
   const [materialsPage, setMaterialsPage] = useState(1);
   const [materialsLoading, setMaterialsLoading] = useState(false);
+
+  const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [playlistsTotal, setPlaylistsTotal] = useState(0);
+  const [playlistsPage, setPlaylistsPage] = useState(1);
+  const [playlistsLoading, setPlaylistsLoading] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -98,13 +104,36 @@ export function BrowseView({ token, onBack }: Props) {
     [token]
   );
 
+  const fetchPlaylists = useCallback(
+    async (page: number, q: string, reset: boolean) => {
+      setPlaylistsLoading(true);
+      try {
+        const res = await getUserPlaylists(token, page, LIMIT, q);
+        // The endpoint also returns system lists (Repertoire, Project…) — only custom playlists can be saved.
+        const custom = res.user_song_lists.filter((pl) => pl.editable);
+        setPlaylists((prev) => (reset ? custom : [...prev, ...custom]));
+        setPlaylistsTotal(res.total);
+        setPlaylistsPage(page);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load playlists");
+      } finally {
+        setPlaylistsLoading(false);
+      }
+    },
+    [token]
+  );
+
   useEffect(() => {
     if (tab === "songs") fetchSongs(1, debouncedSearch, true);
     else if (tab === "exercises") fetchExercises(1, debouncedSearch, true);
+    else if (tab === "playlists") fetchPlaylists(1, debouncedSearch, true);
     else fetchMaterials(1, debouncedSearch, true);
-  }, [tab, debouncedSearch, fetchSongs, fetchExercises, fetchMaterials]);
+  }, [tab, debouncedSearch, fetchSongs, fetchExercises, fetchMaterials, fetchPlaylists]);
 
-  const tabLabel = tab === "songs" ? "songs" : tab === "exercises" ? "exercises" : "study materials";
+  const tabLabel =
+    tab === "songs" ? "songs" : tab === "exercises" ? "exercises" : tab === "playlists" ? "playlists" : "study materials";
+  // System lists share the endpoint's pages, so "more to load" is judged on what the server has left.
+  const morePlaylists = playlistsPage * LIMIT < playlistsTotal;
 
   return (
     <div className="browse-view">
@@ -135,6 +164,12 @@ export function BrowseView({ token, onBack }: Props) {
           onClick={() => setTab("exercises")}
         >
           Exercises
+        </button>
+        <button
+          className={`browse-tab ${tab === "playlists" ? "active" : ""}`}
+          onClick={() => setTab("playlists")}
+        >
+          Playlists
         </button>
       </div>
 
@@ -181,6 +216,25 @@ export function BrowseView({ token, onBack }: Props) {
                 onClick={() => fetchExercises(exercisesPage + 1, debouncedSearch, false)}
               >
                 Load {Math.min(LIMIT, exercisesTotal - exercises.length)} more
+              </button>
+            )}
+          </>
+        )}
+
+        {tab === "playlists" && (
+          <>
+            {sortByName(playlists.map((pl) => ({ ...pl, name: pl.name ?? "" }))).map((pl) => (
+              <BrowsePlaylistRow key={pl.id} token={token} playlist={pl} />
+            ))}
+            {playlists.length === 0 && !playlistsLoading && !morePlaylists && (
+              <div className="browse-empty">No playlists found</div>
+            )}
+            {morePlaylists && !playlistsLoading && (
+              <button
+                className="qa-load-more"
+                onClick={() => fetchPlaylists(playlistsPage + 1, debouncedSearch, false)}
+              >
+                Load more
               </button>
             )}
           </>

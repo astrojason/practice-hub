@@ -49,7 +49,9 @@ import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
 import { useSessionTimers } from "../hooks/useSessionTimers";
-import { useSequentialSession } from "../hooks/useSequentialSession";
+import { PlayIcon } from "@heroicons/react/16/solid";
+import { decodeHtml } from "../lib/decodeHtml";
+import { useSequentialSession, sequentialItemKey } from "../hooks/useSequentialSession";
 import { totalSessionSecondsToday } from "../lib/itemUsage";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -681,6 +683,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       new Set([
         ...(dashboard?.project?.songs ?? []).map((s) => s.id),
         ...(dashboard?.to_review?.songs ?? []).map((s) => s.id),
+        ...(dashboard?.playlists ?? []).flatMap((pl) => pl.songs.map((s) => s.id)),
         ...additionalSongs.map((s) => s.id),
       ]),
     [dashboard, additionalSongs]
@@ -854,6 +857,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         ...prev,
         project: prev.project ? { ...prev.project, songs: replaceInList(prev.project.songs) } : prev.project,
         to_review: prev.to_review ? { ...prev.to_review, songs: replaceInList(prev.to_review.songs) } : prev.to_review,
+        playlists: prev.playlists?.map((pl) => ({ ...pl, songs: replaceInList(pl.songs) })),
         overdue: replaceInList(prev.overdue),
       };
     });
@@ -1148,6 +1152,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   }
 
   const projectSongs = dashboard.project?.songs ?? [];
+  const playlists = dashboard.playlists ?? [];
   const reviewSongs = dashboard.to_review?.songs ?? [];
 
   return (
@@ -1263,9 +1268,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       {sequentialSession && !sequentialModalHidden && (() => {
         const { type, parentName, children, currentIndex } = sequentialSession;
         const childId = children[currentIndex].id;
-        const childKey = type === "exercise"
-          ? makeItemKey("exercise", childId)
-          : makeItemKey("studymaterial", childId);
+        const childKey = sequentialItemKey(type, childId);
         function hideForMedia() {
           sequentialMediaWasOpenedRef.current = true;
           setSequentialModalHidden(true);
@@ -1439,6 +1442,59 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             />
           ))}
         </ItemGroup>
+
+        {/* Playlists saved to the dashboard */}
+        {playlists.map((pl) => (
+          <ItemGroup
+            key={pl.id}
+            title={decodeHtml(pl.name)}
+            completedCount={pl.songs.filter((s) => isDone(makeItemKey("song", s.id))).length}
+            totalCount={pl.songs.length}
+            headerAction={
+              pl.session_playlist ? (
+                <button
+                  className="btn-ghost item-group-action"
+                  onClick={() => handleStartSequential("song", pl.id)}
+                  aria-label="Start playlist"
+                  title="Start playlist as a sequential session"
+                >
+                  <PlayIcon className="icon-sm" /> Start
+                </button>
+              ) : undefined
+            }
+          >
+            {sortByName(pl.songs).map((song) => (
+              <SongCard
+                key={song.id}
+                token={token}
+                song={song}
+                currentListId={pl.id}
+                isCompletedToday={completedIds.has(makeItemKey("song", song.id)) && !skippedIds.has(makeItemKey("song", song.id))}
+                isSkippedToday={skippedIds.has(makeItemKey("song", song.id))}
+                isTimerActive={activeTimers.has(makeItemKey("song", song.id))}
+                isTimerPaused={
+                  !activeTimers.has(makeItemKey("song", song.id)) &&
+                  pausedElapsed.has(makeItemKey("song", song.id))
+                }
+                timerElapsed={getElapsed(makeItemKey("song", song.id))}
+                isFormOpen={openForm === makeItemKey("song", song.id)}
+                onStart={() => startTimer(makeItemKey("song", song.id))}
+                onPause={() => pauseTimer(makeItemKey("song", song.id))}
+                onStopAndSave={() => stopAndSave(makeItemKey("song", song.id))}
+                onCancel={() => cancelSession(makeItemKey("song", song.id))}
+                onFormOpen={() => setOpenForm(makeItemKey("song", song.id))}
+                onFormClose={() => setOpenForm(null)}
+                onSessionSubmit={(dpt) => handleSessionSubmit(dpt, makeItemKey("song", song.id))}
+                onSkip={() => handleSkipItems([makeItemKey("song", song.id)])}
+                onOpenFile={(path, mt, itemKey, resources) => openPlayer(path, mt, song.name, itemKey ?? makeItemKey("song", song.id), resources)}
+                onGpView={onGpView}
+                onOpenChat={() => openChat("song", song.id)}
+                isMediaActive={playerState !== null}
+                onEntityEdited={handleSongEdited}
+              />
+            ))}
+          </ItemGroup>
+        ))}
 
         {/* Repertoire Review */}
         <ItemGroup

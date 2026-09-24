@@ -321,13 +321,20 @@ button svg { width: 13px; height: 13px; flex-shrink: 0; display: block; }
   border-radius: 0 0 calc(var(--r) - 1px) calc(var(--r) - 1px);
 }
 
+/* The header row: a toggle button that fills it, plus an optional action (e.g. Start). */
 .item-group-header {
   display: flex; align-items: center; gap: 8px;
-  width: 100%; padding: 9px 14px;
+  width: 100%; padding-right: 14px;
+}
+.item-group-header:hover { background: var(--surface-2); }
+.item-group-toggle {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 0 9px 14px;
   background: transparent; border: none; border-radius: 0;
   color: var(--text); cursor: pointer; text-align: left;
 }
-.item-group-header:hover { background: var(--surface-2); }
+.item-group-action { flex-shrink: 0; }
 
 .item-group-title {
   font-size: 12px; font-weight: 600; letter-spacing: 0.07em;

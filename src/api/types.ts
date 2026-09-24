@@ -214,9 +214,30 @@ export interface SongList {
   name: string;
   type: number;
   session_playlist: boolean;
+  /** Custom playlists the user saved to their dashboard (see DashboardData.playlists). */
+  on_dashboard?: boolean;
   created_timestamp: number;
   updated_timestamp: number;
   songs: Song[];
+}
+
+/** A row of GET /user-song-list — a playlist without its songs. */
+export interface UserPlaylist {
+  id: number;
+  name: string | null;
+  type: number;
+  session_playlist: boolean;
+  on_dashboard: boolean;
+  song_count: number;
+  /** True for the user's custom playlists (system lists like Repertoire are not editable). */
+  editable: boolean;
+}
+
+export interface UserPlaylistsResponse {
+  user_song_lists: UserPlaylist[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 // ─── Exercise (dashboard shape) ───────────────────────────────────────────────
@@ -331,6 +352,8 @@ export interface DashboardData {
   to_review: SongList;
   to_learn: SongList;
   project: SongList;
+  /** Custom playlists the user saved to the dashboard, by name. */
+  playlists?: SongList[];
   exercises: DashboardExercise[];
   study_materials: DashboardStudyMaterial[];
   chord: Chord | null;

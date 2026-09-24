@@ -1,11 +1,21 @@
 import { useRef, useState } from "react";
 import { makeItemKey } from "../lib/itemKey";
 import { inferResourceType } from "../components/session/forms/shared/inferResourceType";
+import { sortByName } from "../lib/sortByName";
 import type { DashboardData, DashboardExercise, DashboardStudyMaterial } from "../api/types";
 import type { SequentialChild } from "../components/session/SequentialSessionModal";
 
+export type SequentialType = "exercise" | "study_material" | "song";
+
+/** The item key of a sequential session's child (or, for exercises/study materials, its parent). */
+export function sequentialItemKey(type: SequentialType, id: number): string {
+  if (type === "exercise") return makeItemKey("exercise", id);
+  if (type === "song") return makeItemKey("song", id);
+  return makeItemKey("studymaterial", id);
+}
+
 interface SequentialSessionState {
-  type: "exercise" | "study_material";
+  type: SequentialType;
   parentId: number;
   parentName: string;
   children: SequentialChild[];
@@ -26,7 +36,10 @@ interface Params {
   onError: (message: string) => void;
 }
 
-/** The "run every child of a parent exercise/study-material in order" flow. */
+/**
+ * The "run every child of a parent exercise/study-material in order" flow, and
+ * the same flow over a saved session playlist's songs (parentId is the playlist's id).
+ */
 export function useSequentialSession({
   dashboard,
   additionalExercises,
@@ -46,11 +59,9 @@ export function useSequentialSession({
   const [sequentialModalHidden, setSequentialModalHidden] = useState(false);
   const sequentialMediaWasOpenedRef = useRef(false);
 
-  function childKeyFor(type: "exercise" | "study_material", id: number): string {
-    return type === "exercise" ? makeItemKey("exercise", id) : makeItemKey("studymaterial", id);
-  }
+  const childKeyFor = sequentialItemKey;
 
-  function handleStartSequential(type: "exercise" | "study_material", parentId: number) {
+  function handleStartSequential(type: SequentialType, parentId: number) {
     let parentName = "";
     let children: SequentialChild[] = [];
 
@@ -77,6 +88,29 @@ export function useSequentialSession({
         resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm })),
         lastSession: child.meta.sessions?.[0] ?? null,
         inUserExercise: child.meta.user_exercise !== null,
+      }));
+    } else if (type === "song") {
+      const playlist = (dashboard?.playlists ?? []).find((p) => p.id === parentId);
+      if (!playlist) {
+        onError("Couldn't start that playlist — it's no longer on the dashboard. Try refreshing.");
+        return;
+      }
+      if (playlist.songs.length === 0) {
+        onError(`"${playlist.name}" has no songs to run.`);
+        return;
+      }
+      parentName = playlist.name;
+      const incompleteSongs = sortByName(playlist.songs).filter((s) => !completedIds.has(makeItemKey("song", s.id)));
+      if (incompleteSongs.length === 0) {
+        onError(`All songs in "${playlist.name}" are already complete for today.`);
+        return;
+      }
+      children = incompleteSongs.map((song) => ({
+        id: song.id,
+        name: song.name,
+        resources: (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm })),
+        lastSession: song.meta.sessions?.[0] ?? null,
+        song: { bpm: song.bpm, seconds: song.seconds, hasLead: song.has_lead, hasSinging: song.has_singing },
       }));
     } else {
       const all = [...(dashboard?.study_materials ?? []), ...additionalStudyMaterials];
@@ -122,8 +156,8 @@ export function useSequentialSession({
 
     const nextIndex = currentIndex + 1;
     if (nextIndex >= children.length) {
-      // All children complete — mark parent as complete
-      markComplete(childKeyFor(type, parentId));
+      // All children complete — mark parent as complete (a playlist isn't an item, so has no key)
+      if (type !== "song") markComplete(childKeyFor(type, parentId));
       setSequentialSession(null);
     } else {
       setSequentialSession((prev) => prev ? { ...prev, currentIndex: nextIndex } : null);

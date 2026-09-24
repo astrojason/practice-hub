@@ -23,6 +23,8 @@ import type {
   OpenSessionResponse,
   Song,
   CatalogSongsResponse,
+  UserPlaylist,
+  UserPlaylistsResponse,
   CatalogExercisesResponse,
   CatalogStudyMaterialsResponse,
   SongSessionListResponse,
@@ -280,6 +282,36 @@ export async function getCatalogSongs(
     headers: authHeaders(token),
   });
   return handleResponse<CatalogSongsResponse>(response);
+}
+
+// ─── Playlists ────────────────────────────────────────────────────────────────
+
+export async function getUserPlaylists(
+  token: string,
+  page: number,
+  limit: number,
+  q?: string
+): Promise<UserPlaylistsResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (q) params.set("q", q);
+  const response = await apiFetch(`${API_BASE_URL}/user-song-list?${params}`, {
+    headers: authHeaders(token),
+  });
+  return handleResponse<UserPlaylistsResponse>(response);
+}
+
+/** Save a custom playlist to (or remove it from) the dashboard. */
+export async function setPlaylistOnDashboard(
+  token: string,
+  playlistId: number,
+  onDashboard: boolean
+): Promise<UserPlaylist> {
+  const response = await apiFetch(`${API_BASE_URL}/user-song-list/${playlistId}/dashboard`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify({ on_dashboard: onDashboard }),
+  });
+  return handleResponse<UserPlaylist>(response);
 }
 
 export async function getCatalogExercises(

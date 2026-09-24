@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/16/solid";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
+import { SongSessionForm } from "./forms/SongSessionForm";
 import { LastSessionInfo } from "./LastSessionInfo";
 import { SessionModal } from "./SessionModal";
 import type { LastSessionData } from "./LastSessionInfo";
@@ -26,11 +27,13 @@ export interface SequentialChild {
   resources: Resource[];
   lastSession: LastSessionData | null;
   inUserExercise?: boolean;
+  /** Song-only fields the song session form needs. */
+  song?: { bpm: number | null; seconds: number | null; hasLead: boolean; hasSinging: boolean };
 }
 
 interface Props {
   token: string;
-  type: "exercise" | "study_material";
+  type: "exercise" | "study_material" | "song";
   parentName: string;
   children: SequentialChild[];
   currentIndex: number;
@@ -93,7 +96,21 @@ export function SequentialSessionModal({
     >
       {isFormOpen ? (
         <div className="sequential-form-wrapper">
-          {type === "exercise" ? (
+          {type === "song" ? (
+            <SongSessionForm
+              token={token}
+              songId={current.id}
+              songBpm={current.song?.bpm}
+              songSeconds={current.song?.seconds}
+              songHasLead={current.song?.hasLead ?? false}
+              songHasSinging={current.song?.hasSinging ?? false}
+              initialSeconds={timerElapsed}
+              initialNotes={notes}
+              lastSession={current.lastSession}
+              onSubmit={handleFormSubmit}
+              onCancel={onFormClose}
+            />
+          ) : type === "exercise" ? (
             <ExerciseSessionForm
               token={token}
               exerciseId={current.id}
