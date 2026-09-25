@@ -20,6 +20,11 @@ export interface Region {
   bpm?: number | null;
 }
 
+/** Regions are always kept — and shown — in start-time order (ties: oldest first). */
+function sortByStart(regions: Region[]): Region[] {
+  return [...regions].sort((a, b) => a.start - b.start || a.createdAt - b.createdAt);
+}
+
 function createRegionId(): string {
   return `region-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -106,7 +111,7 @@ export function useRegions({ token, songId, onServerError }: Options) {
       section_id: sectionId,
       bpm: params.bpm ?? null,
     };
-    const next = [...regionsRef.current, newRegion];
+    const next = sortByStart([...regionsRef.current, newRegion]);
     setRegionsState(next);
     regionsRef.current = next;
     setActiveRegionId(null);
@@ -142,7 +147,7 @@ export function useRegions({ token, songId, onServerError }: Options) {
   /** Update an existing region's fields in place (e.g. new loop bounds from editing it). */
   const updateRegionAt = useCallback((id: string, patch: Partial<Omit<Region, "id" | "createdAt" | "section_id">>) => {
     const region = regionsRef.current.find(r => r.id === id);
-    const next = regionsRef.current.map(r => r.id === id ? { ...r, ...patch } : r);
+    const next = sortByStart(regionsRef.current.map(r => r.id === id ? { ...r, ...patch } : r));
     setRegionsState(next);
     regionsRef.current = next;
     if (token && region?.section_id) {
@@ -160,7 +165,7 @@ export function useRegions({ token, songId, onServerError }: Options) {
 
   /** Replace the whole list — used when applying a stored preset. */
   const loadRegions = useCallback((next: Region[] | undefined) => {
-    const list = Array.isArray(next) ? [...next] : [];
+    const list = Array.isArray(next) ? sortByStart(next) : [];
     setRegionsState(list);
     regionsRef.current = list;
     setActiveRegionId(null);
