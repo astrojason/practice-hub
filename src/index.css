@@ -1366,7 +1366,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
 }
 
 .media-player__speed-label {
@@ -1396,10 +1395,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   text-align: right;
 }
 
+/* Takes the free space between the playback controls and the speed slider (which
+ * keeps the slider right-aligned even when there's no bpm), bpm centered in it. */
 .media-player__bpm-row {
+  flex: 1;
   display: flex;
   justify-content: center;
-  padding: 4px 0;
+  min-width: 0;
 }
 
 .media-player__region-bpm {

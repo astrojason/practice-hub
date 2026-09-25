@@ -68,7 +68,7 @@ async function openPlayerAndCreateRegion(page: import("@playwright/test").Page, 
 }
 
 
-test("with no regions, the resource's own bpm is shown centered below the media, adjusted for speed", async ({ page }) => {
+test("with no regions, the resource's own bpm sits in the transport row between the playback controls and the speed slider, adjusted for speed", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
   await page.locator(".item-card").first().locator('button[title="Log session"]').click();
@@ -78,12 +78,23 @@ test("with no regions, the resource's own bpm is shown centered below the media,
   const indicator = page.locator("#regionBpmIndicator");
   await expect(indicator).toHaveText("100 BPM");
 
-  // Sits below the waveform/video area and is horizontally centered in the player.
-  const wrap = await page.locator(".media-player__canvas-wrap").boundingBox();
-  const ind = await indicator.boundingBox();
-  const player = await page.locator(".media-player").boundingBox();
-  expect(ind!.y).toBeGreaterThan(wrap!.y + wrap!.height - 1);
-  expect(Math.abs((ind!.x + ind!.width / 2) - (player!.x + player!.width / 2))).toBeLessThan(20);
+  // Same row as the playback controls and the speed slider: [controls] ---- bpm ---- [slider]
+  const ind = (await indicator.boundingBox())!;
+  const btns = (await page.locator(".media-player__transport-btns").boundingBox())!;
+  const speed = (await page.locator(".media-player__speed-group").boundingBox())!;
+  const rowCenterY = (b: { y: number; height: number }) => b.y + b.height / 2;
+  expect(Math.abs(rowCenterY(ind) - rowCenterY(btns))).toBeLessThan(ind.height);
+  expect(Math.abs(rowCenterY(ind) - rowCenterY(speed))).toBeLessThan(ind.height);
+  expect(ind.x).toBeGreaterThan(btns.x + btns.width);
+  expect(ind.x + ind.width).toBeLessThan(speed.x);
+
+  // Centered in the gap between the controls and the slider.
+  const gapCenter = (btns.x + btns.width + speed.x) / 2;
+  expect(Math.abs(ind.x + ind.width / 2 - gapCenter)).toBeLessThan(20);
+
+  // …and no longer a separate row below the waveform/video.
+  const wrap = (await page.locator(".media-player__canvas-wrap").boundingBox())!;
+  expect(ind.y).toBeLessThan(wrap.y);
 
   const speedNumberInput = page.locator(".media-player__speed-input");
   await speedNumberInput.fill("0.8");

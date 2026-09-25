@@ -1458,6 +1458,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           </button>
         </div>
 
+        {/* Centered in the space between the playback controls and the speed slider */}
+        <div className="media-player__bpm-row">
+          {activeRegionBpm != null && (
+            <span className="media-player__region-bpm" id="regionBpmIndicator" title="Active region's bpm (or the resource's, if no region has one), adjusted for the current playback speed">
+              {activeRegionBpm} BPM
+            </span>
+          )}
+        </div>
+
         <div className="media-player__speed-group">
           <label className="media-player__speed-label">Speed</label>
           <input
@@ -1535,14 +1544,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           </div>
         )}
       </div>
-
-      {activeRegionBpm != null && (
-        <div className="media-player__bpm-row">
-          <span className="media-player__region-bpm" id="regionBpmIndicator" title="Active region's bpm (or the resource's, if no region has one), adjusted for the current playback speed">
-            {activeRegionBpm} BPM
-          </span>
-        </div>
-      )}
 
       {/* Markers — sits directly under the timeline */}
       <section className="mp-section mp-markers-bar">
