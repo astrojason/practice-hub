@@ -11,6 +11,7 @@ import { useAudioEngine, assetUrl } from "./useAudioEngine";
 import { useMetronomeEngine } from "./useMetronomeEngine";
 import { useMarkers, type WaveMarker } from "./useMarkers";
 import { useRegions, type Region } from "./useRegions";
+import { PositiveIntInput } from "./PositiveIntInput";
 import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { seekVideo, getVideoTime } from "./videoSeek";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
@@ -1650,14 +1651,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   />
                   Auto-increase
                 </label>
-                <input
-                  type="number"
+                <PositiveIntInput
                   id="loopIncreaseBy"
                   className="media-player__loop-num-input"
                   min="1" max="50"
                   value={loopIncreaseBy}
-                  onChange={e => {
-                    const v = parseInt(e.target.value) || 5;
+                  onCommit={v => {
                     setLoopIncreaseByLocal(v);
                     audioActions.setLoopIncreaseBy(v);
                     schedulePresetSave();
@@ -1665,14 +1664,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   title="Percent increase"
                 />
                 <span>% every</span>
-                <input
-                  type="number"
+                <PositiveIntInput
                   id="loopIncreaseAt"
                   className="media-player__loop-num-input"
                   min="1" max="20"
                   value={loopIncreaseAt}
-                  onChange={e => {
-                    const v = parseInt(e.target.value) || 3;
+                  onCommit={v => {
                     setLoopIncreaseAtLocal(v);
                     audioActions.setLoopIncreaseAt(v);
                     schedulePresetSave();
@@ -1696,15 +1693,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   Break
                 </label>
                 <span>Pause</span>
-                <input
-                  type="number"
+                <PositiveIntInput
                   id="loopBreakDuration"
                   className="media-player__loop-num-input"
                   min="1" max="60"
                   value={loopBreakDuration}
                   disabled={!loopBreakEnabled}
-                  onChange={e => {
-                    const v = parseInt(e.target.value) || 3;
+                  onCommit={v => {
                     setLoopBreakDurationLocal(v);
                     audioActions.setLoopBreakDuration(v);
                     schedulePresetSave();
@@ -1712,15 +1707,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   title="Seconds to pause"
                 />
                 <span>sec every</span>
-                <input
-                  type="number"
+                <PositiveIntInput
                   id="loopBreakAfter"
                   className="media-player__loop-num-input"
                   min="1" max="50"
                   value={loopBreakAfter}
                   disabled={!loopBreakEnabled}
-                  onChange={e => {
-                    const v = parseInt(e.target.value) || 8;
+                  onCommit={v => {
                     setLoopBreakAfterLocal(v);
                     audioActions.setLoopBreakAfter(v);
                     schedulePresetSave();
