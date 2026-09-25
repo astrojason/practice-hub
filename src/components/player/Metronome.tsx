@@ -1,5 +1,6 @@
 import { XMarkIcon } from "@heroicons/react/16/solid";
 import { useMetronomeEngine } from "./useMetronomeEngine";
+import { PositiveIntInput } from "./PositiveIntInput";
 
 interface Props {
   onClose: () => void;
@@ -21,13 +22,14 @@ export function Metronome({ onClose }: Props) {
 
       <div className="metronome-panel__controls">
         <div className="metronome-panel__bpm-group">
-          <input
-            type="number"
+          <PositiveIntInput
             className="metronome-panel__bpm-input"
             min="40"
             max="260"
+            clampMin={40}
+            clampMax={260}
             value={bpm}
-            onChange={(e) => setBpm(Math.max(40, Math.min(260, parseInt(e.target.value) || 120)))}
+            onCommit={setBpm}
             aria-label="BPM"
           />
           <span className="metronome-panel__bpm-label">BPM</span>

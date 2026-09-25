@@ -1941,13 +1941,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   </span>
                 </div>
                 <div className="media-player__metronome-controls">
-                  <input
-                    type="number"
+                  <PositiveIntInput
                     id="metronomeBpm"
                     className="media-player__bpm-input"
                     min="40" max="260"
+                    clampMin={40} clampMax={260}
                     value={metronome.bpm}
-                    onChange={e => metronome.setBpm(Math.max(40, Math.min(260, parseInt(e.target.value) || 120)))}
+                    onCommit={metronome.setBpm}
                     title="BPM"
                   />
                   <span className="media-player__bpm-label">BPM</span>
