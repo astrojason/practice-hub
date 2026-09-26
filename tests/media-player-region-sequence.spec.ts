@@ -186,3 +186,43 @@ test("loop sequence wraps back to the first region instead of stopping", async (
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
+
+test("region name and start/end inputs follow the current region during sequence playback, and Update Region edits it", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+
+  const verseCheckbox = page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]');
+  const chorusCheckbox = page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]');
+  await verseCheckbox.check();
+  await chorusCheckbox.check();
+
+  await page.locator("#playSequenceBtn").click();
+  await page.locator('button[title="Pause"]').click();
+  await expect(page.locator("#sequenceStatus")).toContainText("1/2");
+  await expect(page.locator("#regionNameInput")).toHaveValue("Verse");
+  const verseStart = await page.locator("#loopStart").inputValue();
+  const verseEnd = await page.locator("#loopEnd").inputValue();
+
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  const timeLabel = page.locator(".media-player__time");
+  for (let i = 0; i < 9; i++) {
+    const before = await timeLabel.textContent();
+    await skipForward.click();
+    await expect(timeLabel).not.toHaveText(before ?? "");
+  }
+  await expect(page.locator("#sequenceStatus")).toContainText("2/2");
+
+  // Inputs now reflect Chorus, not Verse.
+  await expect(page.locator("#regionNameInput")).toHaveValue("Chorus");
+  await expect(page.locator("#loopStart")).not.toHaveValue(verseStart);
+  await expect(page.locator("#loopEnd")).not.toHaveValue(verseEnd);
+
+  // Updating while Chorus is current changes Chorus, leaving Verse untouched.
+  const speedInput = page.locator(".media-player__speed-input");
+  await speedInput.fill("1.25");
+  await speedInput.blur();
+  await page.locator("#updateRegionBtn").click();
+  await expect(page.locator(".mp-region-item", { hasText: "Chorus" })).toContainText("125%");
+  await expect(page.locator(".mp-region-item", { hasText: "Verse" })).toContainText("75%");
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});

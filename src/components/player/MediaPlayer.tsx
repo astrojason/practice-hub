@@ -292,6 +292,22 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   useEffect(() => { loopBreakDurationRef.current = loopBreakDuration; }, [loopBreakDuration]);
   useEffect(() => { sequenceLoopRef.current = sequenceLoop; }, [sequenceLoop]);
 
+  // ── Keep region inputs in sync with the current region ───────────────────────
+  // Sequence playback, auto-tempo and section linkage change the active region
+  // without going through applyRegion, so refresh the inputs here — otherwise
+  // "Update Region" would write stale bounds/name onto the newly current region.
+  useEffect(() => {
+    const id = regionState.activeRegionId;
+    if (!id) return;
+    const region = regionState.regionsRef.current.find(r => r.id === id);
+    if (!region) return;
+    setRegionNameInput(region.name ?? "");
+    setRegionBpmInput(region.bpm != null ? String(region.bpm) : "");
+    setLoopStartInput(formatTime(region.start));
+    setLoopEndInput(formatTime(region.end));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionState.activeRegionId]);
+
   // ── Active section linkage ────────────────────────────────────────────────────
   useEffect(() => {
     if (activeSectionId == null) return;

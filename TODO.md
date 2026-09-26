@@ -2,6 +2,8 @@
 
 ## Features
 
+- [ ] Undo for all player actions, not just region edits: region create/update/delete, region settings (tempo, etc.), and any other state-changing action in the player. Motivated by the region-update bug above, but should cover every case. History is scoped to the current resource and session: ending the session or switching to a different resource clears the undo stack (in-memory only, nothing persisted).
+
 ## Enhancements
 
 - [ ] Sync a region's bpm to the backend SongSection (needs a `practice.astrojason.com` migration + API field), so it survives clearing local storage / syncs across devices for songs. Exercises/study materials already persist region bpm locally via the player preset — no backend concept exists for their sections at all.
