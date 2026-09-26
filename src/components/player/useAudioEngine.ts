@@ -165,7 +165,6 @@ export interface PlaybackClockResult {
 
 // Exported for tests/gp-audio-clock.spec.ts, which loads this module and calls
 // it via `(mod as any).resolvePlaybackPosition(...)` — invisible to static analysis.
-// fallow-ignore-next-line unused-export
 export function resolvePlaybackPosition(
   state: PlaybackClockState,
   nowCtx: number,

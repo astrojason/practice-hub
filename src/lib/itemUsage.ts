@@ -41,7 +41,7 @@ export function mergeSessionsById<T extends { id: number; created_timestamp: num
 }
 
 /** Sum of `seconds` across sessions (already de-duplicated by the caller). */
-export function totalSessionSeconds(sessions: { seconds: number }[]): number {
+function totalSessionSeconds(sessions: { seconds: number }[]): number {
   return sessions.reduce((sum, s) => sum + (s.seconds ?? 0), 0);
 }
 
@@ -71,7 +71,7 @@ function dayKey(timestamp: number): string {
 }
 
 /** A streak token is earned each time the streak reaches a multiple of this. */
-export const STREAK_TOKEN_INTERVAL = 7;
+const STREAK_TOKEN_INTERVAL = 7;
 
 export interface StreakGap {
   /** First missed local calendar day, YYYY-MM-DD. */

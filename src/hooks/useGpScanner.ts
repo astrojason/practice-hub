@@ -38,7 +38,6 @@ const DEFAULT_ROOT = "/Users/jasonsylvester/Documents/Sheet Music";
 
 // Exported for tests/gp-filename-parse.spec.ts, which loads this module and calls
 // it via `(mod as any).parseFilename(...)` — invisible to static analysis.
-// fallow-ignore-next-line unused-export
 export function parseFilename(filename: string): {
   artist: string;
   title: string;
