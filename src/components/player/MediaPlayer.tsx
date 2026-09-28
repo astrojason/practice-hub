@@ -474,6 +474,33 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     setPresetStatusText("All changes saved");
   }, [audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions, regionState.setSelectedIds]);
 
+  // ── Auto-increase bpm flash ──────────────────────────────────────────────────
+  // When loop auto-increase bumps the speed, the region/resource bpm
+  // indicator (below) briefly shows the transition ({prev} → {next} BPM)
+  // instead of jumping straight to the new value.
+  const [bpmFlash, setBpmFlash] = useState<{ prev: number; next: number } | null>(null);
+  const bpmFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashAutoIncreaseBpm = useCallback((prevSpeed: number, nextSpeed: number) => {
+    const activeRegion = regionState.regionsRef.current.find(r => r.id === regionState.activeRegionIdRef.current);
+    const resourceBpm = resources?.find(r => r.url === filePath)?.bpm ?? null;
+    const baseBpm = activeRegion?.bpm ?? resourceBpm;
+    if (baseBpm == null) return;
+    if (bpmFlashTimerRef.current) clearTimeout(bpmFlashTimerRef.current);
+    setBpmFlash({ prev: Math.round(baseBpm * prevSpeed), next: Math.round(baseBpm * nextSpeed) });
+    bpmFlashTimerRef.current = setTimeout(() => {
+      setBpmFlash(null);
+      bpmFlashTimerRef.current = null;
+    }, 3200);
+  }, [regionState.regionsRef, regionState.activeRegionIdRef, resources, filePath]);
+
+  useEffect(() => {
+    if (!isVideo) audioActions.setOnAutoIncrease(flashAutoIncreaseBpm);
+    return () => { if (!isVideo) audioActions.setOnAutoIncrease(null); };
+  }, [isVideo, audioActions, flashAutoIncreaseBpm]);
+
+  useEffect(() => () => { if (bpmFlashTimerRef.current) clearTimeout(bpmFlashTimerRef.current); }, []);
+
   // ── Metronome ────────────────────────────────────────────────────────────────
 
   // Keep count-in callback wired into the audio engine
@@ -570,10 +597,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
         videoLoopCountRef.current++;
         if (loopIncreaseEnabledRef.current && loopIncreaseAtRef.current > 0 && videoLoopCountRef.current >= loopIncreaseAtRef.current) {
           videoLoopCountRef.current = 0;
+          const prevSpeed = speedRef.current;
           const next = Math.min(3.0, speedRef.current * (1 + loopIncreaseByRef.current / 100));
           const s = next.toFixed(2);
           setSpeedInput(s);
           speedRef.current = next;
+          flashAutoIncreaseBpm(prevSpeed, next);
           vid.preservesPitch = true;
           vid.playbackRate = next;
           schedulePresetSaveRef.current();
@@ -619,7 +648,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       vid.removeEventListener("ended", onEnded);
       if (videoBreakTimerRef.current) { clearTimeout(videoBreakTimerRef.current); videoBreakTimerRef.current = null; }
     };
-  }, [isVideo, loopEnabled, loopStartInput, loopEndInput]);
+  }, [isVideo, loopEnabled, loopStartInput, loopEndInput, flashAutoIncreaseBpm]);
 
   // ── Canvas rendering ─────────────────────────────────────────────────────────
 
@@ -1484,9 +1513,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
         {/* Centered in the space between the playback controls and the speed slider */}
         <div className="media-player__bpm-row">
-          {activeRegionBpm != null && (
+          {(bpmFlash != null || activeRegionBpm != null) && (
             <span className="media-player__region-bpm" id="regionBpmIndicator" title="Active region's bpm (or the resource's, if no region has one), adjusted for the current playback speed">
-              {activeRegionBpm} BPM
+              {bpmFlash != null ? `${bpmFlash.prev} → ${bpmFlash.next}` : activeRegionBpm} BPM
             </span>
           )}
         </div>

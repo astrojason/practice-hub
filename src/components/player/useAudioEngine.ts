@@ -42,6 +42,8 @@ export interface AudioEngineActions {
   setLoopBreakAfter: (v: number) => void;
   setLoopBreakDuration: (v: number) => void;
   setBreakCountIn: (fn: (() => Promise<void>) | null) => void;
+  /** Fired with (previousSpeed, newSpeed) whenever the loop auto-increase bumps the speed. */
+  setOnAutoIncrease: (fn: ((prevSpeed: number, nextSpeed: number) => void) | null) => void;
   destroy: () => void;
   getContext: () => AudioContext | null;
   getCurrentTime: () => number;
@@ -214,6 +216,7 @@ interface EngineRef {
   loopBreakDuration: number;
   loopBreakCount: number;
   breakCountIn: (() => Promise<void>) | null;
+  onAutoIncrease: ((prevSpeed: number, nextSpeed: number) => void) | null;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -247,6 +250,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     loopBreakDuration: 3,
     loopBreakCount: 0,
     breakCountIn: null,
+    onAutoIncrease: null,
   });
 
   const [status, setStatus] = useState<AudioEngineStatus>("idle");
@@ -348,9 +352,11 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
           const threshold = eng.loopIncreaseAt;
           if (eng.loopIncreaseEnabled && threshold > 0 && eng.loopCount >= threshold) {
             eng.loopCount = 0;
+            const prevSpeed = eng.speed;
             const next = Math.min(3.0, eng.speed * (1 + eng.loopIncreaseBy / 100));
             eng.speed = next;
             _setSpeed(next);
+            eng.onAutoIncrease?.(prevSpeed, next);
           }
 
           const restartAt = eng.loopStart ?? 0;
@@ -524,6 +530,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   const setLoopBreakAfter = useCallback((v: number) => { e.current.loopBreakAfter = v; }, []);
   const setLoopBreakDuration = useCallback((v: number) => { e.current.loopBreakDuration = v; }, []);
   const setBreakCountIn = useCallback((fn: (() => Promise<void>) | null) => { e.current.breakCountIn = fn; }, []);
+  const setOnAutoIncrease = useCallback((fn: ((prevSpeed: number, nextSpeed: number) => void) | null) => { e.current.onAutoIncrease = fn; }, []);
 
   const destroy = useCallback(() => {
     stopEngine(true);
@@ -571,6 +578,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
     setPitch, setCountIn,
     setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
+    setOnAutoIncrease,
     destroy, getContext, getCurrentTime,
   };
 
