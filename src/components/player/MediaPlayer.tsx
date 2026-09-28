@@ -1124,15 +1124,22 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   }, [isVideo, audioActions]);
 
   const applySequenceStep = useCallback((region: Region) => {
-    seekTo(region.start);
-    applySpeed(resolveDailyBoostSpeed(region).toFixed(2));
-    setLoopIncreaseByLocal(region.speedIncreasePercent);
-    audioActions.setLoopIncreaseBy(region.speedIncreasePercent);
-    setLoopIncreaseAtLocal(region.speedIncreaseInterval);
-    audioActions.setLoopIncreaseAt(region.speedIncreaseInterval);
-    regionState.setActiveRegionId(region.id);
+    // `region` may be a snapshot captured back when the sequence started
+    // (sequenceOrderRef.current isn't refreshed while a sequence plays), so
+    // it can go stale the moment resolveDailyBoostSpeed mutates the region —
+    // re-fetch the live copy before checking/applying the daily boost, or a
+    // looping sequence re-nudges (and re-announces) it on every lap instead
+    // of once per day.
+    const live = regionState.regionsRef.current.find(r => r.id === region.id) ?? region;
+    seekTo(live.start);
+    applySpeed(resolveDailyBoostSpeed(live).toFixed(2));
+    setLoopIncreaseByLocal(live.speedIncreasePercent);
+    audioActions.setLoopIncreaseBy(live.speedIncreasePercent);
+    setLoopIncreaseAtLocal(live.speedIncreaseInterval);
+    audioActions.setLoopIncreaseAt(live.speedIncreaseInterval);
+    regionState.setActiveRegionId(live.id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seekTo, audioActions, regionState.setActiveRegionId, resolveDailyBoostSpeed]);
+  }, [seekTo, audioActions, regionState.setActiveRegionId, regionState.regionsRef, resolveDailyBoostSpeed]);
 
   const stopSequence = useCallback(() => {
     sequenceOrderRef.current = [];

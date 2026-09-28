@@ -132,6 +132,65 @@ test("a region with the daily +1% boost enabled nudges its saved speed up once a
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
 
+test("a looping sequence's daily boost nudges a region only once per day, not on every lap", async ({ page }) => {
+  await openPlayer(page);
+  await page.locator('button[title="Pause"]').click();
+
+  const speedInput = page.locator(".media-player__speed-input");
+  await speedInput.fill("0.5");
+  await speedInput.blur();
+  await expect(page.locator("#speedIndicator")).toHaveText("50%");
+
+  // A short region (~0.15s of the 3s clip) so a handful of skip-forward
+  // clicks can cross its end and wrap the loop sequence several times.
+  await page.locator('button[title="Set from playhead"]').first().click();
+  await page.locator('button[title="Skip forward 5%"]').click();
+  await page.locator('button[title="Set from playhead"]').nth(1).click();
+  await page.fill("#regionNameInput", "Verse");
+  await page.locator("#addRegionBtn").click();
+
+  const regionItem = page.locator(".mp-region-item", { hasText: "Verse" });
+  await expect(regionItem).toBeVisible();
+  await regionItem.locator('[data-region-action="daily-boost"]').click();
+  await expect(regionItem.locator(".mp-region-meta")).toContainText("+1%/day");
+
+  await backdateRegionBoost(page, "Verse");
+  await page.reload();
+  await openPlayer(page);
+  await page.locator('button[title="Pause"]').click();
+
+  const regionItemAfterReload = page.locator(".mp-region-item", { hasText: "Verse" });
+  await expect(regionItemAfterReload).toBeVisible();
+  await regionItemAfterReload.locator('input[type="checkbox"]').check();
+  await page.locator("#sequenceLoopToggle").check();
+  await page.locator("#playSequenceBtn").click();
+  await page.locator('button[title="Pause"]').click();
+
+  // Starting the sequence applies today's first (and only) nudge: 50% → 51%,
+  // announced with exactly one toast.
+  await expect(page.locator("#speedIndicator")).toHaveText("51%");
+  await expect(regionItemAfterReload.locator(".mp-region-meta")).toContainText("51%");
+  await expect(page.locator(".mp-toast", { hasText: "daily +1%" })).toHaveCount(1);
+
+  // Loop the sequence around several times, same day, no reload in between —
+  // the boost must not reapply (and re-announce) on every lap. A stale
+  // snapshot of the region captured when the sequence started would keep
+  // failing the "already boosted today" check on every lap, firing a fresh
+  // "nudged... (daily +1%)" toast each time even though the percentage
+  // itself doesn't visibly move — this is the actual bug being caught here.
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  for (let i = 0; i < 10; i++) {
+    await skipForward.click();
+    await page.waitForTimeout(80);
+  }
+
+  await expect(page.locator("#speedIndicator")).toHaveText("51%");
+  await expect(regionItemAfterReload.locator(".mp-region-meta")).toContainText("51%");
+  await expect(page.locator(".mp-toast", { hasText: "daily +1%" })).toHaveCount(1);
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
 test("the daily boost never pushes a region's speed past 100%", async ({ page }) => {
   await openPlayer(page);
   await page.locator('button[title="Pause"]').click();
