@@ -89,13 +89,35 @@ test("the bpm indicator flashes {prev} → {next} when the loop auto-increases t
 
   // Once the tempo has auto-increased at least once, the indicator briefly
   // shows the transition instead of jumping straight to the new value.
-  await expect(indicator).toHaveText(/^\d+ → \d+ BPM$/, { timeout: 8000 });
+  await expect(indicator).toHaveText(/^\d+\.\d{2} → \d+\.\d{2} BPM$/, { timeout: 8000 });
 
-  // Stop further loops so nothing else triggers an increase, then wait past
-  // the flash's display window — it settles back to a plain "<bpm> BPM".
+  // Stop further loops so nothing else triggers an increase. The flash must stay
+  // readable mid-practice (well past the old ~3s), then settle to a plain value.
   await page.locator('button[title="Pause"]').click();
-  await page.waitForTimeout(3500);
-  await expect(indicator).toHaveText(/^\d+ BPM$/);
+  await page.waitForTimeout(5000);
+  await expect(indicator).toHaveText(/→/);
+  await expect(indicator).toHaveText(/^\d+ BPM$/, { timeout: 10000 });
 
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("with no bpm set, the auto-increase still flashes the speed change so it is visibly happening", async ({ page }) => {
+  await page.route("**/user/dashboard**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      ...mockDashboard,
+      exercises: mockDashboard.exercises.map((e) => ({ ...e, resources: e.resources.map(({ bpm: _bpm, ...r }) => r) })),
+    }),
+  }));
+  await page.reload();
+  await openPlayerWithShortLoop(page);
+
+  await page.locator("#loopPlayback").check();
+  await page.locator("#loopIncrease").check();
+  await page.fill("#loopIncreaseBy", "10");
+  await page.fill("#loopIncreaseAt", "1");
+  await page.locator('button[title="Play"]').click();
+
+  await expect(page.locator("#regionBpmIndicator")).toHaveText(/^\d+(\.\d+)?% → \d+(\.\d+)?%$/, { timeout: 8000 });
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });

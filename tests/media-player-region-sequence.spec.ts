@@ -226,3 +226,162 @@ test("region name and start/end inputs follow the current region during sequence
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
+
+test("finishing a sequence and reopening the resource does not restore the last region's bounds", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+
+  await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
+  await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
+  await page.locator("#playSequenceBtn").click();
+  await page.locator('button[title="Pause"]').click();
+  await expect(page.locator("#sequenceStatus")).toContainText("1/2");
+
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  for (let i = 0; i < 18; i++) {
+    await skipForward.click();
+    await page.waitForTimeout(80);
+  }
+  await expect(page.locator("#sequenceStatus")).toHaveCount(0);
+
+  await page.locator('button[title="Close player"]').click();
+  await expect(page.locator(".media-player")).toHaveCount(0);
+
+  // The saved preset must not carry the last step's bounds, or the next load
+  // re-selects that region. (Asserted on storage, not the reopened UI: the
+  // track auto-plays on load and can legitimately re-enter a checked region.)
+  const saved = await page.evaluate(() => {
+    const all = Object.values(JSON.parse(localStorage.getItem(Object.keys(localStorage).find((k) => /preset/i.test(k)) ?? "") ?? "{}")) as Array<{ loopStart: string; loopEnd: string; loopPlaybackEnabled: boolean }>;
+    return all[0];
+  });
+  expect(saved.loopStart).toBe("");
+  expect(saved.loopEnd).toBe("");
+  expect(saved.loopPlaybackEnabled).toBe(true);
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("loop sequence of a region spanning the whole resource wraps back to the start", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  await page.locator(".item-card").first().locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await expect(page.locator(".media-player__time")).toContainText("0:03", { timeout: 10000 });
+
+  await page.fill("#regionNameInput", "Whole");
+  await page.locator("#addRegionBtn").click();
+  const item = page.locator(".mp-region-item", { hasText: "Whole" });
+  await expect(item).toBeVisible();
+  await item.locator('input[type="checkbox"]').check();
+  await page.locator("#sequenceLoopToggle").check();
+  await page.locator("#playSequenceBtn").click();
+  await expect(page.locator("#sequenceStatus")).toContainText("1/1");
+
+  // The 3s clip must reach its end and wrap: the sequence keeps running and
+  // the player is still playing well after one full pass.
+  await page.waitForTimeout(4500);
+  await expect(page.locator("#playSequenceBtn")).toContainText("Stop Sequence");
+  await expect(page.locator('button[title="Pause"]')).toBeVisible();
+});
+
+test("a region with count-in on, played at a non-100% speed, pauses for a metronome count-in then resumes", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+
+  await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
+  await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
+  await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('[data-region-action="count-in"]').click();
+
+  await page.locator("#playSequenceBtn").click();
+  await page.locator('button[title="Pause"]').click();
+  await expect(page.locator("#sequenceStatus")).toContainText("1/2");
+  // Verse has no count-in, so none is running.
+  await expect(page.locator("#countInIndicator")).toHaveCount(0);
+
+  const skipForward = page.locator('button[title="Skip forward 5%"]');
+  const timeLabel = page.locator(".media-player__time");
+  for (let i = 0; i < 9; i++) {
+    const before = await timeLabel.textContent();
+    await skipForward.click();
+    await expect(timeLabel).not.toHaveText(before ?? "");
+  }
+  await expect(page.locator("#sequenceStatus")).toContainText("2/2");
+  await expect(page.locator("#countInIndicator")).toBeVisible();
+  await expect(page.locator('button[title="Play"]')).toBeVisible();
+
+  // After the count, playback resumes.
+  await expect(page.locator("#countInIndicator")).toHaveCount(0, { timeout: 10000 });
+  await expect(page.locator('button[title="Pause"]')).toBeVisible();
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("loop In/Out can be nudged in fine steps, by buttons and arrow keys", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+  const secs = (v: string) => { const [m, s] = v.split(":"); return Number(m) * 60 + Number(s); };
+  const startInput = page.locator("#loopStart");
+  const endInput = page.locator("#loopEnd");
+  await page.locator('button[title="Go to loop start"]').click().catch(() => {});
+  await page.locator('button[title="Set from playhead"]').first().click();
+  for (let i = 0; i < 6; i++) {
+    const before = await page.locator(".media-player__time").textContent();
+    await page.locator('button[title="Skip forward 5%"]').click();
+    await expect(page.locator(".media-player__time")).not.toHaveText(before ?? "");
+  }
+  await page.locator('button[title="Set from playhead"]').nth(1).click();
+
+  const s0 = secs(await startInput.inputValue());
+  await page.locator('[data-loop-nudge="start:+0.1"]').click();
+  await expect.poll(async () => secs(await startInput.inputValue())).toBeCloseTo(s0 + 0.1, 2);
+  await page.locator('[data-loop-nudge="start:-0.01"]').click();
+  await expect.poll(async () => secs(await startInput.inputValue())).toBeCloseTo(s0 + 0.09, 2);
+
+  const e0 = secs(await endInput.inputValue());
+  await page.locator('[data-loop-nudge="end:-0.1"]').click();
+  await expect.poll(async () => secs(await endInput.inputValue())).toBeCloseTo(e0 - 0.1, 2);
+  await endInput.focus();
+  await endInput.press("ArrowUp");
+  await expect.poll(async () => secs(await endInput.inputValue())).toBeCloseTo(e0 - 0.09, 2);
+
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("the count-in indicator shows in the transport bpm row", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+  await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
+  await page.locator(".mp-region-item", { hasText: "Verse" }).locator('[data-region-action="count-in"]').click();
+  await page.locator("#playSequenceBtn").click();
+  await expect(page.locator(".media-player__bpm-row #countInIndicator")).toBeVisible();
+});
+
+test("all regions can be opened in a modal and their names, starts and ends edited together", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+
+  await page.locator("#editRegionsBtn").click();
+  const modal = page.locator('[data-testid="regions-modal"]');
+  await expect(modal).toBeVisible();
+  const rows = modal.locator("[data-regions-modal-row]");
+  await expect(rows).toHaveCount(2);
+
+  // An end at or before the start is rejected inline and nothing is saved.
+  await rows.nth(0).locator('[data-field="end"]').fill("0:00");
+  await modal.locator("#saveRegionsModalBtn").click();
+  await expect(modal.locator(".regions-modal__error")).toBeVisible();
+  await expect(modal).toBeVisible();
+
+  await rows.nth(0).locator('[data-field="name"]').fill("Intro");
+  await rows.nth(0).locator('[data-field="end"]').fill("0:01");
+  await rows.nth(1).locator('[data-field="start"]').fill("0:01.25");
+  await modal.locator("#saveRegionsModalBtn").click();
+  await expect(modal).toHaveCount(0);
+
+  const intro = page.locator(".mp-region-item", { hasText: "Intro" });
+  await expect(intro).toContainText("0:01");
+  await expect(page.locator(".mp-region-item", { hasText: "Chorus" })).toContainText("0:01.25");
+  await expect(page.locator(".mp-region-item", { hasText: "Verse" })).toHaveCount(0);
+
+  // Escape closes without saving.
+  await page.locator("#editRegionsBtn").click();
+  await modal.locator("[data-regions-modal-row]").nth(0).locator('[data-field="name"]').fill("Discarded");
+  await page.keyboard.press("Escape");
+  await expect(modal).toHaveCount(0);
+  await expect(page.locator(".mp-region-item", { hasText: "Discarded" })).toHaveCount(0);
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});

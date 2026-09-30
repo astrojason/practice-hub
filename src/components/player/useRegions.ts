@@ -18,6 +18,8 @@ export interface Region {
   lastBoostDate?: string;
   /** The region's own native tempo, independent of playback speed — e.g. "this riff is 120 BPM". */
   bpm?: number | null;
+  /** Pause for a metronome count-in before this region plays in a sequence, when its speed isn't 100%. */
+  countIn?: boolean;
 }
 
 /** Regions are always kept — and shown — in start-time order (ties: oldest first). */

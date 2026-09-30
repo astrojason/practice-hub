@@ -2909,3 +2909,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .lb-name { flex: 1; }
 .lb-time { font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .lb-me-summary { margin-top: 14px; color: var(--accent-light); font-weight: 600; }
+
+.regions-modal { width: min(560px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
+.regions-modal__body { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.regions-modal__row { display: grid; grid-template-columns: 1fr 90px 90px; gap: 6px; }
+.regions-modal__head { font-size: 0.75rem; opacity: 0.7; }
+.regions-modal__error { color: var(--danger, #e5484d); margin: 4px 0; font-size: 0.85rem; }

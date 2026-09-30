@@ -11,6 +11,7 @@ import { useAudioEngine, assetUrl } from "./useAudioEngine";
 import { useMetronomeEngine } from "./useMetronomeEngine";
 import { useMarkers, type WaveMarker } from "./useMarkers";
 import { useRegions, type Region } from "./useRegions";
+import { RegionsEditorModal, type RegionEdit } from "./RegionsEditorModal";
 import { PositiveIntInput } from "./PositiveIntInput";
 import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { seekVideo, getVideoTime } from "./videoSeek";
@@ -380,8 +381,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
   const schedulePresetSave = useCallback(() => {
     if (presetSaveTimerRef.current) clearTimeout(presetSaveTimerRef.current);
-    presetSaveTimerRef.current = setTimeout(savePreset, 400);
-  }, [savePreset]);
+    presetSaveTimerRef.current = setTimeout(() => savePresetRef.current(), 400);
+  }, []);
 
   useEffect(() => { schedulePresetSaveRef.current = schedulePresetSave; }, [schedulePresetSave]);
   useEffect(() => { savePresetRef.current = savePreset; }, [savePreset]);
@@ -478,20 +479,23 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   // When loop auto-increase bumps the speed, the region/resource bpm
   // indicator (below) briefly shows the transition ({prev} → {next} BPM)
   // instead of jumping straight to the new value.
-  const [bpmFlash, setBpmFlash] = useState<{ prev: number; next: number } | null>(null);
+  const [bpmFlash, setBpmFlash] = useState<{ prev: string; next: string; unit: "BPM" | "" } | null>(null);
   const bpmFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flashAutoIncreaseBpm = useCallback((prevSpeed: number, nextSpeed: number) => {
     const activeRegion = regionState.regionsRef.current.find(r => r.id === regionState.activeRegionIdRef.current);
     const resourceBpm = resources?.find(r => r.url === filePath)?.bpm ?? null;
     const baseBpm = activeRegion?.bpm ?? resourceBpm;
-    if (baseBpm == null) return;
     if (bpmFlashTimerRef.current) clearTimeout(bpmFlashTimerRef.current);
-    setBpmFlash({ prev: Math.round(baseBpm * prevSpeed), next: Math.round(baseBpm * nextSpeed) });
+    // Two decimals (bpm) / speed percent so small steps stay visible even when
+    // the rounded effective bpm doesn't change; with no bpm known, show speed.
+    setBpmFlash(baseBpm != null
+      ? { prev: (baseBpm * prevSpeed).toFixed(2), next: (baseBpm * nextSpeed).toFixed(2), unit: "BPM" }
+      : { prev: `${+(prevSpeed * 100).toFixed(1)}%`, next: `${+(nextSpeed * 100).toFixed(1)}%`, unit: "" });
     bpmFlashTimerRef.current = setTimeout(() => {
       setBpmFlash(null);
       bpmFlashTimerRef.current = null;
-    }, 3200);
+    }, 10000);
   }, [regionState.regionsRef, regionState.activeRegionIdRef, resources, filePath]);
 
   useEffect(() => {
@@ -529,6 +533,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   useEffect(() => {
     metronome.stop();
     sequenceOrderRef.current = [];
+    countInTokenRef.current++;
+    setCountingIn(false);
     setSequenceActive(false);
     setSequenceIndex(0);
     const preset = presetsRef.current[filePath];
@@ -957,6 +963,22 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     schedulePresetSave();
   };
 
+  /** Fine-adjust a loop point by `delta` seconds (clamped to the resource). */
+  const nudgeLoopPoint = (which: "start" | "end", delta: number) => {
+    if (dur <= 0) return;
+    const cur = which === "start"
+      ? parseTimeInput(loopStartInput, dur) ?? 0
+      : parseTimeInput(loopEndInput, dur) ?? dur;
+    const next = Math.max(0, Math.min(dur, Math.round((cur + delta) * 1000) / 1000));
+    (which === "start" ? commitLoopStart : commitLoopEnd)(String(next));
+  };
+
+  const nudgeKeyHandler = (which: "start" | "end") => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    nudgeLoopPoint(which, (e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 0.1 : 0.01));
+  };
+
   const setLoopPointFromPlayhead = (which: "start" | "end") => {
     if (dur <= 0) return;
     if (which === "start") {
@@ -1063,6 +1085,38 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     showToast(next ? `"${region.name}" will nudge up 1% each day.` : `"${region.name}" daily boost turned off.`, { icon: "📈" });
   };
 
+  const toggleRegionCountIn = (id: string) => {
+    const region = regionState.regionsRef.current.find(r => r.id === id);
+    if (!region) return;
+    const next = !region.countIn;
+    regionState.updateRegionAt(id, { countIn: next });
+    savePreset({ silent: true });
+    showToast(next ? `"${region.name}" will count in before it plays (when not at 100%).` : `"${region.name}" count-in turned off.`, { icon: "🥁" });
+  };
+
+  const [regionsModalOpen, setRegionsModalOpen] = useState(false);
+
+  const saveRegionEdits = (edits: RegionEdit[]) => {
+    for (const edit of edits) {
+      const existing = regionState.regionsRef.current.find(r => r.id === edit.id);
+      if (!existing) continue;
+      if (existing.name === edit.name && existing.start === edit.start && existing.end === edit.end) continue;
+      regionState.updateRegionAt(edit.id, { name: edit.name, start: edit.start, end: edit.end });
+    }
+    // Keep the live loop inputs in step if the applied region moved.
+    const active = regionState.regionsRef.current.find(r => r.id === regionState.activeRegionIdRef.current);
+    if (active) {
+      setRegionNameInput(active.name ?? "");
+      setLoopStartInput(formatTime(active.start));
+      setLoopEndInput(formatTime(active.end));
+      audioActions.setLoopStart(active.start);
+      audioActions.setLoopEnd(active.end);
+    }
+    setRegionsModalOpen(false);
+    setPresetStatus("Regions updated");
+    savePreset({ silent: true });
+  };
+
   const applyRegion = (id: string) => {
     if (sequenceActiveRef.current) stopSequence();
     if (regionState.activeRegionIdRef.current === id) {
@@ -1152,7 +1206,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     else audioActions.seek(t);
   }, [isVideo, audioActions]);
 
-  const applySequenceStep = useCallback((region: Region) => {
+  const currentTimeRef = useRef(0);
+  currentTimeRef.current = currentTime;
+  const countInTokenRef = useRef(0);
+  const [countingIn, setCountingIn] = useState(false);
+
+  const applySequenceStep = useCallback((region: Region): boolean => {
     // `region` may be a snapshot captured back when the sequence started
     // (sequenceOrderRef.current isn't refreshed while a sequence plays), so
     // it can go stale the moment resolveDailyBoostSpeed mutates the region —
@@ -1160,20 +1219,51 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     // looping sequence re-nudges (and re-announces) it on every lap instead
     // of once per day.
     const live = regionState.regionsRef.current.find(r => r.id === region.id) ?? region;
-    seekTo(live.start);
-    applySpeed(resolveDailyBoostSpeed(live).toFixed(2));
+    const speed = resolveDailyBoostSpeed(live);
+    const needsCountIn = Boolean(live.countIn) && Math.abs(speed - 1) > 0.001;
+    if (needsCountIn) {
+      if (isVideo) videoRef.current?.pause();
+      else audioActions.pause();
+    }
+    // Contiguous regions play straight through: re-seeking to a start the
+    // playhead is already at restarts the audio engine and audibly stutters.
+    const contiguous = !needsCountIn && Math.abs(currentTimeRef.current - live.start) <= 0.1;
+    if (!contiguous) seekTo(live.start);
+    applySpeed(speed.toFixed(2));
     setLoopIncreaseByLocal(live.speedIncreasePercent);
     audioActions.setLoopIncreaseBy(live.speedIncreasePercent);
     setLoopIncreaseAtLocal(live.speedIncreaseInterval);
     audioActions.setLoopIncreaseAt(live.speedIncreaseInterval);
     regionState.setActiveRegionId(live.id);
+    if (!needsCountIn) return false;
+    const token = ++countInTokenRef.current;
+    setCountingIn(true);
+    metronome.performCountIn().then(() => {
+      if (countInTokenRef.current !== token) return;
+      setCountingIn(false);
+      if (!sequenceActiveRef.current) return;
+      if (isVideo) videoRef.current?.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
+      else audioActions.play();
+    });
+    return true;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seekTo, audioActions, regionState.setActiveRegionId, regionState.regionsRef, resolveDailyBoostSpeed]);
+  }, [seekTo, audioActions, regionState.setActiveRegionId, regionState.regionsRef, resolveDailyBoostSpeed, metronome.performCountIn]);
 
   const stopSequence = useCallback(() => {
     sequenceOrderRef.current = [];
     setSequenceActive(false);
     regionState.setActiveRegionId(null);
+    // Drop the last step's bounds/name (and the loop-off startSequence set) so
+    // they aren't saved into the preset and re-selected on the next load.
+    setLoopStartInput("");
+    setLoopEndInput("");
+    audioActions.setLoopStart(null);
+    audioActions.setLoopEnd(null);
+    setLoopEnabledLocal(true);
+    audioActions.setLoopEnabled(true);
+    setRegionNameInput("");
+    setRegionBpmInput("");
+    schedulePresetSave();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSequenceActive, regionState.setActiveRegionId]);
 
@@ -1189,9 +1279,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     setSequenceActive(true);
     setLoopEnabledLocal(false);
     audioActions.setLoopEnabled(false);
-    applySequenceStep(order[0]);
-    if (isVideo) videoRef.current?.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
-    else audioActions.play();
+    // A count-in step starts playback itself once the count finishes.
+    if (!applySequenceStep(order[0])) {
+      if (isVideo) videoRef.current?.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
+      else audioActions.play();
+    }
     showToast(`Sequence started · ${order.length} region${order.length !== 1 ? "s" : ""}.`, { icon: "▶" });
     schedulePresetSave();
   };
@@ -1212,6 +1304,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     } else if (sequenceLoopRef.current) {
       setSequenceIndex(0);
       applySequenceStep(order[0]);
+      // A region reaching the very end of a video leaves it ended/paused.
+      if (isVideo && videoRef.current?.paused) videoRef.current.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
     } else {
       stopSequence();
       if (isVideo) videoRef.current?.pause();
@@ -1371,6 +1465,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
   return (
     <div className="media-player" data-testid="media-player">
+      {regionsModalOpen && (
+        <RegionsEditorModal
+          regions={regionState.regions}
+          formatTime={formatTime}
+          parseTime={text => parseTimeInput(text, dur)}
+          onSave={saveRegionEdits}
+          onClose={() => setRegionsModalOpen(false)}
+        />
+      )}
       {persistError && <ErrorModal error={persistError} onDismiss={() => setPersistError(null)} />}
 
       {/* Toasts */}
@@ -1513,9 +1616,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
         {/* Centered in the space between the playback controls and the speed slider */}
         <div className="media-player__bpm-row">
-          {(bpmFlash != null || activeRegionBpm != null) && (
+          {countingIn && <span className="media-player__region-bpm" id="countInIndicator">🥁 Counting in…</span>}
+          {!countingIn && (bpmFlash != null || activeRegionBpm != null) && (
             <span className="media-player__region-bpm" id="regionBpmIndicator" title="Active region's bpm (or the resource's, if no region has one), adjusted for the current playback speed">
-              {bpmFlash != null ? `${bpmFlash.prev} → ${bpmFlash.next}` : activeRegionBpm} BPM
+              {bpmFlash != null ? `${bpmFlash.prev} → ${bpmFlash.next}${bpmFlash.unit && ` ${bpmFlash.unit}`}` : `${activeRegionBpm} BPM`}
             </span>
           )}
         </div>
@@ -1656,8 +1760,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     value={loopStartInput}
                     onChange={e => setLoopStartInput(e.target.value)}
                     onBlur={e => commitLoopStart(e.target.value)}
+                    onKeyDown={nudgeKeyHandler("start")}
                   />
                   <button className="btn-ghost btn-xs" onClick={() => setLoopPointFromPlayhead("start")} title="Set from playhead">◁</button>
+                  {(["-0.1", "-0.01", "+0.01", "+0.1"] as const).map(d => (
+                    <button key={d} className="btn-ghost btn-xs" data-loop-nudge={`start:${d}`} title={`Move start ${d}s (↑/↓ in the field: 0.01s, Shift 0.1s)`} onClick={() => nudgeLoopPoint("start", Number(d))}>{d}</button>
+                  ))}
                 </div>
                 <div className="media-player__loop-field">
                   <label>Out</label>
@@ -1669,8 +1777,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     value={loopEndInput}
                     onChange={e => setLoopEndInput(e.target.value)}
                     onBlur={e => commitLoopEnd(e.target.value)}
+                    onKeyDown={nudgeKeyHandler("end")}
                   />
                   <button className="btn-ghost btn-xs" onClick={() => setLoopPointFromPlayhead("end")} title="Set from playhead">▷</button>
+                  {(["-0.1", "-0.01", "+0.01", "+0.1"] as const).map(d => (
+                    <button key={d} className="btn-ghost btn-xs" data-loop-nudge={`end:${d}`} title={`Move end ${d}s (↑/↓ in the field: 0.01s, Shift 0.1s)`} onClick={() => nudgeLoopPoint("end", Number(d))}>{d}</button>
+                  ))}
                 </div>
               </div>
               <div className="mp-row">
@@ -1821,6 +1933,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
             <section className="mp-section">
               <div className="mp-section-header">
                 <span className="mp-section-label">Regions</span>
+                {regionState.regions.length > 0 && (
+                  <button className="btn-ghost btn-xs" id="editRegionsBtn" onClick={() => setRegionsModalOpen(true)} title="Edit all regions' names, starts and ends">Edit all</button>
+                )}
                 {regionState.activeRegionId && (
                   <button
                     className="btn-ghost btn-xs"
@@ -1914,6 +2029,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                         <div className="mp-region-meta">
                           {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{bpmStr}{incStr}
                           {region.dailyBoostEnabled ? " · 📈 +1%/day" : ""}
+                          {region.countIn ? " · 🥁 count-in" : ""}
                         </div>
                         <div className="mp-region-actions">
                           <button
@@ -1926,6 +2042,17 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                             }}
                           >
                             📈{region.dailyBoostEnabled ? " On" : ""}
+                          </button>
+                          <button
+                            className={`btn-ghost btn-xs ${region.countIn ? "is-active" : ""}`}
+                            data-region-action="count-in"
+                            title="Count-in — when this region plays in a sequence at a speed other than 100%, pause for a 4-count metronome, then resume"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRegionCountIn(region.id);
+                            }}
+                          >
+                            🥁{region.countIn ? " On" : ""}
                           </button>
                           <button className="btn-ghost btn-xs" data-region-action="rename" onClick={(e) => {
                             e.stopPropagation();

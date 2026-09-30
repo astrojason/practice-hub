@@ -100,7 +100,11 @@ test("editing a region's loop bounds and clicking Update Region changes it in pl
 
   // Region: 0 -> ~0.9s
   await setFromPlayhead.first().click();
-  for (let i = 0; i < 6; i++) await skipForward.click();
+  for (let i = 0; i < 6; i++) {
+    const before = await page.locator(".media-player__time").textContent();
+    await skipForward.click();
+    await expect(page.locator(".media-player__time")).not.toHaveText(before ?? "");
+  }
   await setFromPlayhead.nth(1).click();
   await page.fill("#regionNameInput", "Verse");
   await page.locator("#addRegionBtn").click();
