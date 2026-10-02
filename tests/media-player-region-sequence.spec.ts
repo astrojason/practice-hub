@@ -385,3 +385,61 @@ test("all regions can be opened in a modal and their names, starts and ends edit
   await expect(page.locator(".mp-region-item", { hasText: "Discarded" })).toHaveCount(0);
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
+
+// Whole-resource looping is a user-owned toggle: starting/stopping a sequence
+// must never change it (previously Stop/finish force-enabled it).
+test("stopping a sequence leaves whole-resource looping as the user set it (off)", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+  await page.locator("#loopPlayback").uncheck();
+  await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
+  await page.locator("#playSequenceBtn").click();
+  await expect(page.locator("#sequenceStatus")).toBeVisible();
+  await page.locator("#playSequenceBtn").click(); // Stop Sequence
+  await expect(page.locator("#sequenceStatus")).toHaveCount(0);
+  await expect(page.locator("#loopPlayback")).not.toBeChecked();
+});
+
+test("a sequence doesn't change the loop toggle when it's on, and the toggle is restored-as-is after", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+  await expect(page.locator("#loopPlayback")).toBeChecked();
+  await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
+  await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
+  await page.locator("#playSequenceBtn").click();
+  await expect(page.locator("#sequenceStatus")).toContainText("1/2");
+  // Locked while the sequence runs, but still showing the user's own setting.
+  await expect(page.locator("#loopPlayback")).toBeDisabled();
+  await expect(page.locator("#loopPlayback")).toBeChecked();
+  await page.locator("#playSequenceBtn").click();
+  await expect(page.locator("#loopPlayback")).toBeEnabled();
+  await expect(page.locator("#loopPlayback")).toBeChecked();
+});
+
+test("with the loop toggle on, a sequence still advances to the next region instead of repeating the first", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+  await expect(page.locator("#loopPlayback")).toBeChecked();
+  await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
+  await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
+  await page.locator("#sequenceLoopToggle").check();
+  await page.locator("#playSequenceBtn").click();
+  // Verse is ~1.2s at 75%; real-time playback must move on to Chorus, not loop Verse.
+  await expect(page.locator("#sequenceStatus")).toContainText("2/2", { timeout: 6000 });
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+// Presence in the DOM isn't enough: once the .error-modal styles were lost, the
+// modal rendered unstyled below the app, so "Edit all" looked like it did nothing.
+test("Edit all shows the regions modal as a visible overlay within the viewport", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+  await page.locator("#editRegionsBtn").click();
+  const modal = page.locator('[data-testid="regions-modal"]');
+  await expect(modal).toBeVisible();
+  await expect(page.locator(".error-modal-overlay")).toHaveCSS("position", "fixed");
+  const box = await modal.boundingBox();
+  const vp = page.viewportSize()!;
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(vp.height);
+  // Topmost element at the modal's centre is the modal itself (not covered by the app).
+  const onTop = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[data-testid="regions-modal"]'), { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 });
+  expect(onTop).toBe(true);
+});

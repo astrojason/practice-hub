@@ -1,3 +1,4 @@
+import { silentWav } from "./fixtures/silentWav";
 import { test, expect } from "./base";
 
 // ─── Mock fixtures ────────────────────────────────────────────────────────────
@@ -94,8 +95,8 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/127.0.0.1:17865/**", (route) =>
     route.fulfill({
       status: 200,
-      headers: { "Content-Type": "audio/mpeg" },
-      body: Buffer.from([]),
+      headers: { "Content-Type": "audio/wav" },
+      body: silentWav(),
     })
   );
 

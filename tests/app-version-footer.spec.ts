@@ -1,3 +1,4 @@
+import { silentWav } from "./fixtures/silentWav";
 import { test, expect } from "./base";
 import fs from "fs";
 import path from "path";
@@ -31,7 +32,7 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
-  await page.route("**/127.0.0.1:17865/**", (route) => route.fulfill({ status: 200, headers: { "Content-Type": "audio/mpeg" }, body: Buffer.from([]) }));
+  await page.route("**/127.0.0.1:17865/**", (route) => route.fulfill({ status: 200, headers: { "Content-Type": "audio/wav" }, body: silentWav() }));
   await page.goto("/");
 });
 

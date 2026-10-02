@@ -1,3 +1,4 @@
+import { silentWav } from "./fixtures/silentWav";
 import { test, expect } from "./base";
 
 const mockUser = {
@@ -74,7 +75,7 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) })
   );
   await page.route("**/127.0.0.1:17865/**", (route) =>
-    route.fulfill({ status: 200, headers: { "Content-Type": "audio/mpeg" }, body: Buffer.from([]) })
+    route.fulfill({ status: 200, headers: { "Content-Type": "audio/wav" }, body: silentWav() })
   );
 
   await page.goto("/");

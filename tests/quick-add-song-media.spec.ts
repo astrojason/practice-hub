@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { test, expect } from "./base";
 
 const mockUser = {
@@ -66,9 +69,21 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/dashboard**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) })
   );
-  await page.route("**/127.0.0.1:17865/**", (route) =>
-    route.fulfill({ status: 200, headers: { "Content-Type": "video/mp4" }, body: Buffer.from([]) })
-  );
+  // A real (tiny) mp4 with range support — an undecodable body now surfaces the load-error modal.
+  const videoBuf = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "test-video.mp4"));
+  await page.route("**/127.0.0.1:17865/**", (route) => {
+    const m = /bytes=(\d+)-(\d*)/.exec(route.request().headers()["range"] ?? "");
+    if (m) {
+      const start = parseInt(m[1], 10);
+      const end = m[2] ? parseInt(m[2], 10) : videoBuf.length - 1;
+      return route.fulfill({
+        status: 206,
+        headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${videoBuf.length}` },
+        body: videoBuf.subarray(start, end + 1),
+      });
+    }
+    return route.fulfill({ status: 200, headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes" }, body: videoBuf });
+  });
 
   await page.goto("/");
 });

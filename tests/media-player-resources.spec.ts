@@ -1,3 +1,4 @@
+import { silentWav } from "./fixtures/silentWav";
 import { test, expect } from "./base";
 
 // ─── Mock fixtures ────────────────────────────────────────────────────────────
@@ -68,12 +69,13 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) })
   );
 
-  // Mock the local file server so fetching audio doesn't fail.
+  // Mock the local file server with a decodable (silent) WAV so loading doesn't
+  // fail — an undecodable body now surfaces the load-error modal over the player.
   await page.route("**/127.0.0.1:17865/**", (route) =>
     route.fulfill({
       status: 200,
-      headers: { "Content-Type": "audio/mpeg" },
-      body: Buffer.from([]),
+      headers: { "Content-Type": "audio/wav" },
+      body: silentWav(),
     })
   );
 

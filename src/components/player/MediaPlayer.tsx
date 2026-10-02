@@ -243,6 +243,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     sequenceIndexRef.current = i;
   }, []);
 
+  // Whole-resource looping is a user-owned toggle. While a sequence plays the
+  // player must advance through regions instead of repeating one, so looping is
+  // suppressed at the engine without touching (or later "restoring") the toggle.
+  const effectiveLoop = loopEnabled && !sequenceActive;
+  useEffect(() => {
+    audioActions.setLoopEnabled(effectiveLoop);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveLoop]);
+
   // ── Toasts ──────────────────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -541,6 +550,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     applyPreset(preset);
 
     let onCanPlay: (() => void) | null = null;
+    let onVideoError: (() => void) | null = null;
 
     if (isVideo) {
       const vid = videoRef.current;
@@ -565,6 +575,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
         vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       };
       vid.addEventListener("canplay", onCanPlay, { once: true });
+      onVideoError = () => {
+        const code = vid.error?.code;
+        const detail = vid.error?.message || (code ? `media error code ${code}` : "unknown error");
+        setPersistError(`Couldn't load "${filePath}": ${detail}`);
+      };
+      vid.addEventListener("error", onVideoError);
       vid.src = assetUrl(filePath);
       vid.load();
       setVideoCurrentTime(0);
@@ -576,7 +592,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
     return () => {
       if (!isVideo) audioActions.destroy();
-      else if (onCanPlay) videoRef.current?.removeEventListener("canplay", onCanPlay);
+      else {
+        if (onCanPlay) videoRef.current?.removeEventListener("canplay", onCanPlay);
+        if (onVideoError) videoRef.current?.removeEventListener("error", onVideoError);
+      }
       metronome.stop();
       // Flush any pending debounced save before unmounting so settings aren't lost
       if (presetSaveTimerRef.current) {
@@ -589,6 +608,14 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath]);
 
+  // Surface audio load/decode failures in the error modal (video reports via its
+  // "error" event above); the inline canvas status stays as a secondary hint.
+  useEffect(() => {
+    if (!isVideo && audioState.status === "error") {
+      setPersistError(`Couldn't load "${filePath}": ${audioState.errorMessage ?? "unknown error"}`);
+    }
+  }, [isVideo, audioState.status, audioState.errorMessage, filePath]);
+
   // ── Video event handlers ─────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -598,7 +625,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       setVideoCurrentTime(vid.currentTime);
       const le = parseTimeInput(loopEndInput, vid.duration);
       const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
-      if (loopEnabled && le !== null && vid.currentTime >= le) {
+      if (effectiveLoop && le !== null && vid.currentTime >= le) {
         vid.currentTime = ls;
         videoLoopCountRef.current++;
         if (loopIncreaseEnabledRef.current && loopIncreaseAtRef.current > 0 && videoLoopCountRef.current >= loopIncreaseAtRef.current) {
@@ -635,7 +662,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const onPlay = () => setVideoPlaying(true);
     const onPause = () => setVideoPlaying(false);
     const onEnded = () => {
-      if (loopEnabled) {
+      if (effectiveLoop) {
         const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
         vid.currentTime = ls;
         vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
@@ -654,7 +681,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       vid.removeEventListener("ended", onEnded);
       if (videoBreakTimerRef.current) { clearTimeout(videoBreakTimerRef.current); videoBreakTimerRef.current = null; }
     };
-  }, [isVideo, loopEnabled, loopStartInput, loopEndInput, flashAutoIncreaseBpm]);
+  }, [isVideo, effectiveLoop, loopStartInput, loopEndInput, flashAutoIncreaseBpm]);
 
   // ── Canvas rendering ─────────────────────────────────────────────────────────
 
@@ -1253,14 +1280,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     sequenceOrderRef.current = [];
     setSequenceActive(false);
     regionState.setActiveRegionId(null);
-    // Drop the last step's bounds/name (and the loop-off startSequence set) so
+    // Drop the last step's bounds/name so
     // they aren't saved into the preset and re-selected on the next load.
     setLoopStartInput("");
     setLoopEndInput("");
     audioActions.setLoopStart(null);
     audioActions.setLoopEnd(null);
-    setLoopEnabledLocal(true);
-    audioActions.setLoopEnabled(true);
     setRegionNameInput("");
     setRegionBpmInput("");
     schedulePresetSave();
@@ -1277,8 +1302,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     sequenceOrderRef.current = order;
     setSequenceIndex(0);
     setSequenceActive(true);
-    setLoopEnabledLocal(false);
-    audioActions.setLoopEnabled(false);
     // A count-in step starts playback itself once the count finishes.
     if (!applySequenceStep(order[0])) {
       if (isVideo) videoRef.current?.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
@@ -1288,15 +1311,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     schedulePresetSave();
   };
 
-  // Drives sequence advancement — fires on every currentTime update (seek or
-  // playback), same pattern as the canvas render effect below.
-  useEffect(() => {
-    if (!sequenceActiveRef.current || dur <= 0) return;
+  // Moves past the current step: next region, wrap (Loop sequence), or finish.
+  const advanceSequence = () => {
     const order = sequenceOrderRef.current;
-    const current = order[sequenceIndexRef.current];
-    if (!current) return;
-    const EPS = 0.05;
-    if (currentTime < current.end - EPS) return;
     const nextIndex = sequenceIndexRef.current + 1;
     if (nextIndex < order.length) {
       setSequenceIndex(nextIndex);
@@ -1312,8 +1329,35 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       else audioActions.pause();
       showToast("Sequence finished.", { icon: "🏁" });
     }
+  };
+
+  // Drives sequence advancement — fires on every currentTime update (seek or
+  // playback), same pattern as the canvas render effect below.
+  useEffect(() => {
+    if (!sequenceActiveRef.current || dur <= 0) return;
+    const current = sequenceOrderRef.current[sequenceIndexRef.current];
+    if (!current) return;
+    const EPS = 0.05;
+    if (currentTime < current.end - EPS) return;
+    advanceSequence();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, dur]);
+
+  // Audio can run off the end of the file between currentTime updates (the
+  // engine resets to 0 without the playhead ever being seen at the region end),
+  // which would leave the sequence stalled — treat that as the step finishing.
+  const advanceSequenceRef = useRef(advanceSequence);
+  advanceSequenceRef.current = advanceSequence;
+  useEffect(() => {
+    if (isVideo) return;
+    audioActions.setOnTrackEnded(() => {
+      if (!sequenceActiveRef.current) return;
+      const current = sequenceOrderRef.current[sequenceIndexRef.current];
+      if (current && current.end >= dur - 0.1) advanceSequenceRef.current();
+    });
+    return () => audioActions.setOnTrackEnded(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVideo, dur]);
 
   // ── Auto tempo for checkbox-selected regions during normal playback ─────────
   // Distinct from sequence playback: this runs during ordinary playback/scrubbing
@@ -1420,6 +1464,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
         case "setLoopStart": setLoopPointFromPlayhead("start"); break;
         case "setLoopEnd": setLoopPointFromPlayhead("end"); break;
         case "toggleLoop": {
+          if (sequenceActiveRef.current) break; // locked while a sequence plays
           const next = !loopEnabled;
           setLoopEnabledLocal(next);
           audioActions.setLoopEnabled(next);

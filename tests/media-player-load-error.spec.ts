@@ -1,4 +1,3 @@
-import { silentWav } from "./fixtures/silentWav";
 import { test, expect } from "./base";
 
 const mockUser = {
@@ -13,7 +12,10 @@ const mockDashboard = {
   exercises: [{
     id: 1, name: "Test Exercise", order: 1, session_type: "exercise", parent_exercise_id: null,
     created_timestamp: 0, updated_timestamp: 0, child_exercises: [],
-    resources: [{ name: "Practice Track", url: "/path/to/practice.mp3", type: "local_file" }],
+    resources: [
+      { name: "Practice Video", url: "/path/to/practice.mp4", type: "local_file" },
+      { name: "Practice Track", url: "/path/to/practice.mp3", type: "local_file" },
+    ],
     meta: { user_exercise: null, sessions: [] },
   }],
   study_materials: [], chord: null, progression: null, interval: null,
@@ -26,40 +28,29 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
-  await page.route("**/127.0.0.1:17865/**", (route) => route.fulfill({ status: 200, headers: { "Content-Type": "audio/wav" }, body: silentWav() }));
+  // The local-file server can't find the resource.
+  await page.route("**/127.0.0.1:17865/**", (route) => route.fulfill({ status: 404, body: "Not found" }));
   await page.goto("/");
 });
 
-test("MediaPlayer's inline metronome toggles, tap-tempos, and follow-speed/count-in checkboxes work without crashing", async ({ page }) => {
+async function openResource(page: import("@playwright/test").Page, name: string) {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
-  const card = page.locator(".item-card").first();
-  await card.locator('button[title="Log session"]').click();
-  await page.locator(".modal-resource-link--local", { hasText: "Practice Track" }).click();
+  await page.locator(".item-card").first().locator('button[title="Log session"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: name }).click();
   await expect(page.locator(".media-player")).toBeVisible();
+}
 
-  const toggle = page.locator("#metronomeToggle");
-  await expect(toggle).toHaveText("Start");
-  await toggle.click();
-  await expect(toggle).toHaveText("Stop");
-  await expect(page.locator("#metronomeStatus")).toContainText("On");
+test("an error modal appears when a video resource can't be loaded", async ({ page }) => {
+  await openResource(page, "Practice Video");
+  const modal = page.locator(".error-modal");
+  await expect(modal).toBeVisible({ timeout: 10000 });
+  await expect(modal).toContainText("practice.mp4");
+});
 
-  await page.locator("button", { hasText: "Tap" }).click();
-  await page.waitForTimeout(150);
-  await page.locator("button", { hasText: "Tap" }).click();
-
-  // BPM changes while running phase in gradually (no restart) — just confirm no crash.
-  await page.fill("#metronomeBpm", "140");
-  await page.locator("#metronomeBpm").blur();
-  await page.waitForTimeout(300);
-
-  await page.locator("#metronomeFollowSpeed").click();
-  await page.locator("#metronomeCountIn").click();
-
-  await expect(page.locator(".error-modal")).toHaveCount(0);
-
-  await toggle.click();
-  await expect(toggle).toHaveText("Start");
-  await expect(page.locator("#metronomeStatus")).toContainText("Off");
-  await expect(page.locator(".error-modal")).toHaveCount(0);
+test("an error modal appears when an audio resource can't be loaded", async ({ page }) => {
+  await openResource(page, "Practice Track");
+  const modal = page.locator(".error-modal");
+  await expect(modal).toBeVisible({ timeout: 10000 });
+  await expect(modal).toContainText("HTTP 404");
 });

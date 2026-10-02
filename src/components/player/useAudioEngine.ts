@@ -44,6 +44,8 @@ export interface AudioEngineActions {
   setBreakCountIn: (fn: (() => Promise<void>) | null) => void;
   /** Fired with (previousSpeed, newSpeed) whenever the loop auto-increase bumps the speed. */
   setOnAutoIncrease: (fn: ((prevSpeed: number, nextSpeed: number) => void) | null) => void;
+  /** Fires when playback runs off the end of the file without looping. */
+  setOnTrackEnded: (fn: (() => void) | null) => void;
   destroy: () => void;
   getContext: () => AudioContext | null;
   getCurrentTime: () => number;
@@ -217,6 +219,7 @@ interface EngineRef {
   loopBreakCount: number;
   breakCountIn: (() => Promise<void>) | null;
   onAutoIncrease: ((prevSpeed: number, nextSpeed: number) => void) | null;
+  onTrackEnded: (() => void) | null;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -251,6 +254,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     loopBreakCount: 0,
     breakCountIn: null,
     onAutoIncrease: null,
+    onTrackEnded: null,
   });
 
   const [status, setStatus] = useState<AudioEngineStatus>("idle");
@@ -462,6 +466,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
           setIsPlaying(false);
           setCurrentTime(0);
           eng._pausedAt = 0;
+          eng.onTrackEnded?.();
         }
       });
 
@@ -530,6 +535,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   const setLoopBreakAfter = useCallback((v: number) => { e.current.loopBreakAfter = v; }, []);
   const setLoopBreakDuration = useCallback((v: number) => { e.current.loopBreakDuration = v; }, []);
   const setBreakCountIn = useCallback((fn: (() => Promise<void>) | null) => { e.current.breakCountIn = fn; }, []);
+  const setOnTrackEnded = useCallback((fn: (() => void) | null) => { e.current.onTrackEnded = fn; }, []);
   const setOnAutoIncrease = useCallback((fn: ((prevSpeed: number, nextSpeed: number) => void) | null) => { e.current.onAutoIncrease = fn; }, []);
 
   const destroy = useCallback(() => {
@@ -579,6 +585,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setPitch, setCountIn,
     setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
     setOnAutoIncrease,
+    setOnTrackEnded,
     destroy, getContext, getCurrentTime,
   };
 

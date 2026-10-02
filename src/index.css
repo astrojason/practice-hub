@@ -2910,6 +2910,64 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .lb-time { font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .lb-me-summary { margin-top: 14px; color: var(--accent-light); font-weight: 600; }
 
+/* ── Error modal (ErrorModal, RegionsEditorModal, AppErrorBoundary) ─────── */
+.error-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.error-modal {
+  background: var(--surface);
+  border: 1px solid var(--red);
+  border-radius: var(--r);
+  padding: 20px 24px;
+  max-width: 480px;
+  width: calc(100vw - 48px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.error-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.error-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--red);
+  margin: 0;
+}
+.error-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  line-height: 1;
+}
+.error-modal-close:hover { background: var(--surface-2); color: var(--text); }
+.error-modal-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+  word-break: break-word;
+  user-select: text;
+}
+.error-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .regions-modal { width: min(560px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
 .regions-modal__body { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
 .regions-modal__row { display: grid; grid-template-columns: 1fr 90px 90px; gap: 6px; }
