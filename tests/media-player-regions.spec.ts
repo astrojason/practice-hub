@@ -237,7 +237,14 @@ test("checking a region's sequence checkbox auto-applies its tempo when the play
   await expect(regionItem).not.toHaveClass(/is-active/);
   await expect(speedIndicator).toHaveText("100%");
 
-  // Skip forward into the region — tempo should snap to its saved 50%.
+  // On the Single tab, checked regions are inert: playing the file never applies them.
+  for (let i = 0; i < 3; i++) await skipForward.click();
+  await expect(speedIndicator).toHaveText("100%");
+  await expect(regionItem).not.toHaveClass(/is-active/);
+  for (let i = 0; i < 3; i++) await skipBack.click();
+
+  // On the Sequence tab, skip forward into the region — tempo should snap to its saved 50%.
+  await page.locator('[data-play-mode="sequence"]').click();
   for (let i = 0; i < 3; i++) await skipForward.click();
   await expect(speedIndicator).toHaveText("50%");
 

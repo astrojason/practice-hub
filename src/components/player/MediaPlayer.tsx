@@ -17,6 +17,7 @@ import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { seekVideo, getVideoTime } from "./videoSeek";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { ErrorModal } from "../ErrorModal";
+import { ConfirmModal } from "../ConfirmModal";
 import { ResourceLinks } from "../session/SessionModal";
 import type { Resource } from "../../api/types";
 
@@ -87,11 +88,12 @@ const SEEK_STEP = 5;
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  const frac = Math.round((s % 1) * 100);
+  const totalMs = Math.round(s * 1000);
+  const m = Math.floor(totalMs / 60000);
+  const sec = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
   const base = `${m}:${String(sec).padStart(2, "0")}`;
-  return frac > 0 ? `${base}.${String(frac).padStart(2, "0")}` : base;
+  return ms > 0 ? `${base}.${String(ms).padStart(3, "0").replace(/0+$/, "").padEnd(2, "0")}` : base;
 }
 
 function parseTimeInput(value: string, duration: number): number | null {
@@ -228,6 +230,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   // each region's own playbackSpeed as the playhead crosses into it.
   const [sequenceLoop, setSequenceLoopLocal] = useState(false);
   const sequenceLoopRef = useRef(false);
+  const [playMode, setPlayMode] = useState<"single" | "sequence">("single");
+  const playModeRef = useRef(playMode);
+  playModeRef.current = playMode;
   const [sequenceActive, setSequenceActiveState] = useState(false);
   const sequenceActiveRef = useRef(false);
   const [sequenceIndex, setSequenceIndexState] = useState(0);
@@ -954,7 +959,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
   // ── Loop inputs ───────────────────────────────────────────────────────────────
 
-  const commitLoopStart = (val: string) => {
+  const loopFocusRef = useRef<{ start: number | null; end: number | null }>({ start: null, end: null });
+
+  /** Move playback to a loop bound that just changed (end seeks 1s before it so the cut is audible). */
+  const seekForLoopChange = (which: "start" | "end", t: number, prev: number | null) => {
+    if (prev !== null && Math.abs(prev - t) < 0.0005) return;
+    if (which === "start") seekTo(t);
+    else seekTo(Math.max(parseTimeInput(loopStartInput, dur) ?? 0, t - 1));
+  };
+
+  const commitLoopStart = (val: string, prev: number | null = parseTimeInput(loopStartInput, dur)) => {
     const t = parseTimeInput(val, dur);
     if (t === null) {
       setLoopStartInput("");
@@ -969,10 +983,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     }
     setLoopStartInput(formatTime(t));
     audioActions.setLoopStart(t);
+    seekForLoopChange("start", t, prev);
     schedulePresetSave();
   };
 
-  const commitLoopEnd = (val: string) => {
+  const commitLoopEnd = (val: string, prev: number | null = parseTimeInput(loopEndInput, dur)) => {
     const t = parseTimeInput(val, dur);
     if (t === null) {
       setLoopEndInput("");
@@ -987,6 +1002,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     }
     setLoopEndInput(formatTime(t));
     audioActions.setLoopEnd(t);
+    seekForLoopChange("end", t, prev);
     schedulePresetSave();
   };
 
@@ -1009,10 +1025,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   const setLoopPointFromPlayhead = (which: "start" | "end") => {
     if (dur <= 0) return;
     if (which === "start") {
-      commitLoopStart(String(currentTime));
+      commitLoopStart(String(currentTime), currentTime);
       markerState.addMarkerAt(currentTime);
     } else {
-      commitLoopEnd(String(currentTime));
+      commitLoopEnd(String(currentTime), currentTime);
       markerState.addMarkerAt(currentTime);
     }
   };
@@ -1184,6 +1200,25 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     else audioActions.seek(region.start);
     schedulePresetSave();
   };
+
+  const selectPlayMode = (mode: "single" | "sequence") => {
+    if (mode === "single" && sequenceActiveRef.current) stopSequence();
+    setPlayMode(mode);
+  };
+
+  // Single tab: "" plays the entire file, otherwise loops/plays the chosen region.
+  const selectSingleRegion = (id: string) => {
+    if (id === (regionState.activeRegionIdRef.current ?? "")) return;
+    if (id === "") {
+      clearLoop();
+      setRegionNameInput("");
+      setRegionBpmInput("");
+      return;
+    }
+    applyRegion(id);
+  };
+
+  const [regionPendingDelete, setRegionPendingDelete] = useState<string | null>(null);
 
   const deleteRegion = (id: string) => {
     const wasActive = regionState.activeRegionIdRef.current === id;
@@ -1366,6 +1401,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   const autoTempoRegionIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (sequenceActiveRef.current || dur <= 0) return;
+    // Single mode plays the entire file or the one selected region — checked
+    // (sequence) regions must not take over tempo/active region there.
+    if (playModeRef.current !== "sequence") {
+      if (autoTempoRegionIdRef.current !== null) {
+        autoTempoRegionIdRef.current = null;
+        applySpeed("1.00");
+        regionState.setActiveRegionId(null);
+      }
+      return;
+    }
     const t = currentTime;
     const match = regionState.regionsRef.current.find(r =>
       regionState.selectedIdsRef.current.includes(r.id) && t >= r.start && t < r.end
@@ -1517,6 +1562,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           parseTime={text => parseTimeInput(text, dur)}
           onSave={saveRegionEdits}
           onClose={() => setRegionsModalOpen(false)}
+        />
+      )}
+      {regionPendingDelete && (
+        <ConfirmModal
+          title="Remove region?"
+          message={`Remove region "${regionState.regions.find(r => r.id === regionPendingDelete)?.name ?? ""}"? This can't be undone.`}
+          confirmLabel="Remove"
+          onConfirm={() => { deleteRegion(regionPendingDelete); setRegionPendingDelete(null); }}
+          onCancel={() => setRegionPendingDelete(null)}
         />
       )}
       {persistError && <ErrorModal error={persistError} onDismiss={() => setPersistError(null)} />}
@@ -1762,6 +1816,45 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           <button className="btn-ghost btn-xs" id="waveNextMarkerBtn" onClick={() => markerState.jumpToMarker("next")} disabled={!markerState.markers.length || markerState.selectedIdx >= markerState.markers.length - 1} title="Next marker">Next ▶</button>
           <button className="btn-ghost btn-xs" id="waveDeleteMarkerBtn" onClick={markerState.deleteSelected} disabled={markerState.selectedIdx < 0} title="Delete selected marker">Delete</button>
           <button className="btn-ghost btn-xs" id="waveClearMarkersBtn" onClick={markerState.clearAll} disabled={!markerState.markers.length} title="Clear all markers">Clear all</button>
+          <span className="mp-marker-sep">·</span>
+          <div className="media-player__loop-inputs">
+            <div className="media-player__loop-field">
+              <label>In</label>
+              <input
+                type="text"
+                id="loopStart"
+                className="media-player__loop-time-input"
+                placeholder="0:00"
+                value={loopStartInput}
+                onChange={e => setLoopStartInput(e.target.value)}
+                onFocus={() => { loopFocusRef.current.start = parseTimeInput(loopStartInput, dur); }}
+                onBlur={e => commitLoopStart(e.target.value, loopFocusRef.current.start)}
+                onKeyDown={nudgeKeyHandler("start")}
+              />
+              <button className="btn-ghost btn-xs" onClick={() => setLoopPointFromPlayhead("start")} title="Set from playhead">◁</button>
+              {(["-0.1", "-0.01", "-0.001", "+0.001", "+0.01", "+0.1"] as const).map(d => (
+                <button key={d} className="btn-ghost btn-xs" data-loop-nudge={`start:${d}`} title={`Move start ${d}s (↑/↓ in the field: 0.01s, Shift 0.1s)`} onClick={() => nudgeLoopPoint("start", Number(d))}>{d}</button>
+              ))}
+            </div>
+            <div className="media-player__loop-field">
+              <label>Out</label>
+              <input
+                type="text"
+                id="loopEnd"
+                className="media-player__loop-time-input"
+                placeholder="end"
+                value={loopEndInput}
+                onChange={e => setLoopEndInput(e.target.value)}
+                onFocus={() => { loopFocusRef.current.end = parseTimeInput(loopEndInput, dur); }}
+                onBlur={e => commitLoopEnd(e.target.value, loopFocusRef.current.end)}
+                onKeyDown={nudgeKeyHandler("end")}
+              />
+              <button className="btn-ghost btn-xs" onClick={() => setLoopPointFromPlayhead("end")} title="Set from playhead">▷</button>
+              {(["-0.1", "-0.01", "-0.001", "+0.001", "+0.01", "+0.1"] as const).map(d => (
+                <button key={d} className="btn-ghost btn-xs" data-loop-nudge={`end:${d}`} title={`Move end ${d}s (↑/↓ in the field: 0.01s, Shift 0.1s)`} onClick={() => nudgeLoopPoint("end", Number(d))}>{d}</button>
+              ))}
+            </div>
+          </div>
           {markerState.selectedIdx >= 0 && (
             <>
               <span className="mp-marker-sep">·</span>
@@ -1788,47 +1881,40 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           {/* Left column */}
           <div className="media-player__col">
 
-            {/* Loop */}
+            {/* Playback: Single (entire file or one region, with loop / auto-increase / break) or Sequence */}
             <section className="mp-section">
+              <div className="mp-tabs" role="tablist" aria-label="Playback mode">
+                {(["single", "sequence"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    role="tab"
+                    className={`mp-tab ${playMode === mode ? "is-active" : ""}`}
+                    data-play-mode={mode}
+                    aria-selected={playMode === mode}
+                    onClick={() => selectPlayMode(mode)}
+                  >
+                    {mode === "single" ? "Single" : "Sequence"}
+                  </button>
+                ))}
+              </div>
+              <div data-play-panel="single" hidden={playMode !== "single"}>
               <div className="mp-section-header">
                 <span className="mp-section-label">Loop</span>
                 <button className="btn-ghost btn-xs" onClick={clearLoop} title="Clear loop">Clear</button>
               </div>
-              <div className="media-player__loop-inputs">
-                <div className="media-player__loop-field">
-                  <label>In</label>
-                  <input
-                    type="text"
-                    id="loopStart"
-                    className="media-player__loop-time-input"
-                    placeholder="0:00"
-                    value={loopStartInput}
-                    onChange={e => setLoopStartInput(e.target.value)}
-                    onBlur={e => commitLoopStart(e.target.value)}
-                    onKeyDown={nudgeKeyHandler("start")}
-                  />
-                  <button className="btn-ghost btn-xs" onClick={() => setLoopPointFromPlayhead("start")} title="Set from playhead">◁</button>
-                  {(["-0.1", "-0.01", "+0.01", "+0.1"] as const).map(d => (
-                    <button key={d} className="btn-ghost btn-xs" data-loop-nudge={`start:${d}`} title={`Move start ${d}s (↑/↓ in the field: 0.01s, Shift 0.1s)`} onClick={() => nudgeLoopPoint("start", Number(d))}>{d}</button>
+              <div className="mp-row">
+                <label className="mp-pitch-label" htmlFor="singleRegionSelect">Play</label>
+                <select
+                  id="singleRegionSelect"
+                  className="mp-single-region-select"
+                  value={regionState.activeRegionId ?? ""}
+                  onChange={e => selectSingleRegion(e.target.value)}
+                >
+                  <option value="">Entire file</option>
+                  {regionState.regions.map((r, i) => (
+                    <option key={r.id} value={r.id}>{r.name || `Region ${i + 1}`}</option>
                   ))}
-                </div>
-                <div className="media-player__loop-field">
-                  <label>Out</label>
-                  <input
-                    type="text"
-                    id="loopEnd"
-                    className="media-player__loop-time-input"
-                    placeholder="end"
-                    value={loopEndInput}
-                    onChange={e => setLoopEndInput(e.target.value)}
-                    onBlur={e => commitLoopEnd(e.target.value)}
-                    onKeyDown={nudgeKeyHandler("end")}
-                  />
-                  <button className="btn-ghost btn-xs" onClick={() => setLoopPointFromPlayhead("end")} title="Set from playhead">▷</button>
-                  {(["-0.1", "-0.01", "+0.01", "+0.1"] as const).map(d => (
-                    <button key={d} className="btn-ghost btn-xs" data-loop-nudge={`end:${d}`} title={`Move end ${d}s (↑/↓ in the field: 0.01s, Shift 0.1s)`} onClick={() => nudgeLoopPoint("end", Number(d))}>{d}</button>
-                  ))}
-                </div>
+                </select>
               </div>
               <div className="mp-row">
                 <label className="media-player__checkbox-label">
@@ -1930,6 +2016,45 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   title="Loops between breaks"
                 />
                 <span>loops + count-in</span>
+              </div>
+              </div>
+              <div data-play-panel="sequence" hidden={playMode !== "sequence"}>
+                <div className="mp-section-header">
+                  <span className="mp-section-label">Sequence</span>
+                </div>
+                {regionState.regions.length === 0 && (
+                  <p className="mp-empty-state">Save regions, then check them in the Regions list to build a sequence.</p>
+                )}
+                <div className="mp-row mp-row--wrap">
+                  <button
+                    className="btn-ghost btn-xs"
+                    id="playSequenceBtn"
+                    onClick={sequenceActive ? stopSequence : startSequence}
+                    disabled={!sequenceActive && regionState.selectedIds.length === 0}
+                    title="Play checked regions in order, applying each region's speed"
+                  >
+                    {sequenceActive ? "⏹ Stop Sequence" : "▶ Play Sequence"}
+                  </button>
+                  <label className="media-player__checkbox-label">
+                    <input
+                      type="checkbox"
+                      id="sequenceLoopToggle"
+                      checked={sequenceLoop}
+                      disabled={sequenceActive}
+                      onChange={e => {
+                        setSequenceLoopLocal(e.target.checked);
+                        schedulePresetSave();
+                      }}
+                    />
+                    Loop sequence
+                  </label>
+                  {sequenceActive && (
+                    <span id="sequenceStatus" className="mp-marker-count">
+                      Playing {sequenceIndex + 1}/{sequenceOrderRef.current.length}
+                      {sequenceOrderRef.current[sequenceIndex]?.name ? ` · ${sequenceOrderRef.current[sequenceIndex].name}` : ""}
+                    </span>
+                  )}
+                </div>
               </div>
             </section>
 
@@ -2106,7 +2231,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                           }}>Rename</button>
                           <button className="btn-ghost btn-xs" data-region-action="delete" onClick={(e) => {
                             e.stopPropagation();
-                            deleteRegion(region.id);
+                            setRegionPendingDelete(region.id);
                           }}>Remove</button>
                         </div>
                       </li>
@@ -2118,38 +2243,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                 <p id="regionEmptyState" className="mp-empty-state">
                   Save loop settings to start a region list.
                 </p>
-              )}
-              {regionState.regions.length > 0 && (
-                <div className="mp-row mp-row--wrap">
-                  <button
-                    className="btn-ghost btn-xs"
-                    id="playSequenceBtn"
-                    onClick={sequenceActive ? stopSequence : startSequence}
-                    disabled={!sequenceActive && regionState.selectedIds.length === 0}
-                    title="Play checked regions in order, applying each region's speed"
-                  >
-                    {sequenceActive ? "⏹ Stop Sequence" : "▶ Play Sequence"}
-                  </button>
-                  <label className="media-player__checkbox-label">
-                    <input
-                      type="checkbox"
-                      id="sequenceLoopToggle"
-                      checked={sequenceLoop}
-                      disabled={sequenceActive}
-                      onChange={e => {
-                        setSequenceLoopLocal(e.target.checked);
-                        schedulePresetSave();
-                      }}
-                    />
-                    Loop sequence
-                  </label>
-                  {sequenceActive && (
-                    <span id="sequenceStatus" className="mp-marker-count">
-                      Playing {sequenceIndex + 1}/{sequenceOrderRef.current.length}
-                      {sequenceOrderRef.current[sequenceIndex]?.name ? ` · ${sequenceOrderRef.current[sequenceIndex].name}` : ""}
-                    </span>
-                  )}
-                </div>
               )}
             </section>
 

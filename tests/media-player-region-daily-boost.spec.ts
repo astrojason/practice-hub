@@ -162,7 +162,9 @@ test("a looping sequence's daily boost nudges a region only once per day, not on
   const regionItemAfterReload = page.locator(".mp-region-item", { hasText: "Verse" });
   await expect(regionItemAfterReload).toBeVisible();
   await regionItemAfterReload.locator('input[type="checkbox"]').check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#sequenceLoopToggle").check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await page.locator('button[title="Pause"]').click();
 

@@ -2973,3 +2973,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .regions-modal__row { display: grid; grid-template-columns: 1fr 90px 90px; gap: 6px; }
 .regions-modal__head { font-size: 0.75rem; opacity: 0.7; }
 .regions-modal__error { color: var(--danger, #e5484d); margin: 4px 0; font-size: 0.85rem; }
+
+.mp-tabs { display: flex; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.mp-tab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-dim); padding: 4px 12px; cursor: pointer; font: inherit;
+}
+.mp-tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
+[data-play-panel][hidden] { display: none; }
+.mp-single-region-select { flex: 1; min-width: 0; }

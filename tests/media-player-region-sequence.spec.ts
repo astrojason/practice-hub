@@ -114,6 +114,7 @@ test("playing a sequence of selected regions auto-advances and applies each regi
   await verseCheckbox.check();
   await chorusCheckbox.check();
 
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   // Sequence playback auto-starts — pause so the skip-forward math below is
   // the only thing moving the playhead (real-time drift makes it flaky).
@@ -160,8 +161,10 @@ test("loop sequence wraps back to the first region instead of stopping", async (
   const chorusCheckbox = page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]');
   await verseCheckbox.check();
   await chorusCheckbox.check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#sequenceLoopToggle").check();
 
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await page.locator('button[title="Pause"]').click();
   await expect(page.locator("#sequenceStatus")).toContainText("1/2");
@@ -195,6 +198,7 @@ test("region name and start/end inputs follow the current region during sequence
   await verseCheckbox.check();
   await chorusCheckbox.check();
 
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await page.locator('button[title="Pause"]').click();
   await expect(page.locator("#sequenceStatus")).toContainText("1/2");
@@ -232,6 +236,7 @@ test("finishing a sequence and reopening the resource does not restore the last 
 
   await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
   await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await page.locator('button[title="Pause"]').click();
   await expect(page.locator("#sequenceStatus")).toContainText("1/2");
@@ -272,7 +277,9 @@ test("loop sequence of a region spanning the whole resource wraps back to the st
   const item = page.locator(".mp-region-item", { hasText: "Whole" });
   await expect(item).toBeVisible();
   await item.locator('input[type="checkbox"]').check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#sequenceLoopToggle").check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await expect(page.locator("#sequenceStatus")).toContainText("1/1");
 
@@ -290,6 +297,7 @@ test("a region with count-in on, played at a non-100% speed, pauses for a metron
   await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
   await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('[data-region-action="count-in"]').click();
 
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await page.locator('button[title="Pause"]').click();
   await expect(page.locator("#sequenceStatus")).toContainText("1/2");
@@ -347,6 +355,7 @@ test("the count-in indicator shows in the transport bpm row", async ({ page }) =
   await openPlayerAndBuildTwoRegions(page);
   await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
   await page.locator(".mp-region-item", { hasText: "Verse" }).locator('[data-region-action="count-in"]').click();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await expect(page.locator(".media-player__bpm-row #countInIndicator")).toBeVisible();
 });
@@ -392,8 +401,10 @@ test("stopping a sequence leaves whole-resource looping as the user set it (off)
   await openPlayerAndBuildTwoRegions(page);
   await page.locator("#loopPlayback").uncheck();
   await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await expect(page.locator("#sequenceStatus")).toBeVisible();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click(); // Stop Sequence
   await expect(page.locator("#sequenceStatus")).toHaveCount(0);
   await expect(page.locator("#loopPlayback")).not.toBeChecked();
@@ -404,11 +415,13 @@ test("a sequence doesn't change the loop toggle when it's on, and the toggle is 
   await expect(page.locator("#loopPlayback")).toBeChecked();
   await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
   await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await expect(page.locator("#sequenceStatus")).toContainText("1/2");
   // Locked while the sequence runs, but still showing the user's own setting.
   await expect(page.locator("#loopPlayback")).toBeDisabled();
   await expect(page.locator("#loopPlayback")).toBeChecked();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   await expect(page.locator("#loopPlayback")).toBeEnabled();
   await expect(page.locator("#loopPlayback")).toBeChecked();
@@ -419,7 +432,9 @@ test("with the loop toggle on, a sequence still advances to the next region inst
   await expect(page.locator("#loopPlayback")).toBeChecked();
   await page.locator(".mp-region-item", { hasText: "Verse" }).locator('input[type="checkbox"]').check();
   await page.locator(".mp-region-item", { hasText: "Chorus" }).locator('input[type="checkbox"]').check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#sequenceLoopToggle").check();
+  await page.locator('[data-play-mode="sequence"]').click();
   await page.locator("#playSequenceBtn").click();
   // Verse is ~1.2s at 75%; real-time playback must move on to Chorus, not loop Verse.
   await expect(page.locator("#sequenceStatus")).toContainText("2/2", { timeout: 6000 });
