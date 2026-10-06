@@ -223,3 +223,41 @@ test("the daily boost never pushes a region's speed past 100%", async ({ page })
 
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
+
+test("a daily +1% nudge leaves the previous → new bpm on the region card until the resource is closed", async ({ page }) => {
+  await openPlayer(page);
+  await page.locator('button[title="Pause"]').click();
+  const speedInput = page.locator(".media-player__speed-input");
+  await speedInput.fill("0.5");
+  await speedInput.blur();
+
+  await page.locator('button[title="Set from playhead"]').first().click();
+  await page.locator('button[title="Skip forward 5%"]').click();
+  await page.locator('button[title="Set from playhead"]').nth(1).click();
+  await page.fill("#regionNameInput", "Verse");
+  await page.fill("#regionBpmInput", "100");
+  await page.locator("#addRegionBtn").click();
+  const card = page.locator(".mp-region-item", { hasText: "Verse" });
+  await card.locator('[data-region-action="daily-boost"]').click();
+  await expect(card.locator("[data-boost-note]")).toHaveCount(0);
+
+  await backdateRegionBoost(page, "Verse");
+  await page.reload();
+  await openPlayer(page);
+  const reloaded = page.locator(".mp-region-item", { hasText: "Verse" });
+  await expect(reloaded.locator("[data-boost-note]")).toHaveCount(0);
+
+  await reloaded.click();
+  await expect(reloaded.locator("[data-boost-note]")).toContainText(/\(\+1%\/day 51 BPM \(50\.00-50\.50%\) on \d{4}-\d{2}-\d{2}\)/);
+
+  // Stays after deselecting, re-applying, and the transient bpm flash timing out.
+  await reloaded.click();
+  await reloaded.click();
+  await page.waitForTimeout(500);
+  await expect(reloaded.locator("[data-boost-note]")).toContainText(/\(\+1%\/day 51 BPM \(50\.00-50\.50%\) on \d{4}-\d{2}-\d{2}\)/);
+
+  // Closing the resource clears it.
+  await page.reload();
+  await openPlayer(page);
+  await expect(page.locator(".mp-region-item", { hasText: "Verse" }).locator("[data-boost-note]")).toHaveCount(0);
+});

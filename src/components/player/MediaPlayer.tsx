@@ -1102,6 +1102,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   // persist the new speed + today's date. Enabling the toggle records today's
   // date as a baseline without nudging — the first automatic bump happens the
   // next day the region is applied.
+  // Previous → new bpm (or speed) of each region's daily +1% nudge, shown on its
+  // card for as long as this resource stays open.
+  const [boostNotes, setBoostNotes] = useState<Record<string, string>>({});
+  useEffect(() => { setBoostNotes({}); }, [filePath]);
+
   const resolveDailyBoostSpeed = useCallback((region: Region): number => {
     if (!region.dailyBoostEnabled) return region.playbackSpeed;
     const today = todayLocalDateStr();
@@ -1112,12 +1117,15 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       return region.playbackSpeed;
     }
     const boosted = Math.min(1, region.playbackSpeed * 1.01);
+    const noteBpm = region.bpm ?? resources?.find(r => r.url === filePath)?.bpm ?? null;
+    const note = `${noteBpm != null ? `${Math.round(noteBpm * boosted)} BPM ` : ""}(${(region.playbackSpeed * 100).toFixed(2)}-${(boosted * 100).toFixed(2)}%) on ${today}`;
+    setBoostNotes(n => ({ ...n, [region.id]: note }));
     regionState.updateRegionAt(region.id, { playbackSpeed: boosted, lastBoostDate: today });
     savePreset({ silent: true });
     showToast(`"${region.name || "Region"}" nudged to ${Math.round(boosted * 100)}% (daily +1%).`, { icon: "📈" });
     return boosted;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regionState.updateRegionAt, savePreset, showToast]);
+  }, [regionState.updateRegionAt, savePreset, showToast, resources, filePath]);
 
   const toggleRegionDailyBoost = (id: string) => {
     const region = regionState.regionsRef.current.find(r => r.id === id);
@@ -1200,6 +1208,21 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     else audioActions.seek(region.start);
     schedulePresetSave();
   };
+
+  // Keep the active region visible in the (scrollable) region list, however it
+  // became active — sequence step, auto-tempo, dropdown or a click. Only the
+  // list scrolls, never the page.
+  useEffect(() => {
+    const id = regionState.activeRegionId;
+    if (!id) return;
+    const list = document.getElementById("regionList");
+    const item = list?.querySelector<HTMLElement>(`[data-region-id="${CSS.escape(id)}"]`);
+    if (!list || !item) return;
+    const l = list.getBoundingClientRect();
+    const r = item.getBoundingClientRect();
+    if (r.top < l.top) list.scrollTop -= l.top - r.top;
+    else if (r.bottom > l.bottom) list.scrollTop += r.bottom - l.bottom;
+  }, [regionState.activeRegionId, regionState.regions.length]);
 
   const selectPlayMode = (mode: "single" | "sequence") => {
     if (mode === "single" && sequenceActiveRef.current) stopSequence();
@@ -2198,7 +2221,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                         </div>
                         <div className="mp-region-meta">
                           {formatTime(region.start)} → {formatTime(region.end)} · {speedLabel}{bpmStr}{incStr}
-                          {region.dailyBoostEnabled ? " · 📈 +1%/day" : ""}
+                          {region.dailyBoostEnabled
+                            ? <span data-boost-note={boostNotes[region.id] ? "" : undefined}> · 📈 {boostNotes[region.id] ? `(+1%/day ${boostNotes[region.id]})` : "+1%/day"}</span>
+                            : ""}
                           {region.countIn ? " · 🥁 count-in" : ""}
                         </div>
                         <div className="mp-region-actions">
