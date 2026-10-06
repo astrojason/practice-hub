@@ -36,6 +36,10 @@ export function RegionsEditorModal({ regions, formatTime, parseTime, onSave, onC
   const patch = (id: string, field: "name" | "start" | "end", value: string) =>
     setDrafts(ds => ds.map(d => d.id === id ? { ...d, [field]: value } : d));
 
+  // Snap the next region's start onto this region's end.
+  const joinWithNext = (i: number) =>
+    setDrafts(ds => ds.map((d, j) => j === i + 1 ? { ...d, start: ds[i].end } : d));
+
   const save = () => {
     const edits: RegionEdit[] = [];
     for (const [i, d] of drafts.entries()) {
@@ -66,11 +70,18 @@ export function RegionsEditorModal({ regions, formatTime, parseTime, onSave, onC
           <div className="regions-modal__row regions-modal__head">
             <span>Name</span><span>Start</span><span>End</span>
           </div>
-          {drafts.map(d => (
-            <div key={d.id} className="regions-modal__row" data-regions-modal-row>
-              <input data-field="name" value={d.name} onChange={e => patch(d.id, "name", e.target.value)} />
-              <input data-field="start" value={d.start} onChange={e => patch(d.id, "start", e.target.value)} />
-              <input data-field="end" value={d.end} onChange={e => patch(d.id, "end", e.target.value)} />
+          {drafts.map((d, i) => (
+            <div key={d.id}>
+              <div className="regions-modal__row" data-regions-modal-row>
+                <input data-field="name" value={d.name} onChange={e => patch(d.id, "name", e.target.value)} />
+                <input data-field="start" value={d.start} onChange={e => patch(d.id, "start", e.target.value)} />
+                <input data-field="end" value={d.end} onChange={e => patch(d.id, "end", e.target.value)} />
+              </div>
+              {i < drafts.length - 1 && (
+                <div className="regions-modal__join">
+                  <button className="btn-ghost btn-xs" data-regions-join onClick={() => joinWithNext(i)} title="Set the next region's start to this region's end">⇣ Join end to next start</button>
+                </div>
+              )}
             </div>
           ))}
         </div>

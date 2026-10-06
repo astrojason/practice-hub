@@ -458,3 +458,22 @@ test("Edit all shows the regions modal as a visible overlay within the viewport"
   const onTop = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[data-testid="regions-modal"]'), { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 });
   expect(onTop).toBe(true);
 });
+
+test("Edit all has a button joining a region's end and the next region's start to the same time", async ({ page }) => {
+  await openPlayerAndBuildTwoRegions(page);
+  await page.locator("#editRegionsBtn").click();
+  const modal = page.locator('[data-testid="regions-modal"]');
+  const rows = modal.locator("[data-regions-modal-row]");
+  await expect(rows).toHaveCount(2);
+  await expect(modal.locator("[data-regions-join]")).toHaveCount(1);
+
+  await rows.nth(0).locator('[data-field="end"]').fill("0:01.5");
+  await rows.nth(1).locator('[data-field="start"]').fill("0:02");
+  await modal.locator("[data-regions-join]").click();
+  await expect(rows.nth(1).locator('[data-field="start"]')).toHaveValue("0:01.5");
+  await expect(rows.nth(0).locator('[data-field="end"]')).toHaveValue("0:01.5");
+
+  await modal.locator("#saveRegionsModalBtn").click();
+  await expect(modal).toHaveCount(0);
+  await expect(page.locator(".mp-region-item", { hasText: "Chorus" })).toContainText("0:01.5");
+});
