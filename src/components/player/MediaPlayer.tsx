@@ -230,6 +230,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   // each region's own playbackSpeed as the playhead crosses into it.
   const [sequenceLoop, setSequenceLoopLocal] = useState(false);
   const sequenceLoopRef = useRef(false);
+  const pendingAutoSequenceRef = useRef(false);
+  const startSequenceRef = useRef<() => void>(() => {});
   const [playMode, setPlayMode] = useState<"single" | "sequence">("single");
   const playModeRef = useRef(playMode);
   playModeRef.current = playMode;
@@ -554,6 +556,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const preset = presetsRef.current[filePath];
     applyPreset(preset);
 
+    // A resource saved with a region sequence opens straight into it (Sequence
+    // tab, from the first region) instead of plain playback of the whole file.
+    const savedRegionIds = new Set((preset?.regions ?? []).map((r) => r.id));
+    const autoSequence = (preset?.sequenceRegionIds ?? []).some((id) => savedRegionIds.has(id));
+    pendingAutoSequenceRef.current = autoSequence;
+    if (autoSequence) setPlayMode("sequence");
+
     let onCanPlay: (() => void) | null = null;
     let onVideoError: (() => void) | null = null;
 
@@ -577,6 +586,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           const ls = parseTimeInput(preset.loopStart, 9999);
           if (ls !== null) seekVideo(vid, ls);
         }
+        if (pendingAutoSequenceRef.current) {
+          pendingAutoSequenceRef.current = false;
+          startSequenceRef.current();
+          return;
+        }
         vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       };
       vid.addEventListener("canplay", onCanPlay, { once: true });
@@ -592,7 +606,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       setVideoDuration(0);
       setVideoPlaying(false);
     } else {
-      audioActions.loadFile(filePath);
+      audioActions.loadFile(filePath, { autoplay: !autoSequence });
     }
 
     return () => {
@@ -1368,6 +1382,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     showToast(`Sequence started · ${order.length} region${order.length !== 1 ? "s" : ""}.`, { icon: "▶" });
     schedulePresetSave();
   };
+
+  startSequenceRef.current = startSequence;
+
+  // Audio decodes asynchronously; once ready, start a sequence queued by the
+  // file-load effect (video does this from its canplay handler).
+  useEffect(() => {
+    if (isVideo || audioState.status !== "ready" || !pendingAutoSequenceRef.current) return;
+    pendingAutoSequenceRef.current = false;
+    startSequenceRef.current();
+  }, [isVideo, audioState.status]);
 
   // Moves past the current step: next region, wrap (Loop sequence), or finish.
   // Returns true when the sequence continues with a step that expects playback
