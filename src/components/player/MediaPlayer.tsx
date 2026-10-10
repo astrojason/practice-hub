@@ -1706,7 +1706,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
       {/* Transport */}
       <div className="media-player__transport">
-        <span className="media-player__time">{formatTime(currentTime)} / {formatTime(dur)}</span>
+        <span className="media-player__time">
+          <span className="media-player__time-elapsed">{formatTime(currentTime)}</span>
+          {" / "}
+          <span className="media-player__time-total">{formatTime(dur)}</span>
+        </span>
         <div className="media-player__transport-btns">
           <button className="btn-ghost btn-xs" onClick={() => jumpByPercent(-0.05)} title="Skip back 5%">
             <BackwardIcon />
