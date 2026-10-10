@@ -284,8 +284,25 @@ test("loop sequence of a region spanning the whole resource wraps back to the st
   await expect(page.locator("#sequenceStatus")).toContainText("1/1");
 
   // The 3s clip must reach its end and wrap: the sequence keeps running and
-  // the player is still playing well after one full pass.
-  await page.waitForTimeout(4500);
+  // the playhead jumps back toward the start. Observe that wrap directly
+  // (rather than sleeping a fixed time, which is load-sensitive) by sampling
+  // the time label until it reaches the tail and then drops back.
+  const wrapped = await page.evaluate(() => new Promise<boolean>((resolve) => {
+    const label = document.querySelector(".media-player__time-elapsed");
+    const secs = () => {
+      const [m, s] = (label?.textContent ?? "0:00").trim().split(":");
+      return Number(m) * 60 + Number(s);
+    };
+    let peak = 0;
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const t = secs();
+      if (t > peak) peak = t;
+      if (peak >= 2 && t < peak - 1) { clearInterval(timer); resolve(true); }
+      else if (Date.now() - started > 20000) { clearInterval(timer); resolve(false); }
+    }, 25);
+  }));
+  expect(wrapped).toBe(true);
   await expect(page.locator("#playSequenceBtn")).toContainText("Stop Sequence");
   await expect(page.locator('button[title="Pause"]')).toBeVisible();
 });

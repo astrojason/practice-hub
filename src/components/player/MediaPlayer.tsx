@@ -1370,22 +1370,27 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   };
 
   // Moves past the current step: next region, wrap (Loop sequence), or finish.
-  const advanceSequence = () => {
+  // Returns true when the sequence continues with a step that expects playback
+  // to be running right now (i.e. not finished, and not waiting on a count-in
+  // that starts playback itself).
+  const advanceSequence = (): boolean => {
     const order = sequenceOrderRef.current;
     const nextIndex = sequenceIndexRef.current + 1;
     if (nextIndex < order.length) {
       setSequenceIndex(nextIndex);
-      applySequenceStep(order[nextIndex]);
+      return !applySequenceStep(order[nextIndex]);
     } else if (sequenceLoopRef.current) {
       setSequenceIndex(0);
-      applySequenceStep(order[0]);
+      const countingIn = applySequenceStep(order[0]);
       // A region reaching the very end of a video leaves it ended/paused.
       if (isVideo && videoRef.current?.paused) videoRef.current.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
+      return !countingIn;
     } else {
       stopSequence();
       if (isVideo) videoRef.current?.pause();
       else audioActions.pause();
       showToast("Sequence finished.", { icon: "🏁" });
+      return false;
     }
   };
 
@@ -1411,7 +1416,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     audioActions.setOnTrackEnded(() => {
       if (!sequenceActiveRef.current) return;
       const current = sequenceOrderRef.current[sequenceIndexRef.current];
-      if (current && current.end >= dur - 0.1) advanceSequenceRef.current();
+      if (!current || current.end < dur - 0.1) return;
+      // The engine has already stopped at the end of the file, so a step that
+      // continues the sequence (loop wrap) must restart playback itself — the
+      // seek alone leaves it paused when the end lands between frames.
+      if (advanceSequenceRef.current()) audioActions.play();
     });
     return () => audioActions.setOnTrackEnded(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
