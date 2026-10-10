@@ -203,3 +203,25 @@ test("song edit allows save when resource names are unique and non-empty", async
   expect(resources).toHaveLength(2);
   expect(resources.map((r) => r.name).sort()).toEqual(["Backing Track", "Tab"]);
 });
+
+test("saving a song edit doesn't crash when the dashboard omits overdue", async ({ page }) => {
+  const { overdue: _omit, ...withoutOverdue } = mockDashboard;
+  await page.route("**/user/dashboard**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(withoutOverdue) })
+  );
+  await page.route("**/song/615", async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    const updated = { ...mockDashboard.project.songs[0], name: "Nightrain (Live)" };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(updated) });
+  });
+  await page.goto("/");
+
+  await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
+  const songCard = page.locator(".item-card", { hasText: "Nightrain" });
+  await songCard.locator('button[title="Edit"]').click();
+  await page.fill("#ef-name", "Nightrain (Live)");
+  await page.locator('button[type="submit"]', { hasText: "Save" }).click();
+
+  await expect(page.locator(".item-card", { hasText: "Nightrain (Live)" })).toBeVisible();
+  await expect(page.getByText("Something went wrong")).toHaveCount(0);
+});

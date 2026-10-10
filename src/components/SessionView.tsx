@@ -851,8 +851,9 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   function handleSongEdited(updated: Song) {
     setDashboard((prev) => {
       if (!prev) return prev;
-      const replaceInList = (songs: Song[]) =>
-        songs.map((s) => (s.id === updated.id ? updated : s));
+      // Any list may be absent from the dashboard response, so tolerate undefined.
+      const replaceInList = <T extends Song[] | undefined>(songs: T): T =>
+        (songs?.map((s) => (s.id === updated.id ? updated : s)) ?? songs) as T;
       return {
         ...prev,
         project: prev.project ? { ...prev.project, songs: replaceInList(prev.project.songs) } : prev.project,
