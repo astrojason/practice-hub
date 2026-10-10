@@ -145,3 +145,17 @@ test("study material edit hides the bpm field for a url-type material", async ({
 
   await expect(page.locator('input[placeholder="BPM"]')).toHaveCount(0);
 });
+
+test("exercise edit resource row keeps the bpm input compact next to the type select", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  await page.locator(".item-card", { hasText: "Metronome Drill" }).locator('button[title="Edit"]').click();
+
+  const row = page.locator(".edit-resource-row").first();
+  const bpmWidth = (await row.locator('input[placeholder="BPM"]').boundingBox())!.width;
+  const nameWidth = (await row.locator('input[placeholder="Name"]').boundingBox())!.width;
+  const urlWidth = (await row.locator('input[type="text"]').nth(1).boundingBox())!.width;
+  expect(bpmWidth).toBeLessThanOrEqual(60);
+  expect(nameWidth).toBeGreaterThan(bpmWidth);
+  expect(urlWidth).toBeGreaterThan(bpmWidth);
+});
