@@ -749,6 +749,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   padding: 16px;
 }
 
+.modal-resources-only-hint {
+  margin: 0;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .modal-elapsed-display {
   font-size: 40px;
   font-weight: 700;
