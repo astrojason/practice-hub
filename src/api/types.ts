@@ -15,11 +15,15 @@ export interface Tuning {
 // A resource's own native/reference tempo lives only on local_file/youtube
 // (media) resources — other types (url, guitar_pro, local_folder) always
 // send/receive bpm as null/omitted.
+/** What a local media resource does when the player opens it. Unset behaves as "full". */
+export type ResourceAutoplay = "full" | "sequence" | "region" | "none";
+
 export interface ResourcePayload {
   name: string;
   url: string;
   type: string;
   bpm?: number | null;
+  autoplay?: ResourceAutoplay | null;
 }
 
 export interface UpdateSongPayload {
@@ -82,6 +86,8 @@ export interface Resource {
   type?: "url" | "local_file" | "youtube" | "guitar_pro" | "local_folder";
   /** The resource's own native/reference tempo — only meaningful for media types (local_file/youtube). */
   bpm?: number | null;
+  /** Local media only: what to play when the resource is opened in the player. */
+  autoplay?: ResourceAutoplay | null;
 }
 
 // ─── Session records (as returned by POST and inside meta.sessions) ───────────

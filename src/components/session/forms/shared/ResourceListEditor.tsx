@@ -1,5 +1,6 @@
 import { FolderOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/16/solid";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
+import type { ResourceAutoplay } from "../../../../api/types";
 
 export interface ResourceRow {
   id: string;
@@ -8,6 +9,13 @@ export interface ResourceRow {
   type: string;
   /** The resource's own native/reference tempo — only shown/sent for media types (local_file/youtube). */
   bpm?: number | "";
+  /** Local files only: what the player does on open. */
+  autoplay?: ResourceAutoplay;
+}
+
+/** The autoplay value to send for a row — only local files carry one. */
+export function resourceRowAutoplay(r: ResourceRow): ResourceAutoplay | null {
+  return r.type === "local_file" ? (r.autoplay ?? "full") : null;
 }
 
 /** Types that play as audio/video (in-app for local_file, externally for youtube) — the only ones a bpm is meaningful for. */
@@ -120,6 +128,20 @@ export function ResourceListEditor({ resources, onChange, onError }: ListProps) 
                   onChange={(e) => updateResource(r.id, "bpm", e.target.value === "" ? "" : Number(e.target.value))}
                   title="This resource's own native tempo"
                 />
+              )}
+              {r.type === "local_file" && (
+                <select
+                  className="edit-resource-autoplay"
+                  value={r.autoplay ?? "full"}
+                  onChange={(e) => updateResource(r.id, "autoplay", e.target.value)}
+                  title="What to play when this file is opened"
+                  aria-label="Autoplay"
+                >
+                  <option value="full">Play: full</option>
+                  <option value="sequence">Play: sequence</option>
+                  <option value="region">Play: region</option>
+                  <option value="none">Play: none</option>
+                </select>
               )}
               {isLocalResourceType(r.type) && (
                 <button

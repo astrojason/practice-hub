@@ -2,7 +2,7 @@ import { useState } from "react";
 import { updateExercise } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
 import type { DashboardExercise, Resource, UpdateExercisePayload } from "../../../api/types";
-import { ResourceListEditor, isMediaResourceType, type ResourceRow } from "./shared/ResourceListEditor";
+import { ResourceListEditor, isMediaResourceType, resourceRowAutoplay, type ResourceRow } from "./shared/ResourceListEditor";
 import { findResourceNameError } from "./shared/findResourceNameError";
 
 interface Props {
@@ -21,6 +21,7 @@ export function ExerciseEditForm({ token, exercise, onSuccess, onCancel }: Props
       url: r.url,
       type: r.type ?? "url",
       bpm: r.bpm ?? "",
+      autoplay: r.autoplay ?? undefined,
     }))
   );
   const [saving, setSaving] = useState(false);
@@ -45,6 +46,7 @@ export function ExerciseEditForm({ token, exercise, onSuccess, onCancel }: Props
           url: r.url,
           type: r.type,
           bpm: isMediaResourceType(r.type) && r.bpm !== "" ? r.bpm : null,
+          autoplay: resourceRowAutoplay(r),
         })),
     };
     try {

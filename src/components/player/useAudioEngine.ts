@@ -26,7 +26,7 @@ export interface AudioEngineState {
 
 export interface AudioEngineActions {
   /** `autoplay: false` loads and positions the file but leaves it paused (the caller starts playback). */
-  loadFile: (path: string, opts?: { autoplay?: boolean }) => Promise<void>;
+  loadFile: (path: string, opts?: { autoplay?: boolean; startAt?: number }) => Promise<void>;
   play: () => void;
   pause: () => void;
   seek: (time: number) => void;
@@ -432,7 +432,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
 
   // ── Public actions ──────────────────────────────────────────────────────────
 
-  const loadFile = useCallback(async (path: string, opts: { autoplay?: boolean } = {}) => {
+  const loadFile = useCallback(async (path: string, opts: { autoplay?: boolean; startAt?: number } = {}) => {
     const eng = e.current;
     stopEngine(true);
     eng.pendingSrc = path;
@@ -503,7 +503,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       setWaveData(buildWaveData(decoded));
       setStatus("ready");
 
-      const startAt = eng.loopStart ?? 0;
+      const startAt = opts.startAt ?? eng.loopStart ?? 0;
       eng._pausedAt = startAt;
       if (opts.autoplay === false) setCurrentTime(startAt);
       else startEngine();

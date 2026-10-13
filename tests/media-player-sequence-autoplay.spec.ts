@@ -35,7 +35,7 @@ const mockDashboard = {
   exercises: [{
     id: 1, name: "Test Exercise", order: 1, session_type: "exercise", parent_exercise_id: null,
     created_timestamp: 0, updated_timestamp: 0, child_exercises: [],
-    resources: [{ name: "Practice Track", url: "/path/to/practice.mp3", type: "local_file" }],
+    resources: [{ name: "Practice Track", url: "/path/to/practice.mp3", type: "local_file", autoplay: "sequence" }],
     meta: { user_exercise: null, sessions: [] },
   }],
   study_materials: [], chord: null, progression: null, interval: null,
@@ -91,10 +91,11 @@ test("opening a resource with a saved sequence starts the sequence from the firs
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
 
-test("opening a resource with no saved sequence still just autoplays on the Single tab", async ({ page }) => {
+test("opening a sequence-autoplay resource with no saved sequence does not start playback", async ({ page }) => {
   await openPracticeTrack(page, []);
 
   await expect(page.locator('[data-play-mode="single"]')).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator('button[title="Pause"]')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await expect(page.locator('button[title="Pause"]')).toHaveCount(0);
   await expect(page.locator("#playSequenceBtn")).not.toContainText("Stop Sequence");
 });

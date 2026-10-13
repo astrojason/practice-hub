@@ -582,10 +582,17 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
     // A resource saved with a region sequence opens straight into it (Sequence
     // tab, from the first region) instead of plain playback of the whole file.
+    // What happens on open is the resource's `autoplay` setting (unset = full).
     const savedRegionIds = new Set((preset?.regions ?? []).map((r) => r.id));
-    const autoSequence = (preset?.sequenceRegionIds ?? []).some((id) => savedRegionIds.has(id));
+    const hasSavedSequence = (preset?.sequenceRegionIds ?? []).some((id) => savedRegionIds.has(id));
+    const hasSavedRegion = Boolean(preset?.loopStart || preset?.loopEnd);
+    const autoplayMode = resources?.find((r) => r.url === filePath)?.autoplay ?? "full";
+    const autoSequence = autoplayMode === "sequence" && hasSavedSequence;
+    const autoplayNow = autoplayMode === "full" || autoSequence || (autoplayMode === "region" && hasSavedRegion);
+    // Whole-file play starts at 0 even if a loop region was saved.
+    const startAtZero = autoplayMode === "full";
     pendingAutoSequenceRef.current = autoSequence;
-    if (autoSequence) setPlayMode("sequence");
+    setPlayMode(autoSequence ? "sequence" : "single");
 
     let onCanPlay: (() => void) | null = null;
     let onVideoError: (() => void) | null = null;
@@ -607,7 +614,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       // readiness gap is why the loop-start seek below has to go through
       // seekVideo() rather than a raw assignment (see videoSeek.ts).
       onCanPlay = () => {
-        if (preset?.loopStart) {
+        if (preset?.loopStart && !startAtZero) {
           const ls = parseTimeInput(preset.loopStart, 9999);
           if (ls !== null) seekVideo(vid, ls);
         }
@@ -616,6 +623,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           startSequenceRef.current();
           return;
         }
+        if (!autoplayNow) return;
         vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       };
       vid.addEventListener("canplay", onCanPlay, { once: true });
@@ -631,7 +639,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       setVideoDuration(0);
       setVideoPlaying(false);
     } else {
-      audioActions.loadFile(filePath, { autoplay: !autoSequence });
+      audioActions.loadFile(filePath, { autoplay: autoplayNow && !autoSequence, startAt: startAtZero ? 0 : undefined });
     }
 
     return () => {

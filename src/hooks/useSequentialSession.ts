@@ -85,7 +85,7 @@ export function useSequentialSession({
       children = incompleteChildren.map((child) => ({
         id: child.id,
         name: child.name,
-        resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm })),
+        resources: (child.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm, autoplay: r.autoplay })),
         lastSession: child.meta.sessions?.[0] ?? null,
         inUserExercise: child.meta.user_exercise !== null,
       }));
@@ -108,7 +108,7 @@ export function useSequentialSession({
       children = incompleteSongs.map((song) => ({
         id: song.id,
         name: song.name,
-        resources: (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm })),
+        resources: (song.resources ?? []).map((r) => ({ name: r.name, url: r.url, type: r.type, bpm: r.bpm, autoplay: r.autoplay })),
         lastSession: song.meta.sessions?.[0] ?? null,
         song: { bpm: song.bpm, seconds: song.seconds, hasLead: song.has_lead, hasSinging: song.has_singing },
       }));
