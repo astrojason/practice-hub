@@ -13,6 +13,7 @@ import { useMarkers, type WaveMarker } from "./useMarkers";
 import { useRegions, type Region } from "./useRegions";
 import { RegionsEditorModal, type RegionEdit } from "./RegionsEditorModal";
 import { PositiveIntInput } from "./PositiveIntInput";
+import { OptionalIntInput } from "./OptionalIntInput";
 import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { seekVideo, getVideoTime } from "./videoSeek";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
@@ -67,6 +68,8 @@ interface Preset {
   markers: WaveMarker[];
   sequenceRegionIds?: string[];
   sequenceLoop?: boolean;
+  loopMaxTimes?: number | null;
+  sequenceLoopMaxTimes?: number | null;
   updatedAt: number;
 }
 
@@ -184,6 +187,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
 
   // ── Loop increase refs (for use inside event handlers without stale closures) ─
   const videoLoopCountRef = useRef(0);
+  // "Loop x times": null = loop forever. Passes are counted per run and reset when it stops.
+  const [loopMaxTimes, setLoopMaxTimesLocal] = useState<number | null>(null);
+  const loopMaxTimesRef = useRef<number | null>(null);
+  const videoPassCountRef = useRef(0);
+  const [sequenceLoopMaxTimes, setSequenceLoopMaxTimesLocal] = useState<number | null>(null);
+  const sequenceLoopMaxTimesRef = useRef<number | null>(null);
+  const sequenceLapRef = useRef(1);
   const loopIncreaseEnabledRef = useRef(false);
   const loopIncreaseByRef = useRef(5);
   const loopIncreaseAtRef = useRef(3);
@@ -381,6 +391,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       markers: markerState.markersRef.current,
       sequenceRegionIds: regionState.selectedIdsRef.current,
       sequenceLoop: sequenceLoopRef.current,
+      loopMaxTimes: loopMaxTimesRef.current,
+      sequenceLoopMaxTimes: sequenceLoopMaxTimesRef.current,
       updatedAt: Date.now(),
     };
     try {
@@ -436,6 +448,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       setRegionBpmInput("");
       setSequenceLoopLocal(false);
       sequenceLoopRef.current = false;
+      setLoopMaxTimesLocal(null);
+      loopMaxTimesRef.current = null;
+      audioActions.setLoopMaxTimes(null);
+      setSequenceLoopMaxTimesLocal(null);
+      sequenceLoopMaxTimesRef.current = null;
       setPresetStatusText("Not saved");
       return;
     }
@@ -488,6 +505,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const seqLoop = Boolean(preset.sequenceLoop);
     setSequenceLoopLocal(seqLoop);
     sequenceLoopRef.current = seqLoop;
+    const maxTimes = preset.loopMaxTimes ?? null;
+    setLoopMaxTimesLocal(maxTimes);
+    loopMaxTimesRef.current = maxTimes;
+    audioActions.setLoopMaxTimes(maxTimes);
+    const seqMax = preset.sequenceLoopMaxTimes ?? null;
+    setSequenceLoopMaxTimesLocal(seqMax);
+    sequenceLoopMaxTimesRef.current = seqMax;
     setPresetStatusText("All changes saved");
   }, [audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions, regionState.setSelectedIds]);
 
@@ -570,6 +594,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       const vid = videoRef.current;
       if (!vid) return;
       videoLoopCountRef.current = 0;
+      videoPassCountRef.current = 0;
       videoBreakCountRef.current = 0;
       // Restore playback speed from preset
       vid.preservesPitch = true;
@@ -640,12 +665,25 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid || !isVideo) return;
+    // Counts a finished pass; once the requested number is reached, stops at the beginning.
+    const finishVideoLoopRun = (v: HTMLVideoElement, restartAt: number): boolean => {
+      videoPassCountRef.current++;
+      const max = loopMaxTimesRef.current;
+      if (max === null || videoPassCountRef.current < max) return false;
+      videoPassCountRef.current = 0;
+      videoLoopCountRef.current = 0;
+      videoBreakCountRef.current = 0;
+      v.pause();
+      v.currentTime = restartAt;
+      return true;
+    };
     const onTime = () => {
       setVideoCurrentTime(vid.currentTime);
       const le = parseTimeInput(loopEndInput, vid.duration);
       const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
       if (effectiveLoop && le !== null && vid.currentTime >= le) {
         vid.currentTime = ls;
+        if (finishVideoLoopRun(vid, ls)) return;
         videoLoopCountRef.current++;
         if (loopIncreaseEnabledRef.current && loopIncreaseAtRef.current > 0 && videoLoopCountRef.current >= loopIncreaseAtRef.current) {
           videoLoopCountRef.current = 0;
@@ -684,6 +722,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       if (effectiveLoop) {
         const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
         vid.currentTime = ls;
+        if (finishVideoLoopRun(vid, ls)) return;
         vid.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       }
     };
@@ -1373,6 +1412,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const order = [...selected].sort((a, b) => a.start - b.start);
     sequenceOrderRef.current = order;
     setSequenceIndex(0);
+    sequenceLapRef.current = 1;
     setSequenceActive(true);
     // A count-in step starts playback itself once the count finishes.
     if (!applySequenceStep(order[0])) {
@@ -1403,16 +1443,20 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     if (nextIndex < order.length) {
       setSequenceIndex(nextIndex);
       return !applySequenceStep(order[nextIndex]);
-    } else if (sequenceLoopRef.current) {
+    } else if (sequenceLoopRef.current && (sequenceLoopMaxTimesRef.current === null || sequenceLapRef.current < sequenceLoopMaxTimesRef.current)) {
+      sequenceLapRef.current++;
       setSequenceIndex(0);
       const countingIn = applySequenceStep(order[0]);
       // A region reaching the very end of a video leaves it ended/paused.
       if (isVideo && videoRef.current?.paused) videoRef.current.play().catch(() => {}); /* non-critical: autoplay policy rejection, no data loss */
       return !countingIn;
     } else {
+      const rewindTo = sequenceLoopRef.current ? order[0]?.start : undefined;
       stopSequence();
       if (isVideo) videoRef.current?.pause();
       else audioActions.pause();
+      // A bounded loop returns playback to the beginning of the sequence.
+      if (rewindTo !== undefined) seekTo(rewindTo);
       showToast("Sequence finished.", { icon: "🏁" });
       return false;
     }
@@ -1991,6 +2035,21 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   />
                   Loop
                 </label>
+                <OptionalIntInput
+                  id="loopMaxTimes"
+                  className="media-player__loop-num-input"
+                  value={loopMaxTimes}
+                  placeholder="∞"
+                  title="Number of passes before stopping (blank = loop forever)"
+                  onCommit={v => {
+                    setLoopMaxTimesLocal(v);
+                    loopMaxTimesRef.current = v;
+                    audioActions.setLoopMaxTimes(v);
+                    videoPassCountRef.current = 0;
+                    schedulePresetSave();
+                  }}
+                />
+                <span>times</span>
               </div>
               <div className="media-player__loop-increase">
                 <label className="media-player__checkbox-label">
@@ -2108,6 +2167,20 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     />
                     Loop sequence
                   </label>
+                  <OptionalIntInput
+                    id="sequenceLoopMaxTimes"
+                    className="media-player__loop-num-input"
+                    value={sequenceLoopMaxTimes}
+                    placeholder="∞"
+                    disabled={sequenceActive}
+                    title="Number of laps before stopping (blank = loop forever)"
+                    onCommit={v => {
+                      setSequenceLoopMaxTimesLocal(v);
+                      sequenceLoopMaxTimesRef.current = v;
+                      schedulePresetSave();
+                    }}
+                  />
+                  <span>times</span>
                   {sequenceActive && (
                     <span id="sequenceStatus" className="mp-marker-count">
                       Playing {sequenceIndex + 1}/{sequenceOrderRef.current.length}

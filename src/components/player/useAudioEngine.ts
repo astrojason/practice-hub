@@ -34,6 +34,8 @@ export interface AudioEngineActions {
   setLoopStart: (v: number | null) => void;
   setLoopEnd: (v: number | null) => void;
   setLoopEnabled: (v: boolean) => void;
+  /** Stop (and rewind to the loop start) after this many passes; null loops forever. */
+  setLoopMaxTimes: (v: number | null) => void;
   setLoopIncreaseEnabled: (v: boolean) => void;
   setLoopIncreaseBy: (v: number) => void;
   setLoopIncreaseAt: (v: number) => void;
@@ -198,6 +200,8 @@ interface EngineRef {
   raf: number | null;
   isHandlingLoop: boolean;
   loopCount: number;
+  passCount: number;
+  loopMaxTimes: number | null;
   duration: number;
   pendingSrc: string | null;
   _pausedAt: number;
@@ -234,6 +238,8 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     raf: null,
     isHandlingLoop: false,
     loopCount: 0,
+    passCount: 0,
+    loopMaxTimes: null,
     duration: 0,
     pendingSrc: null,
     _pausedAt: 0,
@@ -299,6 +305,17 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     setIsPlaying(false);
   }, []);
 
+  // The last requested pass is done: stop and park the playhead at the beginning.
+  const finishLoopRun = useCallback(() => {
+    const eng = e.current;
+    eng.passCount = 0;
+    eng.loopCount = 0;
+    eng.loopBreakCount = 0;
+    stopEngine(true);
+    eng._pausedAt = eng.loopStart ?? 0;
+    setCurrentTime(eng._pausedAt);
+  }, [stopEngine]);
+
   const startEngine = useCallback(() => {
     const eng = e.current;
     if (!eng.ctx || !eng.buffer || !eng.shifter) return;
@@ -351,6 +368,11 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       if (eng.loopEnabled && !eng.isHandlingLoop && eng.duration > 0) {
         const end = eng.loopEnd ?? eng.duration;
         if (t >= end) {
+          eng.passCount++;
+          if (eng.loopMaxTimes !== null && eng.passCount >= eng.loopMaxTimes) {
+            finishLoopRun();
+            return;
+          }
           eng.isHandlingLoop = true;
           eng.loopCount++;
 
@@ -416,6 +438,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     eng.pendingSrc = path;
     eng.isHandlingLoop = false;
     eng.loopCount = 0;
+    eng.passCount = 0;
     eng.loopBreakCount = 0;
     eng._pausedAt = 0;
 
@@ -457,6 +480,11 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       eng.shifter = new PS(eng.ctx, decoded, () => {
         if (eng.isHandlingLoop) return;
         if (eng.loopEnabled) {
+          eng.passCount++;
+          if (eng.loopMaxTimes !== null && eng.passCount >= eng.loopMaxTimes) {
+            finishLoopRun();
+            return;
+          }
           eng._pausedAt = eng.loopStart ?? 0;
           if (eng.countIn) {
             eng.countIn().then(() => startEngine());
@@ -514,6 +542,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   const setLoopStart = useCallback((v: number | null) => { e.current.loopStart = v; _setLoopStart(v); }, []);
   const setLoopEnd = useCallback((v: number | null) => { e.current.loopEnd = v; _setLoopEnd(v); }, []);
   const setLoopEnabled = useCallback((v: boolean) => { e.current.loopEnabled = v; _setLoopEnabled(v); }, []);
+  const setLoopMaxTimes = useCallback((v: number | null) => { e.current.loopMaxTimes = v; }, []);
   const setLoopIncreaseEnabled = useCallback((v: boolean) => { e.current.loopIncreaseEnabled = v; _setLoopIncreaseEnabled(v); }, []);
   const setLoopIncreaseBy = useCallback((v: number) => { e.current.loopIncreaseBy = v; _setLoopIncreaseBy(v); }, []);
   const setLoopIncreaseAt = useCallback((v: number) => { e.current.loopIncreaseAt = v; _setLoopIncreaseAt(v); }, []);
@@ -582,7 +611,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
 
   const actions: AudioEngineActions = {
     loadFile, play, pause, seek, setSpeed,
-    setLoopStart, setLoopEnd, setLoopEnabled,
+    setLoopStart, setLoopEnd, setLoopEnabled, setLoopMaxTimes,
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
     setPitch, setCountIn,
     setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
