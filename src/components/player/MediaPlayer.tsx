@@ -1000,8 +1000,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     speedRef.current = v;
     if (isVideo) {
       if (videoRef.current) {
-        videoRef.current.preservesPitch = true;
-        videoRef.current.playbackRate = v;
+        // Skip no-op writes: WebKit rebuilds its audio time-stretcher on any
+        // assignment, even an unchanged one, which stutters playback mid-region-switch.
+        const vid = videoRef.current;
+        if (!vid.preservesPitch) vid.preservesPitch = true;
+        if (vid.playbackRate !== v) vid.playbackRate = v;
       }
     } else {
       audioActions.setSpeed(v);
@@ -1373,7 +1376,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     }
     // Contiguous regions play straight through: re-seeking to a start the
     // playhead is already at restarts the audio engine and audibly stutters.
-    const contiguous = !needsCountIn && Math.abs(currentTimeRef.current - live.start) <= 0.1;
+    // The video's React currentTime lags the real playhead by up to a timeupdate
+    // interval (~250ms), so read the live position and allow for that overshoot.
+    const nowT = isVideo && videoRef.current ? getVideoTime(videoRef.current) : currentTimeRef.current;
+    const tol = isVideo ? 0.3 : 0.1;
+    const contiguous = !needsCountIn && nowT >= live.start - 0.1 && nowT - live.start <= tol;
     if (!contiguous) seekTo(live.start);
     applySpeed(speed.toFixed(2));
     setLoopIncreaseByLocal(live.speedIncreasePercent);
@@ -1785,6 +1792,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
             className="media-player__video"
             controls={false}
             playsInline
+            preload="auto"
           />
         </div>
       )}
