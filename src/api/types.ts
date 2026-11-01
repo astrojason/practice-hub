@@ -820,3 +820,37 @@ export interface LeaderboardProfile {
   opted_in: boolean;
   display_name: string | null;
 }
+
+// ─── AI challenges ────────────────────────────────────────────────────────────
+
+export type AiChallengePeriod = "daily" | "weekly" | "monthly";
+
+/** A daily, weekly or monthly challenge written by AI from the practice journal. */
+export interface AiChallenge {
+  id: number;
+  period: AiChallengePeriod;
+  title: string;
+  description: string | null;
+  goal_type: string;
+  item_type: "song" | "exercise" | "study_material" | null;
+  item_id: number | null;
+  item_name: string | null;
+  session_type: string | null;
+  target: number;
+  current: number;
+  /** null for manual challenges, which are checked off by hand. */
+  unit: "songs" | "minutes" | "sessions" | "days" | null;
+  measurable: boolean;
+  completed: boolean;
+  status: "active" | "completed" | "missed";
+  start_timestamp: number;
+  end_timestamp: number;
+  completed_timestamp: number | null;
+}
+
+export interface AiChallengesResponse {
+  current: AiChallenge[];
+  recent: AiChallenge[];
+}
+
+export type AiChallengeAction = "complete" | "reopen";

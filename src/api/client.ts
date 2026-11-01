@@ -44,6 +44,9 @@ import type {
   Album,
   CreateAlbumPayload,
   AlbumBadgesResponse,
+  AiChallenge,
+  AiChallengeAction,
+  AiChallengesResponse,
   LeaderboardPeriod,
   LeaderboardProfile,
   LeaderboardResponse,
@@ -168,6 +171,24 @@ export async function createAlbum(token: string, payload: CreateAlbumPayload): P
 export async function getAlbumBadges(token: string): Promise<AlbumBadgesResponse> {
   const response = await apiFetch(`${API_BASE_URL}/user-album-badge`, { headers: authHeaders(token) });
   return handleResponse<AlbumBadgesResponse>(response);
+}
+
+export async function getAiChallenges(token: string): Promise<AiChallengesResponse> {
+  const response = await apiFetch(`${API_BASE_URL}/user-ai-challenge`, { headers: authHeaders(token) });
+  return handleResponse<AiChallengesResponse>(response);
+}
+
+export async function updateAiChallenge(
+  token: string,
+  challengeId: number,
+  action: AiChallengeAction,
+): Promise<{ challenge: AiChallenge }> {
+  const response = await apiFetch(`${API_BASE_URL}/user-ai-challenge/${challengeId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify({ action }),
+  });
+  return handleResponse<{ challenge: AiChallenge }>(response);
 }
 
 export async function getStreakTokenUses(token: string): Promise<{ uses: StreakTokenUse[] }> {
