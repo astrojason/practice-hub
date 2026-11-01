@@ -1,5 +1,7 @@
 ## Bugs
 
+- [ ] 24 Playwright tests fail on Chromium (also on `main` before the AI-challenges change): clicking `.item-group-header` for the Exercises group times out ("element is visible, enabled and stable" but the click never lands), in item-usage-staleness, parent-total-practice-time, session-view-alphabetical, skip-auto-completes-parent, media-player-child-title-timer, rebuild-blocked-during-sequential and sequential-start-no-incomplete-children specs. Something is likely intercepting pointer events over the group header.
+
 ## Features
 
 - [ ] Undo for all player actions, not just region edits: region create/update/delete, region settings (tempo, etc.), and any other state-changing action in the player. Motivated by the region-update bug above, but should cover every case. History is scoped to the current resource and session: ending the session or switching to a different resource clears the undo stack (in-memory only, nothing persisted).

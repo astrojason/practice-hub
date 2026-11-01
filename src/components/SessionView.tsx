@@ -32,6 +32,7 @@ import type {
 import { ChatPanel } from "./chat/ChatPanel";
 import type { ChatEntity } from "./chat/ChatPanel";
 import { ErrorModal } from "./ErrorModal";
+import { AiChallengesPanel } from "./challenges/AiChallengesPanel";
 import { StreakTokenContext } from "./session/StreakTokenContext";
 import { catalogExerciseToDashboard, catalogStudyMaterialToDashboard } from "../api/catalogConvert";
 import { makeItemKey, parseItemKey } from "../lib/itemKey";
@@ -1200,6 +1201,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onBrowse={onBrowse}
         onSettings={onSettings}
       />
+
+      <AiChallengesPanel token={token} refreshKey={serverTotal} />
 
       {openSessionModalOpen && (
         <OpenSessionForm

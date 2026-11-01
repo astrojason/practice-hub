@@ -3002,3 +3002,23 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .mp-tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
 [data-play-panel][hidden] { display: none; }
 .mp-single-region-select { flex: 1; min-width: 0; }
+
+/* ─── AI challenges ──────────────────────────────────────────────────────────── */
+.ai-challenges { padding: 8px 16px 0; }
+.ai-challenges-title { font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+.ai-challenges-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.ai-challenge {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px;
+}
+.ai-challenge-done { border-color: var(--green); }
+.ai-challenge-top { display: flex; justify-content: space-between; align-items: baseline; }
+.ai-challenge-period { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--muted); }
+.ai-challenge-done-label { font-size: 11px; font-weight: 600; color: var(--green); }
+.ai-challenge-name { font-weight: 600; color: var(--text); }
+.ai-challenge-description { font-size: 12px; color: var(--text-dim); }
+.ai-challenge-bar { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; margin-top: 2px; }
+.ai-challenge-bar-fill { height: 100%; background: var(--accent); }
+.ai-challenge-done .ai-challenge-bar-fill { background: var(--green); }
+.ai-challenge-progress { font-size: 12px; color: var(--muted); }
+.ai-challenge .btn-secondary { align-self: flex-start; margin-top: 2px; }

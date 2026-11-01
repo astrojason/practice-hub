@@ -2,8 +2,8 @@ import { test as base, expect } from "@playwright/test";
 
 export * from "@playwright/test";
 
-// Default mocks for the streak-token and album-badge fetches (and the album
-// list), so specs that don't care about them don't hit an unmocked network
+// Default mocks for the streak-token, album-badge and AI-challenge fetches
+// (and the album list), so specs that don't care about them don't hit an unmocked network
 // call and its error modal. Specs that do care register their own route,
 // which takes priority.
 export const test = base.extend({
@@ -17,6 +17,13 @@ export const test = base.extend({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ badges: [], in_progress: [], newly_awarded: [] }),
+      })
+    );
+    await page.route("**/user-ai-challenge", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ current: [], recent: [] }),
       })
     );
     await page.route("**/album**", (route) => {

@@ -12,6 +12,14 @@ At the top: today's total practice time versus your daily goal, with a progress 
 - **Reports**, **GP Library**, **Calendar**, **Browse**, **Help**, **Metronome** — jump to the other screens/tools.
 - **Rebuild** — refetches your suggested dashboard from the server.
 
+## AI challenges
+
+Below the header, the **AI Challenges** cards show today's, this week's and this month's challenges. They're written overnight by AI from your practice journal (session notes, "next time" prompts, recent items and To Learn songs) on practice.astrojason.com.
+
+- Most challenges (learn a new song, spend 30 minutes on an item, practice on 5 days…) track themselves: the progress bar updates as you log sessions.
+- Challenges the app can't measure have a **Mark done** button (and **Undo** if you tapped it by mistake).
+- Completing challenges earns Challenges badges on the web app's Achievements page.
+
 ## Practicing an item
 
 Each item (exercise, study material, or song) appears as a card grouped under **Exercises**, **Study Materials**, **Project**, or **Repertoire Review**. A card shows its name, subtitle, any tags, and a status icon (circle = not done, check = completed, forward arrow = skipped).
