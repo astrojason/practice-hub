@@ -8,6 +8,7 @@ A desktop practice tracker built with Tauri 2, React, and TypeScript. Connects t
 - **Rust** (stable) — install via [rustup](https://rustup.rs)
 - **Tauri CLI** prerequisites for macOS:
   - Xcode Command Line Tools: `xcode-select --install`
+- **Optional — instrument filter:** the media player's Instruments panel splits a local audio/video file into stems (vocals, drums, bass, guitar, piano, other) so you can mute any of them. It runs [Demucs](https://github.com/adefossez/demucs) via the system `python3`: `python3 -m pip install demucs`. Stems are cached in the app cache directory, so each file is only separated once.
 
 ## Environment variables
 

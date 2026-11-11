@@ -16,6 +16,7 @@ import { PositiveIntInput } from "./PositiveIntInput";
 import { OptionalIntInput } from "./OptionalIntInput";
 import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { seekVideo, getVideoTime } from "./videoSeek";
+import { useStems, STEM_NAMES, STEM_LABELS } from "./useStems";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { ErrorModal } from "../ErrorModal";
 import { ConfirmModal } from "../ConfirmModal";
@@ -70,6 +71,8 @@ interface Preset {
   sequenceLoop?: boolean;
   loopMaxTimes?: number | null;
   sequenceLoopMaxTimes?: number | null;
+  /** Instrument stems muted for this resource (see useStems). */
+  mutedStems?: string[];
   updatedAt: number;
 }
 
@@ -290,6 +293,19 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     initialPresetLoadRef.current.error ?? shortcuts.initialLoadError
   );
 
+  // ── Instrument filter (stems) ───────────────────────────────────────────────
+  const [mutedStems, setMutedStemsState] = useState<string[]>([]);
+  const mutedStemsRef = useRef<string[]>([]);
+  const setMutedStems = useCallback((next: string[]) => {
+    mutedStemsRef.current = next;
+    setMutedStemsState(next);
+  }, []);
+  const stems = useStems(filePath, mutedStems, (msg) => setPersistError((prev) => prev ?? msg));
+  // The file the audio engine is currently playing: filePath, or a stem mix.
+  const loadedAudioSourceRef = useRef<string | null>(null);
+  const stemAudioRef = useRef<HTMLAudioElement>(null);
+  const videoStemMix = isVideo ? stems.mixPath : null;
+
   // ── Metronome ────────────────────────────────────────────────────────────────
   const [metronomeFollowSpeed, setMetronomeFollowSpeed] = useState(true);
   const [metronomeCountIn, setMetronomeCountIn] = useState(true);
@@ -393,6 +409,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       sequenceLoop: sequenceLoopRef.current,
       loopMaxTimes: loopMaxTimesRef.current,
       sequenceLoopMaxTimes: sequenceLoopMaxTimesRef.current,
+      mutedStems: mutedStemsRef.current,
       updatedAt: Date.now(),
     };
     try {
@@ -453,6 +470,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       audioActions.setLoopMaxTimes(null);
       setSequenceLoopMaxTimesLocal(null);
       sequenceLoopMaxTimesRef.current = null;
+      setMutedStems([]);
       setPresetStatusText("Not saved");
       return;
     }
@@ -512,8 +530,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const seqMax = preset.sequenceLoopMaxTimes ?? null;
     setSequenceLoopMaxTimesLocal(seqMax);
     sequenceLoopMaxTimesRef.current = seqMax;
+    setMutedStems(Array.isArray(preset.mutedStems) ? preset.mutedStems : []);
     setPresetStatusText("All changes saved");
-  }, [audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions, regionState.setSelectedIds]);
+  }, [setMutedStems, audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions, regionState.setSelectedIds]);
 
   // ── Auto-increase bpm flash ──────────────────────────────────────────────────
   // When loop auto-increase bumps the speed, the region/resource bpm
@@ -639,6 +658,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       setVideoDuration(0);
       setVideoPlaying(false);
     } else {
+      loadedAudioSourceRef.current = filePath;
       audioActions.loadFile(filePath, { autoplay: autoplayNow && !autoSequence, startAt: startAtZero ? 0 : undefined });
     }
 
@@ -667,6 +687,79 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       setPersistError(`Couldn't load "${filePath}": ${audioState.errorMessage ?? "unknown error"}`);
     }
   }, [isVideo, audioState.status, audioState.errorMessage, filePath]);
+
+  // ── Instrument filter playback ───────────────────────────────────────────────
+  // Audio: swap the engine's buffer to the stem mix (or back to the original)
+  // once the file has loaded, keeping the playhead and play state.
+  const desiredAudioSource = stems.mixPath ?? filePath;
+  useEffect(() => {
+    if (isVideo || audioState.status !== "ready") return;
+    if (loadedAudioSourceRef.current === desiredAudioSource) return;
+    loadedAudioSourceRef.current = desiredAudioSource;
+    audioActions.swapSource(desiredAudioSource).catch((err) => {
+      loadedAudioSourceRef.current = null;
+      setPersistError(`Couldn't switch to the instrument mix: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVideo, audioState.status, desiredAudioSource]);
+
+  // Video: mute the video's own soundtrack and play the stem mix on a hidden
+  // <audio> element kept in step with it (play/pause/seek/rate, drift > 150ms).
+  useEffect(() => {
+    const vid = videoRef.current;
+    const aud = stemAudioRef.current;
+    if (!isVideo || !vid) return;
+    if (!videoStemMix || !aud) {
+      vid.muted = false;
+      return;
+    }
+    vid.muted = true;
+    aud.preservesPitch = true;
+    const sync = (force: boolean) => {
+      aud.playbackRate = vid.playbackRate;
+      if (force || Math.abs(aud.currentTime - vid.currentTime) > 0.15) aud.currentTime = vid.currentTime;
+    };
+    const onPlay = () => {
+      sync(true);
+      aud.play().catch((err) => {
+        // AbortError just means a pause/seek interrupted this play() — expected.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setPersistError(`Couldn't play the instrument mix: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    };
+    const onPause = () => aud.pause();
+    const onSeeked = () => sync(true);
+    const onRate = () => { aud.playbackRate = vid.playbackRate; };
+    const onTime = () => { if (!vid.paused) sync(false); };
+    const onAudioError = () => {
+      const detail = aud.error?.message || (aud.error?.code ? `media error code ${aud.error.code}` : "unknown error");
+      setPersistError(`Couldn't load the instrument mix: ${detail}`);
+    };
+    vid.addEventListener("play", onPlay);
+    vid.addEventListener("pause", onPause);
+    vid.addEventListener("seeked", onSeeked);
+    vid.addEventListener("ratechange", onRate);
+    vid.addEventListener("timeupdate", onTime);
+    aud.addEventListener("error", onAudioError);
+    sync(true);
+    if (!vid.paused) onPlay();
+    return () => {
+      vid.removeEventListener("play", onPlay);
+      vid.removeEventListener("pause", onPause);
+      vid.removeEventListener("seeked", onSeeked);
+      vid.removeEventListener("ratechange", onRate);
+      vid.removeEventListener("timeupdate", onTime);
+      aud.removeEventListener("error", onAudioError);
+      aud.pause();
+      vid.muted = false;
+    };
+  }, [isVideo, videoStemMix]);
+
+  const toggleStem = (name: string) => {
+    const current = mutedStemsRef.current;
+    setMutedStems(current.includes(name) ? current.filter((n) => n !== name) : [...current, name]);
+    schedulePresetSave();
+  };
 
   // ── Video event handlers ─────────────────────────────────────────────────────
 
@@ -1794,6 +1887,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
             playsInline
             preload="auto"
           />
+          {videoStemMix && (
+            <audio ref={stemAudioRef} className="mp-stem-audio" src={assetUrl(videoStemMix)} preload="auto" />
+          )}
         </div>
       )}
 
@@ -2241,6 +2337,42 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                 </div>
               </section>
             )}
+
+            {/* Instrument filter */}
+            <section className="mp-section mp-instruments">
+              <div className="mp-section-header">
+                <span className="mp-section-label">Instruments</span>
+                {stems.mixing && <span className="mp-marker-count">Mixing…</span>}
+                {stems.status === "ready" && mutedStems.length > 0 && (
+                  <button className="btn-ghost btn-xs" onClick={() => { setMutedStems([]); schedulePresetSave(); }}>Unmute all</button>
+                )}
+              </div>
+              {stems.status === "unavailable" && (
+                <p className="mp-empty-state">Instrument separation is only available in the desktop app.</p>
+              )}
+              {stems.status === "checking" && (
+                <p className="mp-empty-state">Checking for separated instruments…</p>
+              )}
+              {stems.status === "none" && (
+                <div className="mp-row mp-row--wrap">
+                  <button className="btn-ghost btn-xs" onClick={stems.separate}>Separate instruments</button>
+                  <span className="mp-empty-state">Splits this file into vocals, drums, bass, guitar, piano and other so you can mute any of them. Takes a few minutes the first time.</span>
+                </div>
+              )}
+              {stems.status === "separating" && (
+                <p className="mp-empty-state">Separating instruments… this can take a few minutes.</p>
+              )}
+              {stems.status === "ready" && stems.stems && (
+                <div className="mp-row mp-row--wrap mp-stem-toggles">
+                  {STEM_NAMES.filter((n) => stems.stems!.some((s) => s.name === n)).map((n) => (
+                    <label key={n} className="mp-stem-toggle">
+                      <input type="checkbox" checked={!mutedStems.includes(n)} onChange={() => toggleStem(n)} />
+                      {STEM_LABELS[n]}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </section>
 
 
           </div>

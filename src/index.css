@@ -3022,3 +3022,15 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .ai-challenge-done .ai-challenge-bar-fill { background: var(--green); }
 .ai-challenge-progress { font-size: 12px; color: var(--muted); }
 .ai-challenge .btn-secondary { align-self: flex-start; margin-top: 2px; }
+
+/* ── Instrument filter (stem toggles) ──────────────────────────────────────── */
+.mp-stem-toggles { gap: 6px 14px; }
+.mp-stem-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
