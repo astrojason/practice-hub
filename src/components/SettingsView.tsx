@@ -108,7 +108,7 @@ export function SettingsView({ onBack }: Props) {
           <h3>Guitar Pro library</h3>
           <p>
             Run the library scan every day at 3:00 AM, even when Practice Hub is closed.
-            Output is written to <code>~/Library/Logs/practice-hub/nightly-gp-scan.log</code>.
+            Output is written to <code>~/Projects/tools/cron-jobs/logs/nightly-gp-scan.log</code>.
           </p>
         </div>
         <label className="settings-toggle">

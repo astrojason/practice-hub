@@ -346,15 +346,6 @@ fn launchd_agent_path() -> Result<PathBuf, String> {
         .join(format!("{NIGHTLY_SCAN_LABEL}.plist")))
 }
 
-fn xml_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
-}
-
 fn run_launchctl(action: &str, path: &Path) -> Result<(), String> {
     let output = std::process::Command::new("launchctl")
         .arg(action)
@@ -383,35 +374,26 @@ fn launchctl_already_unloaded(message: &str) -> bool {
         || lower.contains("no such file")
 }
 
+/// The nightly scan job lives in the cron-jobs folder (the one place for every scheduled job on
+/// this Mac): its launchd plist, script and logs are all there. Installing it from the app copies
+/// that plist into ~/Library/LaunchAgents and loads it.
+const CRON_JOBS_RELATIVE: &str = "Projects/tools/cron-jobs";
+const NIGHTLY_SCAN_JOB_RELATIVE: &str = "jobs/practice-hub-gp-scan";
+
 #[tauri::command]
-async fn install_launchd_agent(app: tauri::AppHandle) -> Result<(), String> {
-    let home = home_directory()?;
-    let python = home.join("Projects/astrojason/practice.astrojason.com/.venv/bin/python3");
-    let script = home.join("Projects/astrojason/practice-hub/scripts/nightly_gp_scan.py");
-    let log_dir = home.join("Library/Logs/practice-hub");
-    let log_path = log_dir.join("nightly-gp-scan.log");
+async fn install_launchd_agent() -> Result<(), String> {
+    let cron_jobs = home_directory()?.join(CRON_JOBS_RELATIVE);
+    let job_dir = cron_jobs.join(NIGHTLY_SCAN_JOB_RELATIVE);
+    let script = job_dir.join("nightly_gp_scan.py");
+    let template_path = job_dir.join(format!("{NIGHTLY_SCAN_LABEL}.plist"));
+    let log_dir = cron_jobs.join("logs");
     let agent_path = launchd_agent_path()?;
 
-    if !python.is_file() {
-        return Err(format!("Instrumenta Python environment not found at {}", python.display()));
-    }
     if !script.is_file() {
         return Err(format!("Nightly scan script not found at {}", script.display()));
     }
-
-    let template_path = app
-        .path()
-        .resolve(
-            "sidecar/com.astrojason.practicehub.nightly-gp-scan.plist",
-            BaseDirectory::Resource,
-        )
-        .map_err(|e| format!("Could not locate launchd template: {e}"))?;
-    let template = fs::read_to_string(&template_path)
-        .map_err(|e| format!("Failed to read launchd template {}: {e}", template_path.display()))?;
-    let plist = template
-        .replace("__PYTHON_PATH__", &xml_escape(&python.to_string_lossy()))
-        .replace("__SCRIPT_PATH__", &xml_escape(&script.to_string_lossy()))
-        .replace("__LOG_PATH__", &xml_escape(&log_path.to_string_lossy()));
+    let plist = fs::read_to_string(&template_path)
+        .map_err(|e| format!("Failed to read the launchd plist {}: {e}", template_path.display()))?;
 
     fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Failed to create log directory {}: {e}", log_dir.display()))?;
@@ -460,7 +442,7 @@ fn is_launchd_agent_installed() -> Result<bool, String> {
     Ok(launchd_agent_path()?.is_file())
 }
 
-const NIGHTLY_SCAN_LOG_RELATIVE: &str = "Library/Logs/practice-hub/nightly-gp-scan.log";
+const NIGHTLY_SCAN_LOG_RELATIVE: &str = "Projects/tools/cron-jobs/logs/nightly-gp-scan.log";
 
 #[derive(serde::Serialize)]
 struct NightlyScanStatus {

@@ -176,3 +176,10 @@ test("hides the next-run line when the agent is disabled", async ({ page }) => {
   await expect(page.getByText(/Last run .* — succeeded/)).toBeVisible();
   await expect(page.getByText(/Next run:/)).not.toBeVisible();
 });
+
+test("the settings text points at the cron-jobs log where the nightly scan writes", async ({ page }) => {
+  await setupPage(page);
+  await expect(page.locator(".settings-card code")).toHaveText(
+    "~/Projects/tools/cron-jobs/logs/nightly-gp-scan.log"
+  );
+});

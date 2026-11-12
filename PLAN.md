@@ -35,7 +35,7 @@ commit that touches non-CLAUDE.md files.
   display of an aspect when `song.rhythm_difficulty_manual`/`lead_difficulty_manual`
   is set (`suppressManualAspects` in `useGpScanner.ts`). The direct write-to-DB
   path is now implemented too.
-- `scripts/nightly_gp_scan.py` mirrors the in-app scanner so it can run
+- `~/Projects/tools/cron-jobs/jobs/practice-hub-gp-scan/nightly_gp_scan.py` mirrors the in-app scanner so it can run
   headless via a scheduled job. It reads the Instrumenta song catalog directly
   from Turso via `libsql_experimental`, using credentials from
   `~/Projects/astrojason/practice.astrojason.com/.env.{development,production}`.
