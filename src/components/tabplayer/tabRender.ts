@@ -99,6 +99,8 @@ export interface RenderOptions {
   loop?: [number, number] | null;
   /** The track named in the multi-track label as the current one. */
   currentTrack?: number;
+  /** The editing caret (single-track view): bar, beat and string (1 = highest). */
+  caret?: { bar: number; beat: number; string: number } | null;
 }
 
 export interface BarLayout {
@@ -113,7 +115,7 @@ export interface TabLayout {
   lines: { el: HTMLDivElement; svg: SVGElement; height: number }[];
   bars: BarLayout[];
   cursor: HTMLDivElement;
-  geo: { cursorTop: number; cursorBottom: number };
+  geo: { cursorTop: number; cursorBottom: number; top: number; gap: number };
 }
 
 interface Row {
@@ -276,6 +278,10 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
           if (b.chord && k === 0) {
             topG.appendChild(el("text", { x: cx - 4, y: first.top - 20, "font-size": "13", fill: "var(--tab-chord)" }, b.chord));
           }
+          if (k === 0 && opts.caret && opts.caret.bar === mi && opts.caret.beat === bi) {
+            const cy = st.top + GEO.gap * (opts.caret.string - 1);
+            notesG.appendChild(el("rect", { class: "edit-caret", x: cx - 10, y: cy - 8, width: 20, height: 16, rx: 3 }));
+          }
           for (const n of b.notes) {
             const ny = st.top + GEO.gap * (n.string - 1);
             let label: string;
@@ -336,7 +342,7 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
     lines: lineEls,
     bars,
     cursor,
-    geo: { cursorTop: first.top, cursorBottom: last.bottom },
+    geo: { cursorTop: first.top, cursorBottom: last.bottom, top: first.top, gap: GEO.gap },
   };
 }
 

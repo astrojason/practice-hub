@@ -3128,3 +3128,10 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
   cursor: pointer;
   user-select: none;
 }
+
+/* Tab player: editor */
+.tab-edit-bar { background: var(--surface-2); }
+.tab-edit-btn { min-width: 34px; padding: 4px 8px; }
+.tab-edit-sep { width: 1px; height: 22px; background: var(--border); }
+.tab-edit-status { font-size: 12px; color: var(--text-dim); }
+.edit-caret { fill: none; stroke: var(--accent); stroke-width: 1.5; pointer-events: none; }

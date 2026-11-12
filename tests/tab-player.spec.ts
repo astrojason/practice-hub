@@ -82,9 +82,30 @@ const mockSong = {
   ],
 };
 
-async function setup(page: import("@playwright/test").Page, opts: { readError?: string; tabUrl?: string } = {}) {
+function withDrums(song: typeof mockSong) {
+  const hit = (string: number, fret: number) => ({ dur: 4, notes: [{ string, fret }] });
+  return {
+    ...song,
+    tracks: [
+      ...song.tracks,
+      {
+        name: "Drums",
+        instrument: "drums",
+        tuning: "drums",
+        strings: [49, 42, 38, 45, 36],
+        difficulty: 1,
+        measures: [
+          { beats: [hit(2, 42), hit(3, 38), hit(2, 42), hit(5, 36)] },
+          { beats: [hit(2, 42), hit(3, 38), hit(2, 42), hit(5, 36)] },
+        ],
+      },
+    ],
+  };
+}
+
+async function setup(page: import("@playwright/test").Page, opts: { readError?: string; tabUrl?: string; saveError?: string; drums?: boolean } = {}) {
   await page.addInitScript(
-    ({ song, readError }) => {
+    ({ song, readError, saveError }) => {
       const w = window as unknown as { __calls: { cmd: string; args?: Record<string, unknown> }[] };
       w.__calls = [];
       let separated = false;
@@ -106,6 +127,9 @@ async function setup(page: import("@playwright/test").Page, opts: { readError?: 
             return Promise.resolve(stemFiles);
           }
           if (cmd === "mix_stems") return Promise.resolve(`/cache/mix-${((args as { muted: string[] }).muted).join("+")}.wav`);
+          if (cmd === "save_tab_copy") {
+            return saveError ? Promise.reject(saveError) : Promise.resolve("/path/to/solo (edited).gp");
+          }
           if (cmd === "read_tab_file") {
             return readError ? Promise.reject(readError) : Promise.resolve(JSON.stringify(song));
           }
@@ -117,7 +141,7 @@ async function setup(page: import("@playwright/test").Page, opts: { readError?: 
       } as unknown as typeof window.__TAURI_INTERNALS__;
       localStorage.setItem("ph:refreshToken", "fake-refresh-token");
     },
-    { song: mockSong, readError: opts.readError ?? null }
+    { song: opts.drums ? withDrums(mockSong) : mockSong, readError: opts.readError ?? null, saveError: opts.saveError ?? null }
   );
   await page.route("**/securetoken.googleapis.com/**", (route) =>
     route.fulfill({
@@ -458,4 +482,179 @@ test("the Bass track maps to the bass stem", async ({ page }) => {
   await player.getByRole("button", { name: "Mute track" }).click();
   await expect(player.getByRole("checkbox", { name: "Bass", exact: true })).not.toBeChecked();
   await expect(player.getByRole("checkbox", { name: "Guitar", exact: true })).toBeChecked();
+});
+
+// ── The tab editor ────────────────────────────────────────────────────────────
+
+async function startEditing(page: import("@playwright/test").Page) {
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await player.getByRole("button", { name: "Edit tab" }).click();
+  await expect(player.locator(".tab-edit-bar")).toBeVisible();
+  return player;
+}
+
+const saveCalls = (page: import("@playwright/test").Page) =>
+  page.evaluate(() =>
+    (window as unknown as { __calls: { cmd: string; args?: { filePath?: string; songJson?: string } }[] }).__calls.filter((c) => c.cmd === "save_tab_copy")
+  );
+
+test("editing: typing a fret changes the note under the caret, and undo puts it back", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  await expect(fret(page, 3)).toHaveCount(1);
+  await page.keyboard.press("9");
+  await expect(fret(page, 9)).toHaveCount(1);
+  await expect(fret(page, 3)).toHaveCount(0);
+  await expect(player.locator(".edit-caret")).toHaveCount(1);
+  await expect(player.locator(".tab-edit-status")).toContainText("unsaved changes");
+  await player.getByRole("button", { name: "Undo" }).click();
+  await expect(fret(page, 3)).toHaveCount(1);
+  await expect(fret(page, 9)).toHaveCount(0);
+});
+
+test("editing: arrow keys move the caret, two quick digits make a two-digit fret", async ({ page }) => {
+  await setup(page);
+  await startEditing(page);
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("1");
+  await page.keyboard.press("4");
+  await expect(fret(page, 14)).toHaveCount(1);
+  await expect(fret(page, 5)).toHaveCount(0);
+  // One undo takes back both digits.
+  await page.keyboard.press("Control+z");
+  await expect(fret(page, 5)).toHaveCount(1);
+  await expect(fret(page, 14)).toHaveCount(0);
+});
+
+test("editing: clicking the staff places the caret", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  const hit = player.locator('.tab-bar-hit[data-bar="1"]').first();
+  await expect(player.locator(".edit-caret")).toHaveCount(1);
+  await expect.poll(async () => (await hit.boundingBox()) !== null).toBe(true);
+  const box = (await hit.boundingBox())!;
+  const svg = (await player.locator(".tab-line svg").first().boundingBox())!;
+  await page.mouse.click(box.x + box.width * 0.5, svg.y + 48);
+  await page.keyboard.press("1");
+  await page.keyboard.press("1");
+  await expect(fret(page, 11)).toHaveCount(1);
+});
+
+test("editing: backspace removes a note, R makes the beat a rest, Enter adds a beat", async ({ page }) => {
+  await setup(page);
+  await startEditing(page);
+  await page.keyboard.press("Backspace");
+  await expect(fret(page, 3)).toHaveCount(0);
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("r");
+  await expect(fret(page, 5)).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("6");
+  await expect(fret(page, 6)).toHaveCount(1);
+  await expect(page.locator(".tab-player .tab-edit-status")).toContainText("too long");
+});
+
+test("editing: note value and dot buttons change the bar's length", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  await player.getByRole("button", { name: "Half note" }).click();
+  await expect(player.locator(".tab-edit-status")).toContainText("too long");
+  await player.getByRole("button", { name: "Quarter note" }).click();
+  await expect(player.locator(".tab-edit-status")).not.toContainText("too long");
+  await player.getByRole("button", { name: "Dotted" }).click();
+  await expect(player.locator(".tab-edit-status")).toContainText("too long");
+});
+
+test("editing: + Bar adds a bar to every track, and - Bar asks before deleting", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  await expect(player.locator(".tab-player-bar")).toContainText("/ 2");
+  await player.getByRole("button", { name: "+ Bar" }).click();
+  await expect(player.locator(".tab-player-bar")).toContainText("/ 3");
+  await player.getByRole("button", { name: "− Bar" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Delete bar 2?");
+  await page.getByRole("alertdialog").locator("button.btn-ghost", { hasText: "Cancel" }).click();
+  await expect(player.locator(".tab-player-bar")).toContainText("/ 3");
+  await player.getByRole("button", { name: "− Bar" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete bar 2" }).click();
+  await expect(player.locator(".tab-player-bar")).toContainText("/ 2");
+});
+
+test("editing: saving writes a new .gp next to the original with the edits", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  await page.keyboard.press("9");
+  await player.getByRole("button", { name: "Save as new .gp" }).click();
+  await expect(player.locator(".tab-edit-status")).toContainText("Saved as /path/to/solo (edited).gp");
+  await expect(player.locator(".tab-edit-status")).not.toContainText("unsaved changes");
+  const calls = await saveCalls(page);
+  expect(calls).toHaveLength(1);
+  expect(calls[0].args?.filePath).toBe("/path/to/solo.gp");
+  const saved = JSON.parse(calls[0].args!.songJson!);
+  expect(saved.tracks[0].measures[0].beats[0].notes[0].fret).toBe(9);
+  // The saved copy can be opened in Guitar Pro.
+  await player.getByRole("button", { name: "Open the saved copy" }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __calls: { cmd: string; args?: { path?: string } }[] }).__calls.filter((c) => c.cmd === "open_with_default").map((c) => c.args?.path)))
+    .toEqual(["/path/to/solo (edited).gp"]);
+});
+
+test("editing: a failed save shows the actual error and keeps the changes", async ({ page }) => {
+  await setup(page, { saveError: "Couldn't create /path/to/solo (edited).gp: permission denied" });
+  const player = await startEditing(page);
+  await page.keyboard.press("9");
+  await player.getByRole("button", { name: "Save as new .gp" }).click();
+  await expect(page.locator(".error-modal, [role=dialog]").filter({ hasText: "permission denied" }).first()).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(player.locator(".tab-edit-status")).toContainText("unsaved changes");
+});
+
+test("editing: leaving with unsaved changes asks first, and discarding restores the tab", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  await page.keyboard.press("9");
+  await player.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Discard your changes?");
+  await page.getByRole("alertdialog").locator("button.btn-ghost", { hasText: "Cancel" }).click();
+  await expect(player.locator(".tab-edit-bar")).toBeVisible();
+  await expect(fret(page, 9)).toHaveCount(1);
+  await player.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Discard changes" }).click();
+  await expect(player.locator(".tab-edit-bar")).toHaveCount(0);
+  await expect(fret(page, 3)).toHaveCount(1);
+  await expect(fret(page, 9)).toHaveCount(0);
+});
+
+test("editing: closing the player with unsaved changes asks first", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  await page.keyboard.press("9");
+  await player.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Discard your changes?");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Discard changes" }).click();
+  await expect(page.locator(".tab-player")).toHaveCount(0);
+});
+
+test("editing: only the current track is drawn and the synth plays the edited tab", async ({ page }) => {
+  await setup(page);
+  const player = await startEditing(page);
+  await player.getByRole("button", { name: "Tracks" }).click();
+  await page.getByRole("checkbox", { name: "Show Bass" }).check();
+  await expect(fret(page, 0)).toHaveCount(0);
+  await page.keyboard.press("9");
+  await player.locator('button[title="Play"]').click();
+  await expect(player.locator('button[title="Pause"]')).toBeVisible();
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("editing: a drum track toggles hits on the line with the digit keys", async ({ page }) => {
+  await setup(page, { drums: true });
+  const player = await startEditing(page);
+  await player.getByRole("button", { name: "Tracks" }).click();
+  await player.getByRole("button", { name: /^Drums/ }).click();
+  await expect(player.locator("text", { hasText: /^x$/ }).first()).toBeVisible();
+  const before = await player.locator(".tab-line svg text", { hasText: /^[xo]$/ }).count();
+  await page.keyboard.press("1");
+  await expect(player.locator(".tab-line svg text", { hasText: /^[xo]$/ })).not.toHaveCount(before);
 });

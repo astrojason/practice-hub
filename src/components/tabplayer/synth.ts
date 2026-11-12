@@ -87,6 +87,20 @@ export class SynthPlayer implements Transport {
     return ctx;
   }
 
+  /** Swaps in an edited version of the song, keeping the mixer and the place in the song. */
+  reload(song: TabSong): void {
+    const muted = [...this.muted];
+    const solo = [...this.solo];
+    const volumes = [...this.volumes];
+    const tick = this.positionTick;
+    this.load(song);
+    this.volumes = song.tracks.map((_, i) => volumes[i] ?? 0.8);
+    muted.forEach((i) => i < song.tracks.length && this.muted.add(i));
+    solo.forEach((i) => i < song.tracks.length && this.solo.add(i));
+    this.positionTick = Math.min(tick, Math.max(0, this.totalTicks - 1));
+    this.applyGains();
+  }
+
   load(song: TabSong): void {
     if (this.playing) this.pause();
     this.song = song;

@@ -9,6 +9,10 @@ import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLoca
 import type { Resource } from "../../api/types";
 import { barAt, renderTracks, type TabLayout } from "./tabRender";
 import { renderChordSheet, type ChordSheetLayout } from "./chordSheet";
+import {
+  addBar, barStatus, caretFromPoint, clampCaret, clearBeat, deleteBar, deleteBeat, DRUM_FOR_LINE, DURATIONS, insertBeat, isError,
+  moveCaret, removeNote, setDuration, setFret, stepDuration, toggleDot, toggleDrum, type Caret, type EditResult,
+} from "./tabEditor";
 import { songClock, type SongClock } from "./clock";
 import { SynthPlayer, type VoiceKind } from "./synth";
 import { RecordingTransport, type SyncPoint } from "./recordingTransport";
@@ -83,6 +87,15 @@ function errMsg(err: unknown): string {
 
 export function TabPlayer({ filePath, resources = [], onClose }: Props) {
   const [song, setSong] = useState<TabSong | null>(null);
+  /** The song as loaded from the file; the player's synth is built on it. */
+  const [loadedSong, setLoadedSong] = useState<TabSong | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [caret, setCaret] = useState<Caret>({ bar: 0, beat: 0, string: 1 });
+  const [dirty, setDirty] = useState(false);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState<"done" | "close" | null>(null);
+  const [confirmDeleteBar, setConfirmDeleteBar] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [failedLoading, setFailedLoading] = useState(false);
 
@@ -137,13 +150,18 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
   followRef.current = follow;
   const chordRef = useRef<ChordSheetLayout | null>(null);
   const modeRef = useRef<DisplayMode>(mode);
-  modeRef.current = mode;
+  modeRef.current = editing ? "tab" : mode;
   const pitchRef = useRef(0);
   pitchRef.current = pitchSemis + pitchCents / 100;
   const transposeRef = useRef(0);
   transposeRef.current = transpose;
   const dragRef = useRef<{ start: number; end: number; moved: boolean } | null>(null);
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  /** Snapshots of the tracks' bars before each edit, for undo. */
+  const historyRef = useRef<string[]>([]);
+  /** The song as last loaded or saved, which discarding goes back to. */
+  const baselineRef = useRef<TabSong | null>(null);
+  const lastDigitRef = useRef<{ at: number; value: number | null; bar: number; beat: number; string: number } | null>(null);
 
   // Keyed on the content so a parent re-render with an equal list doesn't reset the recording.
   const resourcesKey = JSON.stringify(resources);
@@ -221,6 +239,8 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
         const parsed = JSON.parse(json) as TabSong;
         if (!parsed.tracks?.length) throw new Error("This file has no tracks the tab player can show.");
         setSong(parsed);
+        setLoadedSong(parsed);
+        baselineRef.current = parsed;
         setVolumes(parsed.tracks.map(() => 0.8));
         const stored = (initial.view.tracks ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < parsed.tracks.length);
         const tracks = stored.length ? stored : [0];
@@ -259,22 +279,29 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
 
   // ── The synth transport for the loaded song ─────────────────────────────────
   useEffect(() => {
-    if (!song) return;
+    if (!loadedSong) return;
     const synth = new SynthPlayer({
       onTick: (t) => moveCursor(t),
       onState: (p) => setPlaying(p),
       onError: (e) => setError(e.message),
     });
-    synth.load(song);
+    synth.load(loadedSong);
     synth.setSpeed(speedRef.current);
     synth.setLoop(loopRef.current);
     synthRef.current = synth;
-    clockRef.current = songClock(song);
+    clockRef.current = songClock(loadedSong);
     return () => {
       synth.dispose();
       if (synthRef.current === synth) synthRef.current = null;
     };
-  }, [song, moveCursor]);
+  }, [loadedSong, moveCursor]);
+
+  // An edit changes what the synth plays and how long the bars are.
+  useEffect(() => {
+    if (!song) return;
+    synthRef.current?.reload(song);
+    clockRef.current = songClock(song);
+  }, [song]);
 
   // ── Draw the tab ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -282,17 +309,18 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     if (!song || !host) return;
     function draw() {
       if (!host || !song) return;
-      if (mode === "chords") {
+      if (mode === "chords" && !editing) {
         layoutRef.current = null;
         chordRef.current = renderChordSheet(host, song, currentTrack, transpose);
         chordRef.current.bars.forEach((b, i) => b.el.classList.toggle("in-loop", Boolean(loop && i >= loop[0] && i <= loop[1])));
       } else {
         chordRef.current = null;
-        layoutRef.current = renderTracks(host, song, shownTracks, {
+        layoutRef.current = renderTracks(host, song, editing ? [currentTrack] : shownTracks, {
           width: host.clientWidth,
           loop,
           transpose,
           currentTrack,
+          caret: editing ? clampCaret(song, currentTrack, caret) : null,
         });
       }
       moveCursor(tickRef.current);
@@ -301,21 +329,22 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     const ro = new ResizeObserver(() => draw());
     ro.observe(host);
     return () => ro.disconnect();
-  }, [song, shownTracks, loop, moveCursor, mode, currentTrack, transpose]);
+  }, [song, shownTracks, loop, moveCursor, mode, currentTrack, transpose, editing, caret]);
 
   // ── Which transport is active ───────────────────────────────────────────────
   const transport = (): Transport | null => recordingRef.current ?? synthRef.current;
 
   // ── Attach / detach a recording ─────────────────────────────────────────────
+  const effectiveAudio = editing ? "" : audioPath;
   useEffect(() => {
     if (!song) return;
-    if (!audioPath) {
+    if (!effectiveAudio) {
       setAudioStatus("");
       // Back to the synth: pick up where the recording left off.
       synthRef.current?.seekTick(tickRef.current);
       return;
     }
-    const name = audioCandidates.find((r) => r.url === audioPath)?.name ?? audioPath;
+    const name = audioCandidates.find((r) => r.url === effectiveAudio)?.name ?? effectiveAudio;
     const wasTick = tickRef.current;
     synthRef.current?.pause();
     const audio = new Audio();
@@ -324,7 +353,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     setAudioStatus(`Loading ${name}…`);
     const saved = readLocalStorageJSON<Record<string, StoredSync | number>>(SYNC_KEY, {});
     if (saved.error) setError(saved.error);
-    const stored = saved.value[`${filePath}|${audioPath}`];
+    const stored = saved.value[`${filePath}|${effectiveAudio}`];
     const loaded: StoredSync = typeof stored === "number" ? { offset: stored, sync: [] } : stored ?? { offset: 0, sync: [] };
     const off = loaded.offset;
     setOffset(off);
@@ -348,10 +377,10 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
       if (disposed) return;
       const code = audio.error?.message || `media error ${audio.error?.code ?? "?"}`;
       setAudioStatus("");
-      setError(`Couldn't load the recording "${name}" (${audioPath}): ${code}`);
+      setError(`Couldn't load the recording "${name}" (${effectiveAudio}): ${code}`);
       setAudioPath("");
     });
-    audio.src = assetUrl(audioPath);
+    audio.src = assetUrl(effectiveAudio);
     rec.srcUrl = audio.src;
     recordingRef.current = rec;
     setShifterReady(false);
@@ -370,16 +399,16 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
       rec.dispose();
       if (recordingRef.current === rec) recordingRef.current = null;
     };
-  }, [audioPath, song, filePath, audioCandidates, moveCursor]);
+  }, [effectiveAudio, song, filePath, audioCandidates, moveCursor]);
 
   // Play the mix of the unmuted instruments, or the original again when nothing is muted.
   useEffect(() => {
     const rec = recordingRef.current;
-    if (!rec || !audioPath) return;
+    if (!rec || !audioPath || editing) return;
     const url = new URL(assetUrl(stems.mixPath ?? audioPath)).href;
     if (new URL(rec.srcUrl, window.location.href).href === url) return;
     rec.swapSource(url).catch((err) => setError(errMsg(err)));
-  }, [stems.mixPath, audioPath]);
+  }, [stems.mixPath, audioPath, editing]);
 
   // Keep the active transport's speed and loop in step with the controls.
   useEffect(() => {
@@ -444,9 +473,183 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     return clock ? barAt(clock.timing, tickRef.current) : 0;
   }
 
+  // ── Editing ─────────────────────────────────────────────────────────────────
+  function snapshot() {
+    if (!song) return;
+    historyRef.current.push(JSON.stringify(song.tracks.map((t) => t.measures)));
+    if (historyRef.current.length > 200) historyRef.current.shift();
+    setDirty(true);
+  }
+
+  /** Applies an edit that succeeded, or shows why it couldn't be made. */
+  function applyEdit(r: EditResult): boolean {
+    if (isError(r)) {
+      setError(r.error);
+      return false;
+    }
+    setSong(r.song);
+    setCaret(r.caret);
+    return true;
+  }
+
+  /** Runs an edit on the caret's beat, remembering the song first so it can be undone. */
+  function edit(fn: (song: TabSong, track: number, caret: Caret) => EditResult) {
+    if (!song) return;
+    lastDigitRef.current = null;
+    const r = fn(song, currentTrack, caret);
+    if (isError(r)) {
+      setError(r.error);
+      return;
+    }
+    snapshot();
+    setSong(r.song);
+    setCaret(r.caret);
+  }
+
+  function moveEditCaret(dBeat: number, dString: number) {
+    if (!song) return;
+    lastDigitRef.current = null;
+    setCaret(moveCaret(song, currentTrack, caret, dBeat, dString));
+  }
+
+  function typeDigit(d: number) {
+    if (!song) return;
+    const track = song.tracks[currentTrack];
+    if (track.instrument === "drums") {
+      edit((sg, t, c) => toggleDrum(sg, t, c, DRUM_FOR_LINE[c.string] ?? 38));
+      return;
+    }
+    const now = performance.now();
+    const last = lastDigitRef.current;
+    let fret = d;
+    // A second digit soon after the first, on the same note, makes a two-digit fret (one undo step).
+    const joins = last && last.value != null && now - last.at < 900 && last.bar === caret.bar && last.beat === caret.beat && last.string === caret.string && last.value * 10 + d <= 30;
+    if (joins) fret = (last.value as number) * 10 + d;
+    else snapshot();
+    lastDigitRef.current = { at: now, value: fret < 10 ? fret : null, bar: caret.bar, beat: caret.beat, string: caret.string };
+    applyEdit(setFret(song, currentTrack, caret, fret));
+  }
+
+  function undo() {
+    const prev = historyRef.current.pop();
+    if (!prev || !song) return;
+    lastDigitRef.current = null;
+    const measures = JSON.parse(prev) as TabSong["tracks"][number]["measures"][];
+    const next = structuredClone(song);
+    next.tracks.forEach((t, i) => {
+      t.measures = measures[i];
+    });
+    setSong(next);
+    setCaret((c) => clampCaret(next, currentTrack, c));
+    setDirty(true);
+  }
+
+  function startEditing() {
+    if (!song) return;
+    historyRef.current = [];
+    lastDigitRef.current = null;
+    setCaret({ bar: 0, beat: 0, string: 1 });
+    setEditing(true);
+  }
+
+  function leaveEditing() {
+    setConfirmDiscard(null);
+    if (baselineRef.current) setSong(baselineRef.current);
+    historyRef.current = [];
+    setDirty(false);
+    setEditing(false);
+  }
+
+  function requestDone() {
+    if (dirty) setConfirmDiscard("done");
+    else {
+      historyRef.current = [];
+      setEditing(false);
+    }
+  }
+
+  function requestClose() {
+    if (editing && dirty) setConfirmDiscard("close");
+    else onClose();
+  }
+
+  async function saveCopy() {
+    if (!song || saving) return;
+    setSaving(true);
+    try {
+      const path = await invoke<string>("save_tab_copy", { filePath, songJson: JSON.stringify(song) });
+      baselineRef.current = song;
+      setSavedPath(path);
+      setDirty(false);
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openSaved() {
+    if (savedPath) invoke("open_with_default", { path: savedPath }).catch((err) => setError(errMsg(err)));
+  }
+
+  useEffect(() => {
+    if (editing && song) setCaret((c) => clampCaret(song, currentTrack, c));
+  }, [editing, song, currentTrack]);
+
   keyRef.current = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement | null;
     if (el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA")) return;
+    if (error || confirmClear || confirmDiscard || confirmDeleteBar) return;
+    if (editing && song) {
+      const k = e.key;
+      if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === "s") {
+        e.preventDefault();
+        void saveCopy();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (!(e.metaKey || e.ctrlKey || e.altKey)) {
+        const drums = song.tracks[currentTrack].instrument === "drums";
+        const used = (() => {
+          if (/^[0-9]$/.test(k)) { typeDigit(Number(k)); return true; }
+          switch (k) {
+            case "ArrowRight": moveEditCaret(1, 0); return true;
+            case "ArrowLeft": moveEditCaret(-1, 0); return true;
+            case "ArrowUp": moveEditCaret(0, -1); return true;
+            case "ArrowDown": moveEditCaret(0, 1); return true;
+            case "Backspace":
+            case "Delete": {
+              const beat = song.tracks[currentTrack].measures[caret.bar]?.beats[caret.beat];
+              if (beat?.notes.some((n) => n.string === caret.string)) edit(removeNote);
+              return true;
+            }
+            case "Enter": edit(insertBeat); return true;
+            case "+":
+            case "=": edit((sg, t, c) => stepDuration(sg, t, c, -1)); return true;
+            case "-":
+            case "_": edit((sg, t, c) => stepDuration(sg, t, c, 1)); return true;
+            case ".": edit(toggleDot); return true;
+            case "r":
+            case "R": edit(clearBeat); return true;
+            case "x":
+            case "X": if (drums) { edit((sg, t, c) => toggleDrum(sg, t, c, DRUM_FOR_LINE[c.string] ?? 38)); return true; } return false;
+            case "o":
+            case "O": if (drums && caret.string === 2) { edit((sg, t, c) => toggleDrum(sg, t, c, 46)); return true; } return false;
+            case "Escape": requestDone(); return true;
+            default: return false;
+          }
+        })();
+        if (used) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
+    }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const clock = clockRef.current;
     const bars = clock ? clock.timing.starts.length : 0;
@@ -491,7 +694,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
         toggleSource();
         break;
       case "Escape":
-        if (!error) onClose();
+        requestClose();
         break;
       default:
         break;
@@ -510,6 +713,15 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     const clock = clockRef.current;
     if (!hit || !clock) return;
     const bar = Number(hit.dataset.bar);
+    if (editing && song) {
+      const layout = layoutRef.current;
+      const svg = (hit as unknown as SVGElement).ownerSVGElement;
+      if (!layout || !svg || !layout.bars[bar]) return;
+      const rect = svg.getBoundingClientRect();
+      lastDigitRef.current = null;
+      setCaret(caretFromPoint(bar, layout.bars[bar].beats, ev.clientX - rect.left, ev.clientY - rect.top, layout.geo, song.tracks[currentTrack].strings.length));
+      return;
+    }
     if (hit.dataset.track != null) {
       const t = Number(hit.dataset.track);
       setCurrentTrack((prev) => (prev === t ? prev : t));
@@ -637,7 +849,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     if (!next.includes(currentTrack)) setCurrentTrack(next[0]);
   }
 
-  const usingRecording = Boolean(audioPath);
+  const usingRecording = Boolean(audioPath) && !editing;
   const pitchDisabled = usingRecording && !shifterReady;
   const totalBars = song?.tracks[0].measures.length ?? 0;
 
@@ -656,8 +868,19 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
           )}
         </div>
         <div className="tab-player-header-actions">
+          {song && (
+            <button
+              className={`btn-secondary${editing ? " tab-player-on" : ""}`}
+              aria-label="Edit tab"
+              aria-pressed={editing}
+              title="Edit the tab; changes are saved as a new .gp file next to this one"
+              onClick={editing ? requestDone : startEditing}
+            >
+              Edit
+            </button>
+          )}
           <button className="btn-secondary" onClick={openExternally}>Open in Guitar Pro</button>
-          <button className="tab-player-close" onClick={onClose} aria-label="Close" title="Close">
+          <button className="tab-player-close" onClick={requestClose} aria-label="Close" title="Close">
             <XMarkIcon style={{ width: 16, height: 16 }} />
           </button>
         </div>
@@ -727,7 +950,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
             {audioCandidates.length > 0 && (
               <label className="tab-player-field">
                 Audio
-                <select className="tab-audio-select" value={audioPath} onChange={(e) => chooseAudio(e.target.value)} title="Play along with a recording, or the synth (V)">
+                <select className="tab-audio-select" value={audioPath} onChange={(e) => chooseAudio(e.target.value)} disabled={editing} title="Play along with a recording, or the synth (V)">
                   <option value="">Synth (no recording)</option>
                   {audioCandidates.map((r) => (
                     <option key={r.url} value={r.url}>{r.name}</option>
@@ -808,6 +1031,37 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
             )}
             <label className="tab-player-check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow cursor</label>
           </div>
+
+          {editing && (() => {
+            const c = clampCaret(song, currentTrack, caret);
+            const durOn = song.tracks[currentTrack].measures[c.bar].beats[c.beat];
+            return (
+              <div className="tab-player-controls tab-edit-bar">
+                {DURATIONS.map((d) => (
+                  <button key={d.dur} className={`btn-secondary tab-edit-btn${durOn.dur === d.dur ? " tab-player-on" : ""}`} aria-label={d.title} title={d.title} onClick={() => edit((sg, t, cr) => setDuration(sg, t, cr, d.dur))}>{d.label}</button>
+                ))}
+                <button className={`btn-secondary tab-edit-btn${durOn.dotted ? " tab-player-on" : ""}`} aria-label="Dotted" title="Dotted (.)" onClick={() => edit(toggleDot)}>•</button>
+                <button className="btn-secondary tab-edit-btn" title="Make this beat a rest (R)" onClick={() => edit(clearBeat)}>Rest</button>
+                <span className="tab-edit-sep" />
+                <button className="btn-secondary tab-edit-btn" title="Add a beat after this one (Enter)" onClick={() => edit(insertBeat)}>+ Beat</button>
+                <button className="btn-secondary tab-edit-btn" title="Remove this beat" onClick={() => edit(deleteBeat)}>− Beat</button>
+                <button className="btn-secondary tab-edit-btn" title="Add a bar after this one, in every track" onClick={() => edit(addBar)}>+ Bar</button>
+                <button className="btn-secondary tab-edit-btn" title="Delete this bar from every track" onClick={() => setConfirmDeleteBar(true)}>− Bar</button>
+                <span className="tab-edit-sep" />
+                <button className="btn-secondary tab-edit-btn" title="Undo (Cmd/Ctrl+Z)" onClick={undo}>Undo</button>
+                <button className="btn-primary tab-edit-btn" title="Save as a new .gp file next to the original (Cmd/Ctrl+S)" disabled={saving} onClick={() => void saveCopy()}>Save as new .gp</button>
+                <button className="btn-secondary tab-edit-btn" onClick={requestDone}>Done</button>
+                <span className="tab-edit-status" aria-live="polite">
+                  {barStatus(song, currentTrack, c.bar)}
+                  {dirty ? " · unsaved changes" : savedPath ? ` · Saved as ${savedPath}` : ""}
+                </span>
+                {savedPath && (
+                  <button className="btn-secondary tab-edit-btn" onClick={openSaved}>Open the saved copy</button>
+                )}
+                <span className="tab-player-hint">Type frets, arrows move, Backspace removes, Enter adds a beat, +/− change the note value, . dots it. Only the current track is shown while editing.</span>
+              </div>
+            );
+          })()}
 
           {usingRecording && stems.status !== "unavailable" && (
             <div className="tab-player-controls tab-stems">
@@ -901,6 +1155,32 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
           confirmLabel="Clear sync points"
           onConfirm={clearSync}
           onCancel={() => setConfirmClear(false)}
+        />
+      )}
+
+      {confirmDiscard && (
+        <ConfirmModal
+          title="Discard your changes?"
+          message="The tab has edits that haven't been saved as a new .gp file. They will be lost."
+          confirmLabel="Discard changes"
+          onConfirm={() => {
+            if (confirmDiscard === "close") onClose();
+            else leaveEditing();
+          }}
+          onCancel={() => setConfirmDiscard(null)}
+        />
+      )}
+
+      {confirmDeleteBar && (
+        <ConfirmModal
+          title={`Delete bar ${caret.bar + 1}?`}
+          message={`Bar ${caret.bar + 1} will be removed from every track. You can undo this until you leave the editor.`}
+          confirmLabel={`Delete bar ${caret.bar + 1}`}
+          onConfirm={() => {
+            setConfirmDeleteBar(false);
+            edit(deleteBar);
+          }}
+          onCancel={() => setConfirmDeleteBar(false)}
         />
       )}
 
