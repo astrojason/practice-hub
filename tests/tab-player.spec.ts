@@ -87,6 +87,8 @@ async function setup(page: import("@playwright/test").Page, opts: { readError?: 
     ({ song, readError }) => {
       const w = window as unknown as { __calls: { cmd: string; args?: Record<string, unknown> }[] };
       w.__calls = [];
+      let separated = false;
+      const stemFiles = ["vocals", "drums", "bass", "guitar", "piano", "other"].map((name) => ({ name, path: `/cache/${name}.wav` }));
       window.__TAURI_INTERNALS__ = {
         invoke: function (cmd: string, args?: Record<string, unknown>) {
           w.__calls.push({ cmd, args });
@@ -98,6 +100,12 @@ async function setup(page: import("@playwright/test").Page, opts: { readError?: 
           if (cmd === "plugin:store|get_store") return Promise.resolve(null);
           if (cmd === "plugin:event|listen") return Promise.resolve(1);
           if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
+          if (cmd === "get_cached_stems") return Promise.resolve(separated ? stemFiles : null);
+          if (cmd === "separate_stems") {
+            separated = true;
+            return Promise.resolve(stemFiles);
+          }
+          if (cmd === "mix_stems") return Promise.resolve(`/cache/mix-${((args as { muted: string[] }).muted).join("+")}.wav`);
           if (cmd === "read_tab_file") {
             return readError ? Promise.reject(readError) : Promise.resolve(JSON.stringify(song));
           }
@@ -403,4 +411,51 @@ test("the header shows the song's bars, tracks and speed goes down to 15%", asyn
   await expect(player.locator(".tab-player-info")).toContainText("2 tracks");
   await expect(player.getByLabel("Speed")).toHaveAttribute("min", "15");
   await expect(player.getByLabel("Speed")).toHaveAttribute("max", "175");
+});
+
+test("with a recording, Mute track and Solo track act on the matching instrument stem", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  const mute = player.getByRole("button", { name: "Mute track" });
+  const solo = player.getByRole("button", { name: "Solo track" });
+  // Nothing to mute until the recording has been separated.
+  await expect(mute).toBeDisabled();
+  await player.getByRole("button", { name: "Separate instruments" }).click();
+  await expect(player.getByRole("checkbox", { name: "Guitar", exact: true })).toBeChecked();
+  await expect(mute).toBeEnabled();
+
+  // The current track is the lead guitar, so muting it mutes the guitar stem and plays a mix without it.
+  const mixRequest = page.waitForRequest((r) => r.url().includes(encodeURIComponent("/cache/mix-guitar.wav")));
+  await mute.click();
+  await expect(player.getByRole("checkbox", { name: "Guitar", exact: true })).not.toBeChecked();
+  await expect(mute).toHaveAttribute("aria-pressed", "true");
+  await mixRequest;
+
+  // Solo keeps only the guitar.
+  const soloRequest = page.waitForRequest((r) => r.url().includes(encodeURIComponent("/cache/mix-bass+drums+other+piano+vocals.wav")));
+  await solo.click();
+  await expect(solo).toHaveAttribute("aria-pressed", "true");
+  await expect(mute).toHaveAttribute("aria-pressed", "false");
+  await expect(player.getByRole("checkbox", { name: "Guitar", exact: true })).toBeChecked();
+  await expect(player.getByRole("checkbox", { name: "Bass", exact: true })).not.toBeChecked();
+  await soloRequest;
+
+  // Soloing again puts everything back.
+  await solo.click();
+  await expect(player.getByRole("checkbox", { name: "Bass", exact: true })).toBeChecked();
+  await expect(solo).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("the Bass track maps to the bass stem", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await player.getByRole("button", { name: "Separate instruments" }).click();
+  await player.getByRole("button", { name: "Tracks" }).click();
+  await player.getByRole("button", { name: /^Bass/ }).click();
+  await player.getByRole("button", { name: "Mute track" }).click();
+  await expect(player.getByRole("checkbox", { name: "Bass", exact: true })).not.toBeChecked();
+  await expect(player.getByRole("checkbox", { name: "Guitar", exact: true })).toBeChecked();
 });

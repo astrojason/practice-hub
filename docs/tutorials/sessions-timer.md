@@ -42,6 +42,8 @@ Clicking a Guitar Pro resource opens the tab player over the app (your session a
 
 If the item has a local audio or video resource, the tab player plays along with it by default (switch to the synth with the **Audio** menu or `V`; that choice is remembered too).
 
+With a recording selected you can also **Separate instruments** (the same Demucs stem separation as the media player). Once separated, **Mute track** and **Solo track** act on the instrument matching the current track (guitar, bass or drums) in the recording, and the Instruments checkboxes mute any stem; the recording switches to the mix of the rest without losing its place.
+
 With a recording selected, press play, pause where bar 1 starts, then **Bar 1 starts here** to line the cursor up. If the recording speeds up or slows down, press **Sync this bar** (or `B`) at the start of bars where the tab drifts; the tab then follows the recording in straight lines between those points. Everything is remembered per tab + recording, and **Clear sync points** (with a confirmation) starts over. **Open in Guitar Pro** hands the file to the real Guitar Pro app. The tab player reads Guitar Pro 7/8 `.gp` files; older formats (`.gp3`, `.gp4`, `.gp5`, `.gpx`) open straight in the real Guitar Pro app.
 
 ## Sequential sessions

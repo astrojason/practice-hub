@@ -40,6 +40,10 @@ export class RecordingTransport implements Transport {
   private ctx: AudioContext | null = null;
   private shifter: AudioWorkletNode | null = null;
   private pitch = 0;
+  private speedPct = 100;
+  private swapping = false;
+  /** The address the recording is currently loaded from. */
+  srcUrl = "";
   private onEnded = () => {
     this.playing = false;
     cancelAnimationFrame(this.raf);
@@ -128,6 +132,10 @@ export class RecordingTransport implements Transport {
     this.playing = true;
     const frame = () => {
       if (!this.playing) return;
+      if (this.swapping) {
+        this.raf = requestAnimationFrame(frame);
+        return;
+      }
       const cur = this.currentTick();
       const bounds = this.loopTicks();
       if (bounds && cur >= bounds[1]) this.audio.currentTime = this.mediaTimeAt(bounds[0]);
@@ -153,7 +161,37 @@ export class RecordingTransport implements Transport {
   }
 
   setSpeed(pct: number): void {
+    this.speedPct = pct;
     this.audio.playbackRate = pct / 100;
+  }
+
+  /**
+   * Plays a different file (the mix of the remaining instruments, or the original again) from
+   * the same place, at the same speed, and carries on playing if it was playing.
+   */
+  async swapSource(url: string): Promise<void> {
+    if (url === this.srcUrl) return;
+    const audio = this.audio;
+    const time = audio.currentTime;
+    const resume = this.playing;
+    this.swapping = true;
+    try {
+      if (resume) audio.pause();
+      this.srcUrl = url;
+      audio.src = url;
+      await new Promise<void>((resolve, reject) => {
+        const ok = () => { cleanup(); resolve(); };
+        const bad = () => { cleanup(); reject(new Error(`The mix couldn't be loaded: ${audio.error?.message || `media error ${audio.error?.code ?? "?"}`}`)); };
+        const cleanup = () => { audio.removeEventListener("loadedmetadata", ok); audio.removeEventListener("error", bad); };
+        audio.addEventListener("loadedmetadata", ok);
+        audio.addEventListener("error", bad);
+      });
+      audio.currentTime = time;
+      audio.playbackRate = this.speedPct / 100;
+      if (resume) await audio.play();
+    } finally {
+      this.swapping = false;
+    }
   }
 
   setLoop(range: [number, number] | null): void {

@@ -4,6 +4,7 @@ import { XMarkIcon } from "@heroicons/react/16/solid";
 import { ErrorModal } from "../ErrorModal";
 import { ConfirmModal } from "../ConfirmModal";
 import { assetUrl } from "../player/useAudioEngine";
+import { useStems, STEM_NAMES, STEM_LABELS } from "../player/useStems";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import type { Resource } from "../../api/types";
 import { barAt, renderTracks, type TabLayout } from "./tabRender";
@@ -37,6 +38,11 @@ interface StoredView {
 function readView(filePath: string): { view: StoredView; error: string | null } {
   const saved = readLocalStorageJSON<Record<string, StoredView>>(VIEW_KEY, {});
   return { view: saved.value[filePath] ?? {}, error: saved.error };
+}
+
+/** The separated instrument (stem) a track's sound lives in, if there is one. */
+function stemFor(instrument: string): string | null {
+  return instrument === "guitar" || instrument === "bass" || instrument === "drums" ? instrument : null;
 }
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
@@ -90,6 +96,8 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
   const [pitchCents, setPitchCents] = useState(0);
   /** With a recording, pitch shifting waits for (and needs) the pitch shifter to be wired up. */
   const [shifterReady, setShifterReady] = useState(false);
+  /** Instruments muted in the recording (needs the recording to have been separated into stems). */
+  const [mutedStems, setMutedStems] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(100);
   const [loopFrom, setLoopFrom] = useState("");
@@ -143,6 +151,8 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     () => (JSON.parse(resourcesKey) as Resource[]).filter((r) => r.type === "local_file" && MEDIA_EXTS.includes(extOf(r.url))),
     [resourcesKey]
   );
+
+  const stems = useStems(audioPath, mutedStems, (msg) => setError((prev) => prev ?? msg));
 
   const loop = useMemo<[number, number] | null>(() => {
     if (!song) return null;
@@ -342,6 +352,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
       setAudioPath("");
     });
     audio.src = assetUrl(audioPath);
+    rec.srcUrl = audio.src;
     recordingRef.current = rec;
     setShifterReady(false);
     rec
@@ -360,6 +371,15 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
       if (recordingRef.current === rec) recordingRef.current = null;
     };
   }, [audioPath, song, filePath, audioCandidates, moveCursor]);
+
+  // Play the mix of the unmuted instruments, or the original again when nothing is muted.
+  useEffect(() => {
+    const rec = recordingRef.current;
+    if (!rec || !audioPath) return;
+    const url = new URL(assetUrl(stems.mixPath ?? audioPath)).href;
+    if (new URL(rec.srcUrl, window.location.href).href === url) return;
+    rec.swapSource(url).catch((err) => setError(errMsg(err)));
+  }, [stems.mixPath, audioPath]);
 
   // Keep the active transport's speed and loop in step with the controls.
   useEffect(() => {
@@ -409,9 +429,14 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     setLoopTo("");
   }, []);
 
+  function chooseAudio(path: string) {
+    setMutedStems([]);
+    setAudioPath(path);
+  }
+
   function toggleSource() {
-    if (audioPath) setAudioPath("");
-    else if (audioCandidates.length) setAudioPath(audioCandidates[0].url);
+    if (audioPath) chooseAudio("");
+    else if (audioCandidates.length) chooseAudio(audioCandidates[0].url);
   }
 
   function currentBarNow(): number {
@@ -581,7 +606,21 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     return next;
   }
 
+  const trackStem = stemFor(song?.tracks[currentTrack]?.instrument ?? "");
+  const stemNames = STEM_NAMES.filter((n) => stems.stems?.some((st) => st.name === n));
+  const stemSoloed = Boolean(trackStem) && stemNames.length > 1 && stemNames.filter((n) => n !== trackStem).every((n) => mutedStems.includes(n)) && !mutedStems.includes(trackStem as string);
+  const stemMuted = Boolean(trackStem) && !stemSoloed && mutedStems.includes(trackStem as string);
+
   function toggleFlag(kind: "mute" | "solo") {
+    if (usingRecording) {
+      if (!trackStem || stems.status !== "ready") return;
+      if (kind === "mute") {
+        setMutedStems(mutedStems.includes(trackStem) ? mutedStems.filter((n) => n !== trackStem) : [...mutedStems, trackStem]);
+      } else {
+        setMutedStems(stemSoloed ? [] : stemNames.filter((n) => n !== trackStem));
+      }
+      return;
+    }
     if (kind === "mute") {
       const n = toggleSet(muted, setMuted, currentTrack);
       synthRef.current?.setMuted(currentTrack, n.has(currentTrack));
@@ -688,7 +727,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
             {audioCandidates.length > 0 && (
               <label className="tab-player-field">
                 Audio
-                <select className="tab-audio-select" value={audioPath} onChange={(e) => setAudioPath(e.target.value)} title="Play along with a recording, or the synth (V)">
+                <select className="tab-audio-select" value={audioPath} onChange={(e) => chooseAudio(e.target.value)} title="Play along with a recording, or the synth (V)">
                   <option value="">Synth (no recording)</option>
                   {audioCandidates.map((r) => (
                     <option key={r.url} value={r.url}>{r.name}</option>
@@ -714,7 +753,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
                 onChange={(e) => setTranspose(Math.max(-12, Math.min(12, Math.round(Number(e.target.value)) || 0)))} />
             </label>
 
-            {usingRecording ? (
+            {usingRecording && (
               <>
                 <span className="tab-audio-status">{audioStatus}</span>
                 <button
@@ -737,22 +776,25 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
                 <span className="tab-sync-count tab-player-hint">{syncLabel(sync)}</span>
                 {offset > 0 && <span className="tab-player-hint">bar 1 at {fmt(offset)}</span>}
               </>
-            ) : (
+            )}
+            <button
+              className={`btn-secondary${(usingRecording ? stemMuted : muted.has(currentTrack)) ? " tab-player-on" : ""}`}
+              aria-label="Mute track"
+              aria-pressed={usingRecording ? stemMuted : muted.has(currentTrack)}
+              disabled={usingRecording && (!trackStem || stems.status !== "ready")}
+              title={usingRecording ? (trackStem ? (stems.status === "ready" ? `Mute the ${trackStem} in the recording` : "Separate the instruments first") : "This track has no matching instrument in the recording") : `Mute ${song.tracks[currentTrack]?.name ?? "this track"}`}
+              onClick={() => toggleFlag("mute")}
+            >Mute</button>
+            <button
+              className={`btn-secondary${(usingRecording ? stemSoloed : solo.has(currentTrack)) ? " tab-player-on" : ""}`}
+              aria-label="Solo track"
+              aria-pressed={usingRecording ? stemSoloed : solo.has(currentTrack)}
+              disabled={usingRecording && (!trackStem || stems.status !== "ready")}
+              title={usingRecording ? (trackStem ? (stems.status === "ready" ? `Hear only the ${trackStem} in the recording` : "Separate the instruments first") : "This track has no matching instrument in the recording") : `Play ${song.tracks[currentTrack]?.name ?? "this track"} solo`}
+              onClick={() => toggleFlag("solo")}
+            >Solo</button>
+            {!usingRecording && (
               <>
-                <button
-                  className={`btn-secondary${muted.has(currentTrack) ? " tab-player-on" : ""}`}
-                  aria-label="Mute track"
-                  aria-pressed={muted.has(currentTrack)}
-                  title={`Mute ${song.tracks[currentTrack]?.name ?? "this track"}`}
-                  onClick={() => toggleFlag("mute")}
-                >Mute</button>
-                <button
-                  className={`btn-secondary${solo.has(currentTrack) ? " tab-player-on" : ""}`}
-                  aria-label="Solo track"
-                  aria-pressed={solo.has(currentTrack)}
-                  title={`Play ${song.tracks[currentTrack]?.name ?? "this track"} solo`}
-                  onClick={() => toggleFlag("solo")}
-                >Solo</button>
                 <label className="tab-player-check"><input type="checkbox" checked={metronome} onChange={(e) => setMetronome(e.target.checked)} /> Metronome</label>
                 <label className="tab-player-check"><input type="checkbox" checked={countIn} onChange={(e) => setCountIn(e.target.checked)} /> Count-in</label>
                 <label className="tab-player-field">
@@ -766,6 +808,36 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
             )}
             <label className="tab-player-check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow cursor</label>
           </div>
+
+          {usingRecording && stems.status !== "unavailable" && (
+            <div className="tab-player-controls tab-stems">
+              <span className="tab-player-field">Instruments in the recording</span>
+              {stems.status === "checking" && <span className="tab-player-hint">Checking…</span>}
+              {stems.status === "none" && (
+                <>
+                  <button className="btn-secondary" onClick={stems.separate}>Separate instruments</button>
+                  <span className="tab-player-hint">Splits the recording so you can mute or solo the track you are learning (takes a few minutes the first time).</span>
+                </>
+              )}
+              {stems.status === "separating" && <span className="tab-player-hint">Separating instruments… this takes a few minutes.</span>}
+              {stems.status === "ready" && (
+                <>
+                  {stemNames.map((n) => (
+                    <label key={n} className="tab-player-check">
+                      <input
+                        type="checkbox"
+                        checked={!mutedStems.includes(n)}
+                        onChange={() => setMutedStems(mutedStems.includes(n) ? mutedStems.filter((m) => m !== n) : [...mutedStems, n])}
+                      />
+                      {STEM_LABELS[n]}
+                    </label>
+                  ))}
+                  {stems.mixing && <span className="tab-player-hint">Mixing…</span>}
+                  {mutedStems.length > 0 && <button className="btn-secondary" onClick={() => setMutedStems([])}>Unmute all</button>}
+                </>
+              )}
+            </div>
+          )}
 
           {tracksOpen && (
             <div className="tab-player-mixer tab-tracks-panel">

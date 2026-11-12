@@ -56,14 +56,15 @@ export function useStems(
   const currentFileRef = useRef(filePath);
   currentFileRef.current = filePath;
 
-  const status: StemStatus = !hasTauri()
+  // An empty path means nothing is playing yet, so there is nothing to separate.
+  const status: StemStatus = !hasTauri() || !filePath
     ? "unavailable"
     : statusState?.file === filePath ? statusState.value : "checking";
   const stems = stemsState?.file === filePath ? stemsState.value : null;
   const mixPath = mixState?.file === filePath ? mixState.value : null;
 
   useEffect(() => {
-    if (!hasTauri()) return;
+    if (!hasTauri() || !filePath) return;
     let cancelled = false;
     invoke<StemFile[] | null>("get_cached_stems", { filePath })
       .then((cached) => {
