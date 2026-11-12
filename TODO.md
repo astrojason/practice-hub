@@ -1,6 +1,7 @@
 ## Bugs
 
 - [ ] 24 Playwright tests fail on Chromium (also on `main` before the AI-challenges change): clicking `.item-group-header` for the Exercises group times out ("element is visible, enabled and stable" but the click never lands), in item-usage-staleness, parent-total-practice-time, session-view-alphabetical, skip-auto-completes-parent, media-player-child-title-timer, rebuild-blocked-during-sequential and sequential-start-no-incomplete-children specs. Something is likely intercepting pointer events over the group header.
+- [ ] More Chromium Playwright failures present on `main` as of 2.37.0, not covered above: gp-library-fast-path, gp-library-rhythm-lead-difficulty, gp-library-scan-cache, gp-library-turso-write, gp-library-undated-resource, gp-list-sort and item-streak specs (25 tests). Not yet investigated.
 
 ## Features
 

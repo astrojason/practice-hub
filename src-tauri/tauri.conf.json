@@ -30,6 +30,7 @@
     "resources": {
       "sidecar/analyze_gp.py": "sidecar/analyze_gp.py",
       "sidecar/write_song_difficulty.py": "sidecar/write_song_difficulty.py",
+      "sidecar/separate_stems.py": "sidecar/separate_stems.py",
       "sidecar/com.astrojason.practicehub.nightly-gp-scan.plist": "sidecar/com.astrojason.practicehub.nightly-gp-scan.plist"
     },
     "icon": [

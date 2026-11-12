@@ -609,6 +609,159 @@ async fn list_local_folder(path: String) -> Result<String, String> {
     serde_json::to_string(&entries).map_err(|e| e.to_string())
 }
 
+// ─── Instrument stems ─────────────────────────────────────────────────────────
+// Splits a local audio/video file into Demucs stems (sidecar/separate_stems.py)
+// so the media player can mute individual instruments. Stems are cached under
+// the app cache dir, keyed by the source path + size + mtime, so editing or
+// replacing the file invalidates its stems. Only the latest mix per file is
+// kept on disk.
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct StemFile {
+    name: String,
+    path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct StemManifest {
+    stems: Vec<StemFile>,
+}
+
+const STEM_NAMES: [&str; 6] = ["vocals", "drums", "bass", "guitar", "piano", "other"];
+
+// FNV-1a: stable across Rust versions (unlike DefaultHasher), so cache keys
+// survive app upgrades.
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+fn stem_cache_dir(app: &tauri::AppHandle, file_path: &str) -> Result<PathBuf, String> {
+    let meta = fs::metadata(file_path).map_err(|e| format!("Can't read {file_path}: {e}"))?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let key = format!("{file_path}\u{0}{}\u{0}{mtime}", meta.len());
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("Could not locate the app cache directory: {e}"))?;
+    Ok(base.join("stems").join(format!("{:016x}", fnv1a(key.as_bytes()))))
+}
+
+fn read_stem_manifest(dir: &Path) -> Option<Vec<StemFile>> {
+    let text = fs::read_to_string(dir.join("stems.json")).ok()?;
+    let manifest: StemManifest = serde_json::from_str(&text).ok()?;
+    if manifest.stems.iter().all(|s| Path::new(&s.path).is_file()) {
+        Some(manifest.stems)
+    } else {
+        None
+    }
+}
+
+fn run_stem_sidecar(app: &tauri::AppHandle, args: &[&std::ffi::OsStr]) -> Result<String, String> {
+    let script = app
+        .path()
+        .resolve("sidecar/separate_stems.py", BaseDirectory::Resource)
+        .map_err(|e| format!("Could not locate stem separation script: {e}"))?;
+    let output = std::process::Command::new("python3")
+        .arg(&script)
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to launch python3: {e}"))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("Stem separation script exited with {}", output.status)
+        } else {
+            stderr
+        })
+    }
+}
+
+#[tauri::command]
+async fn get_cached_stems(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<Option<Vec<StemFile>>, String> {
+    let dir = stem_cache_dir(&app, &file_path)?;
+    Ok(read_stem_manifest(&dir))
+}
+
+#[tauri::command]
+async fn separate_stems(app: tauri::AppHandle, file_path: String) -> Result<Vec<StemFile>, String> {
+    let dir = stem_cache_dir(&app, &file_path)?;
+    if let Some(stems) = read_stem_manifest(&dir) {
+        return Ok(stems);
+    }
+    // Demucs takes minutes; keep it off the async runtime's worker threads.
+    tauri::async_runtime::spawn_blocking(move || {
+        fs::create_dir_all(&dir).map_err(|e| format!("Can't create {}: {e}", dir.display()))?;
+        run_stem_sidecar(
+            &app,
+            &["separate".as_ref(), file_path.as_ref(), dir.as_os_str()],
+        )?;
+        read_stem_manifest(&dir).ok_or_else(|| "Stem separation finished but its stems are missing".to_string())
+    })
+    .await
+    .map_err(|e| format!("Stem separation task failed: {e}"))?
+}
+
+#[tauri::command]
+async fn mix_stems(
+    app: tauri::AppHandle,
+    file_path: String,
+    muted: Vec<String>,
+) -> Result<String, String> {
+    let dir = stem_cache_dir(&app, &file_path)?;
+    if read_stem_manifest(&dir).is_none() {
+        return Err("This file hasn't been separated into instruments yet".to_string());
+    }
+    let mut muted: Vec<String> = muted
+        .into_iter()
+        .filter(|m| STEM_NAMES.contains(&m.as_str()))
+        .collect();
+    muted.sort();
+    muted.dedup();
+    let keep: Vec<&str> = STEM_NAMES
+        .iter()
+        .copied()
+        .filter(|n| !muted.iter().any(|m| m == n))
+        .collect();
+    let out = dir.join(format!("mix-{}.wav", muted.join("+")));
+    if out.is_file() {
+        return Ok(out.to_string_lossy().to_string());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        // Keep only the latest mix per file — each is a full-length wav.
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("mix-") && name.ends_with(".wav") {
+                    let _ = fs::remove_file(entry.path()); /* non-critical: stale mix, regenerated on demand */
+                }
+            }
+        }
+        let keep_arg = keep.join(",");
+        run_stem_sidecar(
+            &app,
+            &["mix".as_ref(), dir.as_os_str(), out.as_os_str(), keep_arg.as_ref()],
+        )?;
+        Ok(out.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| format!("Stem mix task failed: {e}"))?
+}
+
 // ─── Open file with system default handler ────────────────────────────────────
 
 #[tauri::command]
@@ -740,6 +893,9 @@ pub fn run() {
             list_local_folder,
             open_with_default,
             get_changelog,
+            get_cached_stems,
+            separate_stems,
+            mix_stems,
         ])
         .run(tauri::generate_context!())
         .expect("error while running practice-hub");

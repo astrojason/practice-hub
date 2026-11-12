@@ -27,6 +27,13 @@ export interface AudioEngineState {
 export interface AudioEngineActions {
   /** `autoplay: false` loads and positions the file but leaves it paused (the caller starts playback). */
   loadFile: (path: string, opts?: { autoplay?: boolean; startAt?: number }) => Promise<void>;
+  /**
+   * Replace the audio being played with another file of the same length (e.g.
+   * an instrument-filtered stem mix), keeping the playhead, play state and all
+   * loop/speed/pitch settings. Waveform and detected BPM stay those of the
+   * file passed to loadFile. Rejects on fetch/decode failure.
+   */
+  swapSource: (path: string) => Promise<void>;
   play: () => void;
   pause: () => void;
   seek: (time: number) => void;
@@ -225,6 +232,7 @@ interface EngineRef {
   breakCountIn: (() => Promise<void>) | null;
   onAutoIncrease: ((prevSpeed: number, nextSpeed: number) => void) | null;
   onTrackEnded: (() => void) | null;
+  swapToken: number;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -262,6 +270,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     breakCountIn: null,
     onAutoIncrease: null,
     onTrackEnded: null,
+    swapToken: 0,
   });
 
   const [status, setStatus] = useState<AudioEngineStatus>("idle");
@@ -430,6 +439,33 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Builds the SoundTouch node for a decoded buffer, wired to the engine's
+  // end-of-track handling (loop restart or track-ended).
+  const createShifter = useCallback((PS: typeof PitchShifterWorklet, decoded: AudioBuffer) => {
+    const eng = e.current;
+    return new PS(eng.ctx!, decoded, () => {
+      if (eng.isHandlingLoop) return;
+      if (eng.loopEnabled) {
+        eng.passCount++;
+        if (eng.loopMaxTimes !== null && eng.passCount >= eng.loopMaxTimes) {
+          finishLoopRun();
+          return;
+        }
+        eng._pausedAt = eng.loopStart ?? 0;
+        if (eng.countIn) {
+          eng.countIn().then(() => startEngine());
+        } else {
+          Promise.resolve().then(() => startEngine());
+        }
+      } else {
+        setIsPlaying(false);
+        setCurrentTime(0);
+        eng._pausedAt = 0;
+        eng.onTrackEnded?.();
+      }
+    });
+  }, [finishLoopRun, startEngine]);
+
   // ── Public actions ──────────────────────────────────────────────────────────
 
   const loadFile = useCallback(async (path: string, opts: { autoplay?: boolean; startAt?: number } = {}) => {
@@ -477,27 +513,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
       };
       await loadSoundTouchWorklet(eng.ctx);
       if (eng.pendingSrc !== path) return;
-      eng.shifter = new PS(eng.ctx, decoded, () => {
-        if (eng.isHandlingLoop) return;
-        if (eng.loopEnabled) {
-          eng.passCount++;
-          if (eng.loopMaxTimes !== null && eng.passCount >= eng.loopMaxTimes) {
-            finishLoopRun();
-            return;
-          }
-          eng._pausedAt = eng.loopStart ?? 0;
-          if (eng.countIn) {
-            eng.countIn().then(() => startEngine());
-          } else {
-            Promise.resolve().then(() => startEngine());
-          }
-        } else {
-          setIsPlaying(false);
-          setCurrentTime(0);
-          eng._pausedAt = 0;
-          eng.onTrackEnded?.();
-        }
-      });
+      eng.shifter = createShifter(PS, decoded);
 
       setDuration(decoded.duration);
       setWaveData(buildWaveData(decoded));
@@ -514,6 +530,43 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopEngine]);
+
+  const swapSource = useCallback(async (path: string) => {
+    const eng = e.current;
+    if (!eng.ctx || !eng.buffer || !eng.shifter) throw new Error("No audio is loaded to swap");
+    const token = ++eng.swapToken;
+    const loadedSrc = eng.pendingSrc;
+    const stale = () => token !== eng.swapToken || eng.pendingSrc !== loadedSrc || !eng.ctx;
+
+    const response = await fetch(assetUrl(path), { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const arrayBuffer = await response.arrayBuffer();
+    if (stale()) return;
+    const decoded = await eng.ctx!.decodeAudioData(arrayBuffer.slice(0));
+    if (stale()) return;
+    const { PitchShifterWorklet: PS } = await import("../../lib/soundtouch.js") as {
+      PitchShifterWorklet: typeof PitchShifterWorklet;
+    };
+    if (stale()) return;
+
+    const wasPlaying = eng.raf !== null;
+    const position = wasPlaying
+      ? resolvePlaybackPosition(
+          { playStartCtxTime: eng.playStartCtxTime, playStartPosition: eng.playStartPosition },
+          eng.ctx!.currentTime, eng.speed, eng.duration,
+        ).position
+      : eng._pausedAt;
+
+    if (wasPlaying) stopEngine(false);
+    const old = eng.shifter;
+    try { old?.pause(); } catch (_) { /* non-critical: node already gone */ }
+    try { old?.disconnect(); } catch (_) { /* non-critical: node already disconnected */ }
+
+    eng.buffer = decoded;
+    eng.shifter = createShifter(PS, decoded);
+    eng._pausedAt = Math.min(position, eng.duration);
+    if (wasPlaying) startEngine();
+  }, [stopEngine, startEngine, createShifter]);
 
   const play = useCallback(() => { startEngine(); }, [startEngine]);
   const pause = useCallback(() => { stopEngine(false); }, [stopEngine]);
@@ -610,7 +663,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   };
 
   const actions: AudioEngineActions = {
-    loadFile, play, pause, seek, setSpeed,
+    loadFile, swapSource, play, pause, seek, setSpeed,
     setLoopStart, setLoopEnd, setLoopEnabled, setLoopMaxTimes,
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
     setPitch, setCountIn,
