@@ -192,7 +192,9 @@ test("muting a stem plays a mix without it, and the choice is restored when the 
   await expect(page.locator(".media-player")).toHaveCount(0);
   seen.length = 0;
   const link = page.locator(".modal-resource-link--local", { hasText: name });
-  if (!(await link.isVisible())) {
+  // The session modal may still be open behind the player; give it a moment to show before reopening it.
+  const modalShowing = await link.waitFor({ state: "visible", timeout: 2000 }).then(() => true, () => false);
+  if (!modalShowing) {
     await page.locator(".item-card").first().locator('button[title="Log session"]').click();
   }
   await link.click();

@@ -1,13 +1,15 @@
 ## Bugs
 
-- [ ] 24 Playwright tests fail on Chromium (also on `main` before the AI-challenges change): clicking `.item-group-header` for the Exercises group times out ("element is visible, enabled and stable" but the click never lands), in item-usage-staleness, parent-total-practice-time, session-view-alphabetical, skip-auto-completes-parent, media-player-child-title-timer, rebuild-blocked-during-sequential and sequential-start-no-incomplete-children specs. Something is likely intercepting pointer events over the group header.
-- [ ] More Chromium Playwright failures present on `main` as of 2.37.0, not covered above: gp-library-fast-path, gp-library-rhythm-lead-difficulty, gp-library-scan-cache, gp-library-turso-write, gp-library-undated-resource, gp-list-sort and item-streak specs (25 tests). Not yet investigated.
+- [ ] Check a tab saved by the tab editor (`<name> (edited).gp`) opens correctly in the real Guitar Pro 7/8 app. The writer (`src-tauri/src/tab/gpwrite.rs`) only round-trips through this app's own reader; it has not been opened in Guitar Pro itself.
 
 ## Features
 
 - [ ] Undo for all player actions, not just region edits: region create/update/delete, region settings (tempo, etc.), and any other state-changing action in the player. Motivated by the region-update bug above, but should cover every case. History is scoped to the current resource and session: ending the session or switching to a different resource clears the undo stack (in-memory only, nothing persisted).
 
 ## Enhancements
+
+- [ ] Tab editor: it edits notes, note values, dots, rests, beats and bars only. Still missing from Tabline-style editing: tuplets and triplets, ties, chord names, section markers, time-signature and tempo changes, and adding/removing tracks. Saving always makes a new `(edited)` copy; it never updates a previous copy or the original.
+- [ ] Tab player: YouTube links can't be used as the backing recording (only local audio/video files); the tab editor's saved copy keeps only notes, rhythm, ties, chord names, markers, time signatures, tempo and tunings (no effects, dynamics or layout).
 
 - [ ] Sync a region's bpm to the backend SongSection (needs a `practice.astrojason.com` migration + API field), so it survives clearing local storage / syncs across devices for songs. Exercises/study materials already persist region bpm locally via the player preset — no backend concept exists for their sections at all.
 
