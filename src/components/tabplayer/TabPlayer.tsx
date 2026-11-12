@@ -30,11 +30,14 @@ const MEDIA_EXTS = ["mp3", "wav", "flac", "m4a", "aac", "ogg", "mp4", "mov", "we
 const VIEW_KEY = "tabPlayerView";
 
 type DisplayMode = "tab" | "chords";
+type Notation = "tab" | "standard" | "both";
 
 /** What is remembered per tab: which tracks are shown, the display, and recording-or-synth. */
 interface StoredView {
   tracks?: number[];
   mode?: DisplayMode;
+  /** Tab, standard notation, or both. */
+  notation?: Notation;
   /** The chosen recording's path; "" means the synth was chosen on purpose. */
   audio?: string;
 }
@@ -103,6 +106,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
   const [shownTracks, setShownTracks] = useState<number[]>([0]);
   const [currentTrack, setCurrentTrack] = useState(0);
   const [mode, setMode] = useState<DisplayMode>(initial.view.mode === "chords" ? "chords" : "tab");
+  const [notation, setNotation] = useState<Notation>(initial.view.notation === "standard" || initial.view.notation === "both" ? initial.view.notation : "tab");
   const [tracksOpen, setTracksOpen] = useState(false);
   const [transpose, setTranspose] = useState(0);
   const [pitchSemis, setPitchSemis] = useState(0);
@@ -271,11 +275,11 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
       return;
     }
     try {
-      writeLocalStorageJSON(VIEW_KEY, { ...saved.value, [filePath]: { tracks: shownTracks, mode, audio: audioPath } });
+      writeLocalStorageJSON(VIEW_KEY, { ...saved.value, [filePath]: { tracks: shownTracks, mode, notation, audio: audioPath } });
     } catch (err) {
       setError(`Couldn't remember the tab view: ${errMsg(err)}`);
     }
-  }, [song, filePath, shownTracks, mode, audioPath]);
+  }, [song, filePath, shownTracks, mode, notation, audioPath]);
 
   // ── The synth transport for the loaded song ─────────────────────────────────
   useEffect(() => {
@@ -321,6 +325,8 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
           transpose,
           currentTrack,
           caret: editing ? clampCaret(song, currentTrack, caret) : null,
+          // The editor works on the tab, so it is always shown while editing.
+          notation: editing && notation === "standard" ? "both" : notation,
         });
       }
       moveCursor(tickRef.current);
@@ -329,7 +335,7 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     const ro = new ResizeObserver(() => draw());
     ro.observe(host);
     return () => ro.disconnect();
-  }, [song, shownTracks, loop, moveCursor, mode, currentTrack, transpose, editing, caret]);
+  }, [song, shownTracks, loop, moveCursor, mode, currentTrack, transpose, editing, caret, notation]);
 
   // ── Which transport is active ───────────────────────────────────────────────
   const transport = (): Transport | null => recordingRef.current ?? synthRef.current;
@@ -905,6 +911,15 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
               <select value={mode} onChange={(e) => setMode(e.target.value as DisplayMode)}>
                 <option value="tab">Tab</option>
                 <option value="chords">Chords</option>
+              </select>
+            </label>
+
+            <label className="tab-player-field">
+              Notation
+              <select value={notation} onChange={(e) => setNotation(e.target.value as Notation)} disabled={mode === "chords"}>
+                <option value="tab">Tab</option>
+                <option value="standard">Standard</option>
+                <option value="both">Tab + standard</option>
               </select>
             </label>
 

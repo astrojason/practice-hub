@@ -658,3 +658,86 @@ test("editing: a drum track toggles hits on the line with the digit keys", async
   await page.keyboard.press("1");
   await expect(player.locator(".tab-line svg text", { hasText: /^[xo]$/ })).not.toHaveCount(before);
 });
+
+// ── Standard notation ─────────────────────────────────────────────────────────
+
+const noteheads = (page: import("@playwright/test").Page) => page.locator(".tab-player .tab-line svg ellipse");
+
+test("Notation can show tab, standard notation, or both", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  const notation = player.getByLabel("Notation");
+  await expect(notation.locator("option")).toHaveText(["Tab", "Standard", "Tab + standard"]);
+  await expect(notation).toHaveValue("tab");
+  await expect(noteheads(page)).toHaveCount(0);
+
+  await notation.selectOption({ label: "Standard" });
+  // One notehead per note of the lead guitar's eight, and no fret numbers.
+  await expect(noteheads(page)).toHaveCount(8);
+  await expect(fret(page, 15)).toHaveCount(0);
+  await expect(player.locator(".tab-line svg line").first()).toBeAttached();
+  // The time signature is written at the start of the staff.
+  await expect(player.locator(".std-time")).toHaveCount(1);
+  await expect(player.locator(".std-time")).toHaveText("44");
+
+  await notation.selectOption({ label: "Tab + standard" });
+  await expect(noteheads(page)).toHaveCount(8);
+  await expect(fret(page, 15).first()).toBeVisible();
+
+  await notation.selectOption({ label: "Tab" });
+  await expect(player.locator(".std-time")).toHaveCount(0);
+  await expect(noteheads(page)).toHaveCount(0);
+  await expect(fret(page, 15).first()).toBeVisible();
+});
+
+test("the guitar is written in the treble clef and the bass in the bass clef", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await player.getByLabel("Notation").selectOption({ label: "Standard" });
+  const treble = player.locator(".tab-line svg text", { hasText: "\u{1D11E}" });
+  const bassClef = player.locator(".tab-line svg text", { hasText: "\u{1D122}" });
+  await expect(treble.first()).toBeAttached();
+  await expect(bassClef).toHaveCount(0);
+  await player.getByRole("button", { name: "Tracks" }).click();
+  await player.getByRole("button", { name: /^Bass/ }).click();
+  await page.getByRole("checkbox", { name: "Show Lead Guitar" }).uncheck();
+  await expect(bassClef.first()).toBeAttached();
+  await expect(treble).toHaveCount(0);
+});
+
+test("the notation choice is remembered between sessions", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  await page.locator(".tab-player").getByLabel("Notation").selectOption({ label: "Standard" });
+  await page.locator(".tab-player").getByRole("button", { name: "Close" }).click();
+  await openTab(page);
+  await expect(page.locator(".tab-player").getByLabel("Notation")).toHaveValue("standard");
+  await expect(noteheads(page)).toHaveCount(8);
+});
+
+test("in standard notation the cursor still follows playback and clicking a bar still seeks", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  // The silent test recording is shorter than two bars, so seek with the synth.
+  await player.locator(".tab-audio-select").selectOption({ label: "Synth (no recording)" });
+  await player.getByLabel("Notation").selectOption({ label: "Standard" });
+  await expect(noteheads(page)).toHaveCount(8);
+  await player.locator('.tab-bar-hit[data-bar="1"]').first().click();
+  await expect(player.locator(".tab-player-bar")).toContainText("Bar 2 / 2");
+  await expect(player.locator(".tab-cursor.shown")).toBeVisible();
+});
+
+test("editing always shows the tab, even when only standard notation is chosen", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await player.getByLabel("Notation").selectOption({ label: "Standard" });
+  await player.getByRole("button", { name: "Edit tab" }).click();
+  await expect(fret(page, 15).first()).toBeVisible();
+  await page.keyboard.press("9");
+  await expect(fret(page, 9)).toHaveCount(1);
+  await expect(noteheads(page)).toHaveCount(8);
+});

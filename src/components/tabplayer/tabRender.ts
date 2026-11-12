@@ -2,9 +2,10 @@
 // player can move its cursor and clicks can find a bar. Ported from the Tabline app.
 
 import type { TabBeat, TabSong } from "./types";
+import { el } from "./svg";
+import { clefFor, drawStaffLines, drawStandardBar, STD_HEIGHT, type StdStaff } from "./standardNotation";
 
 export const WHOLE = 3840;
-const NS = "http://www.w3.org/2000/svg";
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 export const noteName = (midi: number) => NOTE_NAMES[((midi % 12) + 12) % 12];
@@ -77,21 +78,6 @@ const GEO = {
   barPad: 16, // room at the start of each bar
 };
 
-type Attrs = Record<string, string | number>;
-
-// Colours given as CSS variables go into style, so light and dark themes both apply.
-function el(name: string, attrs: Attrs = {}, text?: string): SVGElement {
-  const e = document.createElementNS(NS, name);
-  let style = "";
-  for (const [k, v] of Object.entries(attrs)) {
-    if ((k === "fill" || k === "stroke") && typeof v === "string" && v.startsWith("var(")) style += `${k}:${v};`;
-    else e.setAttribute(k, String(v));
-  }
-  if (style) e.setAttribute("style", style);
-  if (text != null) e.textContent = text;
-  return e;
-}
-
 export interface RenderOptions {
   width?: number;
   transpose?: number;
@@ -101,6 +87,8 @@ export interface RenderOptions {
   currentTrack?: number;
   /** The editing caret (single-track view): bar, beat and string (1 = highest). */
   caret?: { bar: number; beat: number; string: number } | null;
+  /** What to draw for each track: tab, standard notation, or both (standard above the tab). */
+  notation?: "tab" | "standard" | "both";
 }
 
 export interface BarLayout {
@@ -135,15 +123,39 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
   const transpose = opts.transpose || 0;
   const timing = barStarts(song);
   const groupTicks = beamGroupTicks(song);
+  const notation = opts.notation ?? "tab";
+  const showTab = notation !== "standard";
+  const showStd = notation !== "tab";
+  // Standard notation needs room for the clef.
+  const gutter = showStd ? 44 : GEO.gutter;
 
   // Where each staff sits on a line.
-  const staves: { track: (typeof tracks)[number]; index: number; top: number; bottom: number; isDrums: boolean }[] = [];
-  let y = multi ? 64 : GEO.top;
+  interface Stave {
+    track: (typeof tracks)[number];
+    index: number;
+    /** The tab staff's top (or the standard staff's when no tab is drawn). */
+    top: number;
+    bottom: number;
+    /** Where the staff block starts, whichever of the two comes first. */
+    blockTop: number;
+    isDrums: boolean;
+    std?: StdStaff;
+  }
+  const staves: Stave[] = [];
+  let y = (multi ? 64 : GEO.top) + (showStd ? 12 : 0);
   tracks.forEach((track, k) => {
-    if (k > 0) y += GEO.below + 30;
-    const top = y;
-    const bottom = top + GEO.gap * (track.strings.length - 1);
-    staves.push({ track, index: trackIndices[k], top, bottom, isDrums: track.instrument === "drums" });
+    if (k > 0) y += showTab ? GEO.below + 30 : 70;
+    let std: StdStaff | undefined;
+    const blockTop = y;
+    if (showStd) {
+      std = { top: y, bottom: y + STD_HEIGHT, clef: clefFor(track) };
+      y = std.bottom;
+      // Room for stems below the staff and the gap before the tab.
+      if (showTab) y += 80;
+    }
+    const top = showTab ? y : std!.top;
+    const bottom = showTab ? top + GEO.gap * (track.strings.length - 1) : std!.bottom;
+    staves.push({ track, index: trackIndices[k], top, bottom, blockTop, isDrums: track.instrument === "drums", std });
     y = bottom;
   });
   const lineHeight = y + GEO.below;
@@ -169,12 +181,12 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
   // 1. Pack bars into lines.
   const lines: number[][] = [];
   let cur: number[] = [];
-  let used = GEO.gutter;
+  let used = gutter;
   minWidths.forEach((w, i) => {
     if (cur.length && used + w > width) {
       lines.push(cur);
       cur = [];
-      used = GEO.gutter;
+      used = gutter;
     }
     cur.push(i);
     used += w;
@@ -188,9 +200,9 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
     const isLast = li === lines.length - 1;
     const total = barIdx.reduce((sum, i) => sum + minWidths[i], 0);
     // The last line only stretches when it is nearly full.
-    const avail = width - GEO.gutter;
+    const avail = width - gutter;
     const scale = isLast && total < avail * 0.7 ? 1 : avail / total;
-    const lineW = isLast && scale === 1 ? GEO.gutter + total : width;
+    const lineW = isLast && scale === 1 ? gutter + total : width;
 
     const wrap = document.createElement("div");
     wrap.className = "tab-line";
@@ -202,6 +214,14 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
 
     // Staves: string names, strings and, with several tracks, each track's name.
     for (const st of staves) {
+      if (st.std) drawStaffLines(svg, st.std, 4, lineW);
+      if (!showTab) {
+        if (multi) {
+          const current = st.index === opts.currentTrack;
+          svg.appendChild(el("text", { x: gutter + 2, y: st === first ? 28 : st.blockTop - 14, "font-size": "10", "font-weight": current ? "700" : "500", fill: current ? "var(--accent)" : "var(--tab-marker)" }, st.track.name));
+        }
+        continue;
+      }
       const names = el("g", { "font-size": "9", fill: "var(--tab-text)", "text-anchor": "middle" });
       st.track.strings.forEach((p, sIdx) => {
         const label = st.isDrums ? ["C", "H", "S", "T", "K"][sIdx] || "" : noteName(p);
@@ -211,7 +231,7 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
       const stringsG = el("g", { stroke: "var(--tab-strings)", "stroke-width": "1" });
       for (let sIdx = 0; sIdx < st.track.strings.length; sIdx++) {
         const yy = st.top + GEO.gap * sIdx + 0.5;
-        stringsG.appendChild(el("line", { x1: GEO.gutter - 6, x2: lineW, y1: yy, y2: yy }));
+        stringsG.appendChild(el("line", { x1: gutter - 6, x2: lineW, y1: yy, y2: yy }));
       }
       svg.appendChild(stringsG);
       if (multi) {
@@ -220,8 +240,8 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
           el(
             "text",
             {
-              x: GEO.gutter + 2,
-              y: st === first ? 28 : st.top - 14,
+              x: gutter + 2,
+              y: st === first ? 28 : st.blockTop - 14,
               "font-size": "10",
               "font-weight": current ? "700" : "500",
               fill: current ? "var(--accent)" : "var(--tab-marker)",
@@ -232,29 +252,47 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
       }
     }
     if (multi) {
-      svg.appendChild(el("line", { x1: GEO.gutter - 6.5, x2: GEO.gutter - 6.5, y1: first.top, y2: last.bottom + 1, stroke: "var(--tab-measure)", "stroke-width": "2" }));
+      svg.appendChild(el("line", { x1: gutter - 6.5, x2: gutter - 6.5, y1: first.blockTop, y2: last.bottom + 1, stroke: "var(--tab-measure)", "stroke-width": "2" }));
     }
 
+    // Vertical extents of the bar lines: every staff, tab and standard.
+    const spans: [number, number][] = staves.flatMap((st): [number, number][] => (st.std && showTab ? [[st.std.top, st.std.bottom], [st.top, st.bottom]] : [[st.top, st.bottom]]));
+
+    const stdG = el("g");
     const notesG = el("g", { "font-size": "13", "text-anchor": "middle", fill: "var(--tab-note)" });
     const rhythmG = el("g", { stroke: "var(--tab-rhythm)", "stroke-width": "1.2", fill: "var(--tab-rhythm)" });
     const topG = el("g");
     const hitG = el("g");
 
-    let x = GEO.gutter;
+    let x = gutter;
     barIdx.forEach((mi) => {
       const w = minWidths[mi] * scale;
       const x0 = x;
       const x1 = x + w;
       const m0 = tracks[0].measures[mi];
-      for (const st of staves) {
-        svg.appendChild(el("line", { x1: x0 + 0.5, x2: x0 + 0.5, y1: st.top, y2: st.bottom + 1, stroke: "var(--tab-measure)", "stroke-width": "1" }));
+      for (const [t, b] of spans) {
+        svg.appendChild(el("line", { x1: x0 + 0.5, x2: x0 + 0.5, y1: t, y2: b + 1, stroke: "var(--tab-measure)", "stroke-width": "1" }));
       }
-      topG.appendChild(el("text", { x: x0 + 3, y: first.top - 6, "font-size": "10", fill: "var(--tab-text)" }, String(mi + 1)));
+      // Standard notation shows the time signature on the staff where it starts or changes.
+      {
+        const t = m0.time ?? song.time;
+        const prev = mi > 0 ? (tracks[0].measures[mi - 1].time ?? song.time) : null;
+        if (!prev || prev[0] !== t[0] || prev[1] !== t[1]) {
+          for (const st of staves) {
+            if (!st.std) continue;
+            const g = el("g", { class: "std-time", "font-size": "17", "font-weight": "700", "text-anchor": "middle", fill: "var(--tab-note)" });
+            g.appendChild(el("text", { x: x0 + 9, y: st.std.top + 17 }, String(t[0])));
+            g.appendChild(el("text", { x: x0 + 9, y: st.std.top + 37 }, String(t[1])));
+            topG.appendChild(g);
+          }
+        }
+      }
+      topG.appendChild(el("text", { x: x0 + 3, y: first.blockTop - 6, "font-size": "10", fill: "var(--tab-text)" }, String(mi + 1)));
       if (m0.marker) {
         topG.appendChild(el("text", { x: x0 + 3, y: 12, "font-size": "12", "font-weight": "600", fill: "var(--tab-marker)" }, m0.marker));
       }
       if (opts.loop && mi >= opts.loop[0] && mi <= opts.loop[1]) {
-        loopG.appendChild(el("rect", { class: "tab-loop-range", x: x0, y: first.top - 18, width: w, height: last.bottom - first.top + 36 }));
+        loopG.appendChild(el("rect", { class: "tab-loop-range", x: x0, y: first.blockTop - 18, width: w, height: last.bottom - first.blockTop + 36 }));
       }
 
       // x of every time slot in this bar.
@@ -276,13 +314,13 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
           if (k === 0) primaryBeatAt.set(tick, bi);
           beatRows.push({ b, cx, tick });
           if (b.chord && k === 0) {
-            topG.appendChild(el("text", { x: cx - 4, y: first.top - 20, "font-size": "13", fill: "var(--tab-chord)" }, b.chord));
+            topG.appendChild(el("text", { x: cx - 4, y: first.blockTop - 20, "font-size": "13", fill: "var(--tab-chord)" }, b.chord));
           }
-          if (k === 0 && opts.caret && opts.caret.bar === mi && opts.caret.beat === bi) {
+          if (showTab && k === 0 && opts.caret && opts.caret.bar === mi && opts.caret.beat === bi) {
             const cy = st.top + GEO.gap * (opts.caret.string - 1);
             notesG.appendChild(el("rect", { class: "edit-caret", x: cx - 10, y: cy - 8, width: 20, height: 16, rx: 3 }));
           }
-          for (const n of b.notes) {
+          for (const n of showTab ? b.notes : []) {
             const ny = st.top + GEO.gap * (n.string - 1);
             let label: string;
             if (st.isDrums) label = drumGlyph(n);
@@ -297,10 +335,11 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
           }
           tick += beatTicks(b);
         });
-        drawRhythm(rhythmG, beatRows, st.bottom, groupTicks);
+        if (showTab && !showStd) drawRhythm(rhythmG, beatRows, st.bottom, groupTicks);
+        if (st.std) drawStandardBar(stdG, st.std, st.track, m, slotX, groupTicks, transpose);
         // Clicks on a staff know which track was clicked.
-        const hTop = k === 0 ? 0 : st.top - 22;
-        const hBottom = k === staves.length - 1 ? lineHeight : staves[k + 1].top - 22;
+        const hTop = k === 0 ? 0 : st.blockTop - 22;
+        const hBottom = k === staves.length - 1 ? lineHeight : staves[k + 1].blockTop - 22;
         hitG.appendChild(el("rect", { class: "tab-bar-hit", x: x0, y: hTop, width: w, height: hBottom - hTop, "data-bar": mi, "data-track": st.index }));
       });
 
@@ -316,15 +355,16 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
     });
     // Closing bar lines; double ones at the end of the song.
     const endX = x;
-    for (const st of staves) {
+    for (const [t, b] of spans) {
       if (isLast) {
-        svg.appendChild(el("line", { x1: endX - 4, x2: endX - 4, y1: st.top, y2: st.bottom + 1, stroke: "var(--tab-measure-end)", "stroke-width": "1" }));
-        svg.appendChild(el("line", { x1: endX - 1.5, x2: endX - 1.5, y1: st.top, y2: st.bottom + 1, stroke: "var(--tab-measure-end)", "stroke-width": "3" }));
+        svg.appendChild(el("line", { x1: endX - 4, x2: endX - 4, y1: t, y2: b + 1, stroke: "var(--tab-measure-end)", "stroke-width": "1" }));
+        svg.appendChild(el("line", { x1: endX - 1.5, x2: endX - 1.5, y1: t, y2: b + 1, stroke: "var(--tab-measure-end)", "stroke-width": "3" }));
       } else {
-        svg.appendChild(el("line", { x1: endX - 0.5, x2: endX - 0.5, y1: st.top, y2: st.bottom + 1, stroke: "var(--tab-measure)", "stroke-width": "1" }));
+        svg.appendChild(el("line", { x1: endX - 0.5, x2: endX - 0.5, y1: t, y2: b + 1, stroke: "var(--tab-measure)", "stroke-width": "1" }));
       }
     }
 
+    svg.appendChild(stdG);
     svg.appendChild(notesG);
     svg.appendChild(rhythmG);
     svg.appendChild(topG);
@@ -342,7 +382,7 @@ export function renderTracks(host: HTMLElement, song: TabSong, trackIndices: num
     lines: lineEls,
     bars,
     cursor,
-    geo: { cursorTop: first.top, cursorBottom: last.bottom, top: first.top, gap: GEO.gap },
+    geo: { cursorTop: first.blockTop - 6, cursorBottom: last.bottom, top: first.top, gap: GEO.gap },
   };
 }
 
