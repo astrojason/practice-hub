@@ -414,10 +414,6 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
     else if (audioCandidates.length) setAudioPath(audioCandidates[0].url);
   }
 
-  function printTab() {
-    invoke("print_tab").catch((err) => setError(errMsg(err)));
-  }
-
   function currentBarNow(): number {
     const clock = clockRef.current;
     return clock ? barAt(clock.timing, tickRef.current) : 0;
@@ -468,10 +464,6 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
       case "v":
       case "V":
         toggleSource();
-        break;
-      case "p":
-      case "P":
-        printTab();
         break;
       case "Escape":
         if (!error) onClose();
@@ -773,7 +765,6 @@ export function TabPlayer({ filePath, resources = [], onClose }: Props) {
               </>
             )}
             <label className="tab-player-check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow cursor</label>
-            <button className="btn-secondary" title="Print the tab (P)" onClick={printTab}>Print</button>
           </div>
 
           {tracksOpen && (

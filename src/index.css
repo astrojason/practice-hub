@@ -3103,7 +3103,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 }
 .tab-cursor.shown { display: block; }
 
-/* Tab player: pitch, chord sheet, tracks panel, printing */
+/* Tab player: pitch, chord sheet, tracks panel */
 .tab-player-info { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tab-player-chip { padding: 2px 8px; font-size: 12px; }
 .tab-pitch-value { min-width: 92px; color: var(--text); font-variant-numeric: tabular-nums; }
@@ -3117,13 +3117,3 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .chord-bar .marker { margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); }
 .chord-bar.in-loop { background: rgba(124, 106, 247, 0.16); }
 .chord-bar.playing { outline: 2px solid var(--accent); }
-@media print {
-  body * { visibility: hidden; }
-  .tab-player-scroll, .tab-player-scroll * { visibility: visible; }
-  html, body, #root { height: auto !important; overflow: visible !important; }
-  .tab-player { position: absolute; inset: auto; top: 0; left: 0; width: 100%; display: block; background: #fff; }
-  .tab-player-scroll { overflow: visible; padding: 0; }
-  .tab-player { --tab-bg: #fff; --tab-strings: #444; --tab-measure: #333; --tab-measure-end: #000; --tab-note: #000; --tab-rhythm: #333; --tab-text: #555; --tab-chord: #222; --tab-marker: #000; }
-  .tab-line { break-inside: avoid; }
-  .tab-cursor, .tab-loop-range { display: none; }
-}

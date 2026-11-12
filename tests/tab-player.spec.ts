@@ -382,15 +382,6 @@ test("the chord sheet display shows a cell per bar", async ({ page }) => {
   await expect(player.locator(".tab-line")).not.toHaveCount(0);
 });
 
-test("print asks the app to open the print dialog", async ({ page }) => {
-  await setup(page);
-  await openTab(page);
-  await page.locator(".tab-player").getByRole("button", { name: "Print" }).click();
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { __calls: { cmd: string }[] }).__calls.filter((c) => c.cmd === "print_tab").length))
-    .toBe(1);
-});
-
 test("the current track can be muted and soloed from the control bar, with the synth", async ({ page }) => {
   await setup(page);
   await openTab(page);
