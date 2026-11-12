@@ -367,7 +367,7 @@ interface Props {
   onReports: () => void;
   onBadges: () => void;
   onLeaderboard: () => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, resources?: Resource[]) => void;
 }
 
 export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {

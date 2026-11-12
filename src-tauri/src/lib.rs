@@ -11,6 +11,8 @@ use tauri::{Manager, path::BaseDirectory};
 use tiny_http::Header;
 use url::Url;
 
+mod tab;
+
 // ─── HTTP file server ─────────────────────────────────────────────────────────
 // Serves local media files to the frontend via http://127.0.0.1:17865/asset?path=...
 // This mirrors the server from practice-player and enables Web Audio API decoding
@@ -173,6 +175,23 @@ fn spawn_file_server() {
             );
         }
     });
+}
+
+// ─── Tab player ───────────────────────────────────────────────────────────────
+// Reads a Guitar Pro 7/8 (.gp) file with the in-process parser and returns the
+// song (tracks, bars, beats, tempo map) as JSON for the in-app tab player.
+
+#[tauri::command]
+async fn read_tab_file(file_path: String) -> Result<String, String> {
+    let path = PathBuf::from(&file_path);
+    let bytes = fs::read(&path).map_err(|e| format!("Couldn't read {file_path}: {e}"))?;
+    let fallback_title = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Untitled".to_string());
+    let song = tab::gp::read_gp(&bytes, &file_path, &fallback_title)
+        .map_err(|e| format!("{file_path}: {e}"))?;
+    serde_json::to_string(&song).map_err(|e| format!("Couldn't encode the song: {e}"))
 }
 
 // ─── GP file analysis ─────────────────────────────────────────────────────────
@@ -716,6 +735,7 @@ pub fn run() {
             is_launchd_agent_installed,
             nightly_scan_last_run,
             parse_gp_file,
+            read_tab_file,
             scan_gp_directory,
             list_local_folder,
             open_with_default,

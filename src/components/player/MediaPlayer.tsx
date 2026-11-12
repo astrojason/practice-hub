@@ -45,7 +45,7 @@ interface Props {
   /** The playing item's resources — lets the player swap between an item's files or open its external links without stopping playback. */
   resources?: Resource[];
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, resources?: Resource[]) => void;
 }
 
 interface Preset {

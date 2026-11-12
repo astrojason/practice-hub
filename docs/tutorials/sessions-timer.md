@@ -34,7 +34,13 @@ From a card you can:
 
 Once a timer is running, the card collapses to show just the elapsed time — click it to reopen the session panel, where you can add notes, see your last session, view a rating-history chart, **Pause**/**Resume**, **Stop & Save**, or **Cancel** (discards the timer entirely).
 
-Any resources attached to the item (links, YouTube, local audio/video/folders, Guitar Pro files) are listed at the top of the session panel — clicking one opens it in the appropriate place: the system browser for links, the in-app media player for audio/video, or the real Guitar Pro app for tabs.
+Any resources attached to the item (links, YouTube, local audio/video/folders, Guitar Pro files) are listed at the top of the session panel — clicking one opens it in the appropriate place: the system browser for links, the in-app media player for audio/video, or the in-app **tab player** for Guitar Pro (`.gp`) tabs.
+
+### Tab player
+
+Clicking a Guitar Pro resource opens the tab player over the app (your session and timer keep running underneath). It draws the tab, follows it with a cursor and plays it with a built-in synth — pick a track (or **All tracks**), set the speed, loop a range of bars, and use the metronome, count-in and mixer. Click any bar to jump there; Space plays/pauses.
+
+If the same item also has a local audio or video resource, choose it in the **Audio** menu to play the tab along with that recording instead of the synth. Press play, pause where bar 1 starts, then **Bar 1 starts here** to line the cursor up. If the recording speeds up or slows down, press **Sync this bar** (or `B`) at the start of bars where the tab drifts; the tab then follows the recording in straight lines between those points. Everything is remembered per tab + recording, and **Clear sync points** (with a confirmation) starts over. **Open in Guitar Pro** hands the file to the real Guitar Pro app. The tab player reads Guitar Pro 7/8 `.gp` files; older formats (`.gp3`, `.gp4`, `.gp5`, `.gpx`) open straight in the real Guitar Pro app.
 
 ## Sequential sessions
 

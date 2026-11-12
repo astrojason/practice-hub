@@ -32,7 +32,7 @@ const mockDashboard = {
       updated_timestamp: 0,
       child_exercises: [],
       resources: [
-        { name: "Tab", url: "/path/to/tab.gp5", type: "guitar_pro" },
+        { name: "Tab", url: "/path/to/tab.gp", type: "guitar_pro" },
       ],
       meta: { user_exercise: null, sessions: [] },
     },
@@ -44,14 +44,11 @@ const mockDashboard = {
 };
 
 test.beforeEach(async ({ page }) => {
-  // Guitar Pro files now open via the OS's default handler (the real Guitar
-  // Pro app) instead of an in-app viewer — invoked through the same
-  // open_with_default Tauri command the GP library scanner's "Open in
-  // Guitar Pro" button already used. Recorded on window so the test can
-  // assert it was called with the right path without actually launching
-  // anything.
+  // Guitar Pro files open in the in-app tab player, which reads them through
+  // the read_tab_file Tauri command. Recorded on window so the test can assert
+  // it was called with the right path.
   await page.addInitScript(() => {
-    (window as unknown as { __openWithDefaultCalls: string[] }).__openWithDefaultCalls = [];
+    (window as unknown as { __readTabCalls: string[] }).__readTabCalls = [];
     window.__TAURI_INTERNALS__ = {
       invoke: function (cmd: string, args?: Record<string, unknown>) {
         if (cmd === "plugin:store|load") return Promise.resolve(1);
@@ -62,11 +59,18 @@ test.beforeEach(async ({ page }) => {
         if (cmd === "plugin:store|get_store") return Promise.resolve(null);
         if (cmd === "plugin:event|listen") return Promise.resolve(1);
         if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
-        if (cmd === "open_with_default") {
-          (window as unknown as { __openWithDefaultCalls: string[] }).__openWithDefaultCalls.push(
-            String(args?.path)
+        if (cmd === "read_tab_file") {
+          (window as unknown as { __readTabCalls: string[] }).__readTabCalls.push(String(args?.filePath));
+          return Promise.resolve(
+            JSON.stringify({
+              id: "x", title: "Solo", artist: "", tempo: 120, time: [4, 4], source: "user",
+              tracks: [{
+                name: "Guitar", instrument: "guitar", tuning: "standard", difficulty: 1,
+                strings: [64, 59, 55, 50, 45, 40],
+                measures: [{ beats: [{ dur: 4, notes: [{ string: 1, fret: 3 }] }] }],
+              }],
+            })
           );
-          return Promise.resolve(null);
         }
         return Promise.resolve(null);
       },
@@ -97,7 +101,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-test("opening a GP resource during a normal (non-sequential) session opens Guitar Pro externally without stopping the timer or closing the session modal", async ({ page }) => {
+test("opening a GP resource during a normal (non-sequential) session opens the in-app tab player without stopping the timer or closing the session modal", async ({ page }) => {
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
   await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
 
@@ -116,16 +120,19 @@ test("opening a GP resource during a normal (non-sequential) session opens Guita
   // Open the GP resource from within the session modal.
   await page.locator(".modal-resource-link--local", { hasText: "Tab" }).click();
 
-  // Guitar Pro opened externally with the right path — no in-app viewer.
+  // The tab player opened and read the right file.
+  await expect(page.locator(".tab-player")).toBeVisible();
   await expect
     .poll(async () =>
-      page.evaluate(() => (window as unknown as { __openWithDefaultCalls: string[] }).__openWithDefaultCalls)
+      page.evaluate(() => (window as unknown as { __readTabCalls: string[] }).__readTabCalls)
     )
-    .toEqual(["/path/to/tab.gp5"]);
+    .toContain("/path/to/tab.gp");
+  const reads = await page.evaluate(() => (window as unknown as { __readTabCalls: string[] }).__readTabCalls);
+  expect(new Set(reads)).toEqual(new Set(["/path/to/tab.gp"]));
   await expect(page.locator(".gp-viewer")).toHaveCount(0);
 
-  // Opening an external app is fire-and-forget: the session modal stays
-  // open and the timer keeps running uninterrupted throughout.
+  // Opening the tab player is an overlay: the session modal stays open
+  // and the timer keeps running uninterrupted throughout.
   await expect(page.locator(".modal-card")).toBeVisible();
   await page.waitForTimeout(1500);
   const elapsedAfter = await elapsedBtn.textContent();

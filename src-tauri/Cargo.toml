@@ -21,3 +21,5 @@ tokio = { version = "1", features = ["sync"] }
 url = "2"
 tiny_http = "0.12"
 percent-encoding = "2.3.2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+roxmltree = "0.20"

@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ErrorModal } from "../ErrorModal";
 import type { Resource } from "../../api/types";
 
-// Infer file type from extension — GP files open in the GP viewer, others in the media player.
+// Infer file type from extension — GP files open in the tab player, others in the media player.
 function fileTypeFromPath(path: string): "audio" | "video" | "guitar_pro" {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   if (["gp", "gp3", "gp4", "gp5", "gpx"].includes(ext)) return "guitar_pro";
@@ -22,7 +22,7 @@ interface LocalFolderResourceProps {
   name: string;
   folderPath: string;
   onOpenFile?: (path: string, mediaType: "audio" | "video") => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, resources?: Resource[]) => void;
 }
 
 function LocalFolderResource({ name, folderPath, onOpenFile, onGpView }: LocalFolderResourceProps) {
@@ -75,7 +75,7 @@ function LocalFolderResource({ name, folderPath, onOpenFile, onGpView }: LocalFo
 export interface ResourceLinksProps {
   resources: Resource[];
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, resources?: Resource[]) => void;
   /** Called after a local file/folder resource is opened for playback — lets callers e.g. hide a wrapping modal. Not called for external links or GP files. */
   onLocalMediaOpen?: () => void;
 }
@@ -100,7 +100,7 @@ export function ResourceLinks({ resources, onOpenFile, onGpView, onLocalMediaOpe
               name={r.name}
               folderPath={r.url}
               onOpenFile={onOpenFile ? (path, mt) => { onOpenFile(path, mt, undefined, resources); onLocalMediaOpen?.(); } : undefined}
-              onGpView={onGpView}
+              onGpView={onGpView ? (path) => onGpView(path, resources) : undefined}
             />
           );
         }
@@ -112,10 +112,9 @@ export function ResourceLinks({ resources, onOpenFile, onGpView, onLocalMediaOpe
               className="modal-resource-link modal-resource-link--local"
               onClick={() => {
                 if (ft === "guitar_pro") {
-                  // Opens in the OS's default app (Guitar Pro) — a
-                  // fire-and-forget external launch, not an in-app
-                  // overlay, so the caller's UI stays open.
-                  onGpView?.(r.url);
+                  // Opens in the in-app tab player (an overlay), with the
+                  // item's other resources available as a backing recording.
+                  onGpView?.(r.url, resources);
                 } else {
                   onOpenFile?.(r.url, ft, undefined, resources);
                   onLocalMediaOpen?.();
@@ -132,7 +131,7 @@ export function ResourceLinks({ resources, onOpenFile, onGpView, onLocalMediaOpe
             <button
               key={r.url}
               className="modal-resource-link modal-resource-link--local"
-              onClick={() => onGpView?.(r.url)}
+              onClick={() => onGpView?.(r.url, resources)}
             >
               <FolderOpenIcon style={{ width: 11, height: 11 }} />
               {r.name}
@@ -164,7 +163,7 @@ interface Props {
   resources?: Resource[];
   onClose: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, resources?: Resource[]) => void;
   /** Called instead of onClose when a resource opens media, so callers can distinguish "hide while media plays" from an explicit close/cancel. Defaults to onClose. */
   onMediaOpen?: () => void;
   children: React.ReactNode;

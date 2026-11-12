@@ -14,7 +14,8 @@ import { LeaderboardView } from "./components/leaderboard/LeaderboardView";
 import { AlbumBadgesView } from "./components/badges/AlbumBadgesView";
 import { BadgeUnlockModal } from "./components/badges/BadgeUnlockModal";
 import { getAlbumBadges } from "./api/client";
-import type { AlbumBadge, AlbumBadgesResponse } from "./api/types";
+import type { AlbumBadge, AlbumBadgesResponse, Resource } from "./api/types";
+import { TabPlayer } from "./components/tabplayer/TabPlayer";
 import { HelpModal } from "./components/HelpModal";
 import { Metronome } from "./components/player/Metronome";
 import { AppFooter } from "./components/AppFooter";
@@ -41,6 +42,7 @@ export function App() {
   const [slowLoad, setSlowLoad] = useState(false);
   const [view, setView] = useState<AppView>("session");
   const [gpOpenError, setGpOpenError] = useState<string | null>(null);
+  const [tabPlayer, setTabPlayer] = useState<{ path: string; resources: Resource[] } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
   const [albumBadges, setAlbumBadges] = useState<AlbumBadgesResponse | null>(null);
@@ -65,9 +67,15 @@ export function App() {
     return () => window.removeEventListener("focus", refresh);
   }, [token]);
 
-  // Guitar Pro files open in the real Guitar Pro app (via the OS's default
-  // file-type handler) rather than an in-app viewer.
-  function openGpFile(path: string) {
+  // Guitar Pro files open in the in-app tab player; the owning item's
+  // resources come along so its audio can back the tab.
+  // Only Guitar Pro 7/8 (.gp) can be read by the player; older formats
+  // (.gp3/.gp4/.gp5/.gpx) open in the real Guitar Pro app.
+  function openGpFile(path: string, resources?: Resource[]) {
+    if (path.split(".").pop()?.toLowerCase() === "gp") {
+      setTabPlayer({ path, resources: resources ?? [] });
+      return;
+    }
     invoke("open_with_default", { path }).catch((err) =>
       setGpOpenError(err instanceof Error ? err.message : String(err))
     );
@@ -142,6 +150,14 @@ export function App() {
       {badgeError && <ErrorModal error={badgeError} onDismiss={() => setBadgeError(null)} />}
       {unlocked.length > 0 && <BadgeUnlockModal badges={unlocked} onDismiss={() => setUnlocked([])} />}
       {gpOpenError && <ErrorModal error={gpOpenError} onDismiss={() => setGpOpenError(null)} />}
+      {tabPlayer && (
+        <TabPlayer
+          key={tabPlayer.path}
+          filePath={tabPlayer.path}
+          resources={tabPlayer.resources}
+          onClose={() => setTabPlayer(null)}
+        />
+      )}
       <AppFooter
         version={APP_VERSION}
         onHelp={() => setHelpOpen(true)}

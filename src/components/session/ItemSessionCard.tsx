@@ -112,7 +112,7 @@ export interface ItemSessionCardProps {
   onSessionSubmit: (dailyPracticeTime: number, newSession?: ExerciseSession | StudyMaterialSession) => void;
   onSkip: () => void;
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
-  onGpView?: (path: string) => void;
+  onGpView?: (path: string, resources?: Resource[]) => void;
   /** When set, the play button starts a sequential child session instead of this item's own timer. */
   onStartSequential?: () => void;
   onOpenChat?: () => void;
