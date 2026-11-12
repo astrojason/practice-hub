@@ -37,6 +37,9 @@ export class RecordingTransport implements Transport {
   private timing: BarTiming;
   private loop: [number, number] | null = null;
   private raf = 0;
+  private ctx: AudioContext | null = null;
+  private shifter: AudioWorkletNode | null = null;
+  private pitch = 0;
   private onEnded = () => {
     this.playing = false;
     cancelAnimationFrame(this.raf);
@@ -50,6 +53,41 @@ export class RecordingTransport implements Transport {
     this.clock = songClock(song);
     this.timing = barStarts(song);
     audio.addEventListener("ended", this.onEnded);
+  }
+
+  /**
+   * Sends the recording's sound through the pitch shifter (a worklet in public/), which changes
+   * the pitch without changing the speed. Resolves once it is wired up; rejects, leaving the
+   * recording playing at its own pitch, when the system can't do it.
+   */
+  async enablePitchShift(): Promise<void> {
+    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) throw new Error("This system has no Web Audio, so the recording can't be pitch shifted.");
+    const ctx = new AC();
+    this.ctx = ctx;
+    const source = ctx.createMediaElementSource(this.audio);
+    try {
+      await ctx.audioWorklet.addModule(`${import.meta.env.BASE_URL}tabPitchWorklet.js`);
+      const shifter = new AudioWorkletNode(ctx, "pitch-shifter", { outputChannelCount: [2] });
+      source.connect(shifter);
+      shifter.connect(ctx.destination);
+      this.shifter = shifter;
+      this.applyPitch();
+    } catch (err) {
+      source.connect(ctx.destination);
+      throw new Error(`Pitch shifting of the recording isn't available here, so it plays at its own pitch (${err instanceof Error ? err.message : String(err)}).`);
+    }
+  }
+
+  /** Semitones, with cents as hundredths. */
+  setPitchShift(semitones: number): void {
+    this.pitch = semitones;
+    this.applyPitch();
+  }
+
+  private applyPitch(): void {
+    if (!this.shifter || !this.ctx) return;
+    this.shifter.parameters.get("ratio")!.setValueAtTime(2 ** (this.pitch / 12), this.ctx.currentTime);
   }
 
   /** [song seconds, recording seconds] pairs: the sync points, else bar 1 at the offset. */
@@ -82,6 +120,7 @@ export class RecordingTransport implements Transport {
 
   async play(): Promise<void> {
     if (this.playing) return;
+    if (this.ctx && this.ctx.state === "suspended") await this.ctx.resume();
     const lt = this.loopTicks();
     const tick = this.currentTick();
     if (lt && (tick < lt[0] || tick >= lt[1])) this.audio.currentTime = this.mediaTimeAt(lt[0]);
@@ -131,5 +170,10 @@ export class RecordingTransport implements Transport {
     cancelAnimationFrame(this.raf);
     this.audio.removeEventListener("ended", this.onEnded);
     this.audio.pause();
+    if (this.ctx) {
+      const ctx = this.ctx;
+      this.ctx = null;
+      void ctx.close();
+    }
   }
 }

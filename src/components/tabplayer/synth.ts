@@ -32,6 +32,10 @@ export class SynthPlayer implements Transport {
   countIn = false;
   metronome = false;
   masterVolume = 0.8;
+  /** Whole semitones the written notes are moved (the tab and the sound both change). */
+  transpose = 0;
+  /** Semitones, with cents as hundredths, applied to the sound only. */
+  pitchShift = 0;
 
   private cb: TransportCallbacks;
   private ctx: AudioContext | null = null;
@@ -356,12 +360,19 @@ export class SynthPlayer implements Transport {
     return buf;
   }
 
+  /** Sets transpose and pitch shift, making the plucked sounds the new pitches need. */
+  setPitch(transpose: number, pitchShift: number): void {
+    this.transpose = transpose;
+    this.pitchShift = pitchShift;
+    if (this.ctx) this.prepareBuffers();
+  }
+
   private prepareBuffers(): void {
     if (this.voice !== "pluck" || !this.song) return;
     for (const t of this.song.tracks) {
       if (t.instrument === "drums") continue;
       const seen = new Set<number>();
-      for (const m of t.measures) for (const b of m.beats) for (const n of b.notes) seen.add(Math.round(t.strings[n.string - 1] + n.fret));
+      for (const m of t.measures) for (const b of m.beats) for (const n of b.notes) seen.add(Math.round(t.strings[n.string - 1] + n.fret + this.transpose + this.pitchShift));
       for (const midi of seen) this.pluckBuffer(midi, t.instrument === "bass");
     }
   }
@@ -389,7 +400,7 @@ export class SynthPlayer implements Transport {
     const bass = track.instrument === "bass";
     for (const n of ev.beat.notes) {
       if (n.tie) continue;
-      const midi = track.strings[n.string - 1] + n.fret;
+      const midi = track.strings[n.string - 1] + n.fret + this.transpose + this.pitchShift;
       const key = `${ev.track}:${n.string}`;
       const prev = this.ringing.get(key);
       if (prev) {

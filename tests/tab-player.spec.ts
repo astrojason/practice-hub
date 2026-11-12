@@ -174,16 +174,6 @@ test("play starts the cursor and pause stops it", async ({ page }) => {
   await expect(player.locator('button[title="Play"]')).toBeVisible();
 });
 
-test("the track selector switches which track is drawn", async ({ page }) => {
-  await setup(page);
-  await openTab(page);
-  const player = page.locator(".tab-player");
-  await expect(player.locator(".tab-line svg text", { hasText: /^15$/ }).first()).toBeVisible();
-  await player.locator(".tab-track-select").selectOption({ label: "Bass" });
-  await expect(player.locator(".tab-line svg text", { hasText: /^15$/ })).toHaveCount(0);
-  await expect(player.locator(".tab-line svg text", { hasText: /^5$/ }).first()).toBeVisible();
-});
-
 test("an audio resource on the same item can be chosen as the backing recording", async ({ page }) => {
   await setup(page);
   await openTab(page);
@@ -263,4 +253,163 @@ test("sync points are remembered for the tab and recording", async ({ page }) =>
   await openTab(page);
   await page.locator(".tab-player .tab-audio-select").selectOption({ label: "Backing" });
   await expect(page.locator(".tab-player .tab-sync-count")).toHaveText(/^1 sync point/);
+});
+
+const tracksPanel = (page: import("@playwright/test").Page) => page.locator(".tab-player").getByRole("button", { name: "Tracks" });
+const fret = (page: import("@playwright/test").Page, n: number) => page.locator(".tab-player .tab-line svg text", { hasText: new RegExp(`^${n}$`) });
+
+test("any combination of tracks can be shown, via checkboxes in the Tracks panel", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  // Starts with the first track only.
+  await expect(fret(page, 15).first()).toBeVisible();
+  await expect(fret(page, 0)).toHaveCount(0);
+  await tracksPanel(page).click();
+  await page.getByRole("checkbox", { name: "Show Bass" }).check();
+  await expect(fret(page, 15).first()).toBeVisible();
+  await expect(fret(page, 0).first()).toBeVisible();
+  await page.getByRole("checkbox", { name: "Show Lead Guitar" }).uncheck();
+  await expect(fret(page, 15)).toHaveCount(0);
+  await expect(fret(page, 0).first()).toBeVisible();
+  // The last visible track can't be hidden.
+  await expect(page.getByRole("checkbox", { name: "Show Bass" })).toBeDisabled();
+});
+
+test("the shown tracks are remembered between sessions", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  await tracksPanel(page).click();
+  await page.getByRole("checkbox", { name: "Show Bass" }).check();
+  await page.getByRole("checkbox", { name: "Show Lead Guitar" }).uncheck();
+  await expect(fret(page, 15)).toHaveCount(0);
+  await page.reload();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  await page.locator(".item-card", { hasText: "Solo Exercise" }).first().locator('button[title="Start timer"]').click();
+  await openTab(page);
+  await expect(fret(page, 5).first()).toBeVisible();
+  await expect(fret(page, 15)).toHaveCount(0);
+});
+
+test("the recording is used by default when the item has one, and a choice of synth is remembered", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await expect(player.locator(".tab-audio-select")).toHaveValue("/path/to/solo.mp3");
+  await expect(player.locator(".tab-audio-status")).toContainText("Backing");
+  await player.locator(".tab-audio-select").selectOption({ label: "Synth (no recording)" });
+  await player.getByRole("button", { name: "Close" }).click();
+  await openTab(page);
+  await expect(page.locator(".tab-player .tab-audio-select")).toHaveValue("");
+});
+
+test("pitch shift takes semitones and cents, and needs the pitch shifter for a recording", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  // The pitch controls are enabled once the shifter is wired into the recording.
+  await expect(player.getByLabel("Pitch semitones")).toBeEnabled();
+  await player.getByLabel("Pitch semitones").fill("2");
+  await player.getByLabel("Pitch cents").fill("25");
+  await expect(player.locator(".tab-pitch-value")).toHaveText("+2 st +25 ¢");
+  await player.getByRole("button", { name: "Reset pitch" }).click();
+  await expect(player.locator(".tab-pitch-value")).toHaveText("0 st 0 ¢");
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("pitch shift also works with the synth", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await player.locator(".tab-audio-select").selectOption({ label: "Synth (no recording)" });
+  await player.getByLabel("Pitch semitones").fill("-3");
+  await expect(player.locator(".tab-pitch-value")).toHaveText("-3 st 0 ¢");
+  await player.locator('button[title="Play"]').click();
+  await expect(player.locator('button[title="Pause"]')).toBeVisible();
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+test("transpose changes the frets that are drawn", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  await expect(fret(page, 15).first()).toBeVisible();
+  await expect(fret(page, 17)).toHaveCount(0);
+  await page.locator(".tab-player").getByLabel("Transpose").fill("2");
+  await expect(fret(page, 17).first()).toBeVisible();
+  await expect(fret(page, 15)).toHaveCount(0);
+});
+
+test("dragging across bars selects a loop, and a plain click only moves the cursor", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  const hit = (bar: number) => player.locator(`.tab-bar-hit[data-bar="${bar}"]`).first();
+  await expect(hit(1)).toBeAttached();
+  const a = (await hit(0).boundingBox())!;
+  const b = (await hit(1).boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(player.getByLabel("Loop from bar")).toHaveValue("1");
+  await expect(player.getByLabel("Loop to bar")).toHaveValue("2");
+  await expect(player.locator(".tab-loop-range")).not.toHaveCount(0);
+
+  await player.getByRole("button", { name: "Clear" }).click();
+  await expect(player.getByLabel("Loop from bar")).toHaveValue("");
+  await hit(1).click();
+  await expect(player.getByLabel("Loop from bar")).toHaveValue("");
+});
+
+test("the L key loops the current bar and clears it again", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await page.keyboard.press("l");
+  await expect(player.getByLabel("Loop from bar")).toHaveValue("1");
+  await expect(player.getByLabel("Loop to bar")).toHaveValue("1");
+  await page.keyboard.press("l");
+  await expect(player.getByLabel("Loop from bar")).toHaveValue("");
+});
+
+test("the chord sheet display shows a cell per bar", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await player.getByLabel("Display").selectOption({ label: "Chords" });
+  await expect(player.locator(".chord-bar")).toHaveCount(2);
+  await expect(player.locator(".tab-line")).toHaveCount(0);
+  await player.getByLabel("Display").selectOption({ label: "Tab" });
+  await expect(player.locator(".tab-line")).not.toHaveCount(0);
+});
+
+test("print asks the app to open the print dialog", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  await page.locator(".tab-player").getByRole("button", { name: "Print" }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __calls: { cmd: string }[] }).__calls.filter((c) => c.cmd === "print_tab").length))
+    .toBe(1);
+});
+
+test("the current track can be muted and soloed from the control bar, with the synth", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await player.locator(".tab-audio-select").selectOption({ label: "Synth (no recording)" });
+  const mute = player.getByRole("button", { name: "Mute track" });
+  await mute.click();
+  await expect(mute).toHaveAttribute("aria-pressed", "true");
+  const solo = player.getByRole("button", { name: "Solo track" });
+  await solo.click();
+  await expect(solo).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the header shows the song's bars, tracks and speed goes down to 15%", async ({ page }) => {
+  await setup(page);
+  await openTab(page);
+  const player = page.locator(".tab-player");
+  await expect(player.locator(".tab-player-info")).toContainText("2 bars");
+  await expect(player.locator(".tab-player-info")).toContainText("2 tracks");
+  await expect(player.getByLabel("Speed")).toHaveAttribute("min", "15");
+  await expect(player.getByLabel("Speed")).toHaveAttribute("max", "175");
 });

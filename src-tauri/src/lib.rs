@@ -182,6 +182,11 @@ fn spawn_file_server() {
 // song (tracks, bars, beats, tempo map) as JSON for the in-app tab player.
 
 #[tauri::command]
+fn print_tab(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| format!("The print dialog couldn't open: {e}"))
+}
+
+#[tauri::command]
 async fn read_tab_file(file_path: String) -> Result<String, String> {
     let path = PathBuf::from(&file_path);
     let bytes = fs::read(&path).map_err(|e| format!("Couldn't read {file_path}: {e}"))?;
@@ -736,6 +741,7 @@ pub fn run() {
             nightly_scan_last_run,
             parse_gp_file,
             read_tab_file,
+            print_tab,
             scan_gp_directory,
             list_local_folder,
             open_with_default,
