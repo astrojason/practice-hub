@@ -181,6 +181,28 @@ fn spawn_file_server() {
 // Reads a Guitar Pro 7/8 (.gp) file with the in-process parser and returns the
 // song (tracks, bars, beats, tempo map) as JSON for the in-app tab player.
 
+/// Saves an edited tab as a new .gp file next to the original (never overwriting a file) and
+/// returns the new path.
+#[tauri::command]
+async fn save_tab_copy(file_path: String, song_json: String) -> Result<String, String> {
+    let song: tab::model::Song = serde_json::from_str(&song_json).map_err(|e| format!("The edited tab couldn't be read back: {e}"))?;
+    let bytes = tab::gpwrite::write_gp(&song)?;
+    let original = PathBuf::from(&file_path);
+    // create_new makes the existence check and the write one step, so a file made in between is never replaced.
+    loop {
+        let target = tab::gpwrite::copy_path(&original, |p| p.exists());
+        match fs::OpenOptions::new().write(true).create_new(true).open(&target) {
+            Ok(mut f) => {
+                use std::io::Write;
+                f.write_all(&bytes).map_err(|e| format!("Couldn't write {}: {e}", target.display()))?;
+                return Ok(target.to_string_lossy().to_string());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("Couldn't create {}: {e}", target.display())),
+        }
+    }
+}
+
 #[tauri::command]
 async fn read_tab_file(file_path: String) -> Result<String, String> {
     let path = PathBuf::from(&file_path);
@@ -889,6 +911,7 @@ pub fn run() {
             nightly_scan_last_run,
             parse_gp_file,
             read_tab_file,
+            save_tab_copy,
             scan_gp_directory,
             list_local_folder,
             open_with_default,

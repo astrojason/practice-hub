@@ -2,5 +2,6 @@
 //! Ported from the Tabline desktop app's `tabcore` crate (gp.rs, model.rs, tunings.rs).
 
 pub mod gp;
+pub mod gpwrite;
 pub mod model;
 pub mod tunings;
