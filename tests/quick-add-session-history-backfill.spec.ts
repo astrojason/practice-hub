@@ -98,8 +98,21 @@ test("a quick-added exercise's real practice history is backfilled instead of sh
 
   await page.locator(".item-group", { hasText: "Additional" }).locator(".item-group-header").click();
   const card = page.locator(".item-card", { hasText: "Metronome Drill" });
-  await card.locator('button[title="Log session"]').click();
+  // Adding from Quick Add starts the timer; open its running session.
+  await card.locator('button[title="Open session"]').click();
 
   await expect(page.locator(".last-session")).toBeVisible();
   await expect(page.getByText(/2 days ago/i)).toBeVisible();
+});
+
+test("adding an exercise from quick add also starts its session timer", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+
+  await page.locator(".session-header-actions button", { hasText: "Quick add" }).click();
+  await page.locator(".quick-add-search").fill("Metronome");
+  await page.locator(".qa-row", { hasText: "Metronome Drill" }).locator(".qa-row-add").click();
+  await page.locator(".quick-add-close").click();
+
+  await page.locator(".item-group", { hasText: "Additional" }).locator(".item-group-header").click();
+  await expect(page.locator(".item-card.active", { hasText: "Metronome Drill" })).toBeVisible();
 });

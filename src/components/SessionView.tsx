@@ -5,6 +5,7 @@ import {
   getExerciseById,
   getExerciseCatalog,
   getExerciseSessionHistory,
+  getSong,
   getStudyMaterialById,
   getStreakTokenUses,
   getStudyMaterialSessionHistory,
@@ -13,6 +14,7 @@ import {
   rebuildDashboard,
 } from "../api/client";
 import type {
+  AiChallenge,
   CatalogExercise,
   CatalogExerciseWithActive,
   CatalogStudyMaterial,
@@ -956,13 +958,53 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     setAdditionalStudyMaterials((prev) => applyToggle(prev));
   }
 
+  // ── AI challenge: start a session for the challenge's item ───────────────────
+  function handleStartChallengeSession(challenge: AiChallenge) {
+    const id = challenge.item_id;
+    if (!challenge.item_type || id == null) return;
+    const name = challenge.item_name ?? `#${id}`;
+    const fail = (err: unknown) =>
+      setActionError(`Couldn't start a session for "${name}": ${err instanceof Error ? err.message : String(err)}`);
+
+    if (challenge.item_type === "song") {
+      const key = makeItemKey("song", id);
+      if (existingSongIds.has(id)) return startTimer(key);
+      getSong(token, id)
+        .then((song) => {
+          setAdditionalSongs((prev) => (prev.some((s) => s.id === song.id) ? prev : [...prev, song]));
+          startTimer(key);
+        })
+        .catch(fail);
+    } else if (challenge.item_type === "exercise") {
+      const key = makeItemKey("exercise", id);
+      if (allSuggestedIds.has(key) || additionalExercises.some((e) => e.id === id)) return startTimer(key);
+      getExerciseById(token, id)
+        .then((ex) => {
+          setAdditionalExercises((prev) => (prev.some((e) => e.id === ex.id) ? prev : [...prev, ex]));
+          startTimer(key);
+        })
+        .catch(fail);
+    } else {
+      const key = makeItemKey("studymaterial", id);
+      if (allSuggestedIds.has(key) || additionalStudyMaterials.some((m) => m.id === id)) return startTimer(key);
+      getStudyMaterialById(token, id)
+        .then((sm) => {
+          setAdditionalStudyMaterials((prev) => (prev.some((m) => m.id === sm.id) ? prev : [...prev, sm]));
+          startTimer(key);
+        })
+        .catch(fail);
+    }
+  }
+
   // ── Quick Add handlers ────────────────────────────────────────────────────────
   function handleAddSong(song: Song) {
     setAdditionalSongs((prev) => [...prev, song]);
+    startTimer(makeItemKey("song", song.id));
   }
 
   function handleAddExercise(exercise: CatalogExercise) {
     setAdditionalExercises((prev) => [...prev, catalogExerciseToDashboard(exercise)]);
+    startTimer(makeItemKey("exercise", exercise.id));
     // The catalog shape has no session history, so the freshly-added card would
     // otherwise show "never practiced" even for exercises with real history —
     // fill it in from the real session-history endpoint once it loads.
@@ -983,6 +1025,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
   function handleAddStudyMaterial(material: CatalogStudyMaterial) {
     setAdditionalStudyMaterials((prev) => [...prev, catalogStudyMaterialToDashboard(material)]);
+    startTimer(makeItemKey("studymaterial", material.id));
     // Same gap as exercises above — backfill real session history in the background.
     getStudyMaterialSessionHistory(token, material.id)
       .then((res) => {
@@ -1202,7 +1245,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onSettings={onSettings}
       />
 
-      <AiChallengesPanel token={token} refreshKey={serverTotal} />
+      <AiChallengesPanel token={token} refreshKey={serverTotal} onStartSession={handleStartChallengeSession} />
 
       {openSessionModalOpen && (
         <OpenSessionForm

@@ -101,13 +101,14 @@ test("opening a video resource on a Quick-Added song does not stop the timer or 
   const card = page.locator(".item-card", { hasText: "Overdue Song" }).first();
   await expect(card).toBeVisible();
 
-  await card.locator('button[title="Start timer"]').click();
+  // Adding from Quick Add starts the timer, so it is already running.
   const elapsedBtn = card.locator(".item-elapsed");
   await expect(elapsedBtn).toBeVisible();
 
   // Let the timer accumulate a couple of seconds before opening media.
   await page.waitForTimeout(2200);
 
+  await elapsedBtn.click(); // open the running session's modal
   await page.locator(".modal-resource-link--local", { hasText: "Practice Video" }).click();
   await expect(page.locator(".media-player")).toBeVisible();
 

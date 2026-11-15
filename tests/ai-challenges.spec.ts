@@ -64,6 +64,7 @@ const manual = challenge({
 async function setup(
   page: import("@playwright/test").Page,
   listResponse: () => { status: number; body: unknown },
+  dashboard: unknown = mockDashboard,
 ) {
   await page.addInitScript(() => {
     localStorage.setItem("ph:refreshToken", "fake-refresh-token");
@@ -79,7 +80,7 @@ async function setup(
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) })
   );
   await page.route("**/user/dashboard**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) })
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(dashboard) })
   );
   await page.route("**/user-ai-challenge", (route) => {
     const { status, body } = listResponse();
@@ -156,4 +157,51 @@ test("nothing is shown when there are no challenges yet", async ({ page }) => {
 
   await expect(page.locator(".session-view")).toBeVisible();
   await expect(page.locator(".ai-challenges")).toHaveCount(0);
+});
+
+const songRow = (id: number, name: string) => ({
+  id, name, artist: "Artist", order: 1, created_timestamp: 0, updated_timestamp: 0,
+  resources: [], sections: [], meta: { user_song: null, sessions: [] },
+});
+
+test("a challenge for a song on today's list has a Start session button that starts its timer", async ({ page }) => {
+  await setup(
+    page,
+    () => ({ status: 200, body: { current: [challenge()], recent: [] } }),
+    { ...mockDashboard, project: { songs: [songRow(10, "Song Ten")] } },
+  );
+
+  await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
+  await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
+  await expect(page.locator(".item-card.active")).toContainText("Song Ten");
+});
+
+test("a challenge for an item not on today's list fetches it and starts its timer", async ({ page }) => {
+  await page.route("**/song/10", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(songRow(10, "Song Ten")) })
+  );
+  await setup(page, () => ({ status: 200, body: { current: [challenge()], recent: [] } }));
+
+  await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
+  await page.locator(".item-group", { hasText: "Additional" }).locator(".item-group-header").click();
+  await expect(page.locator(".item-card.active")).toContainText("Song Ten");
+});
+
+test("a failed fetch of the challenge's item shows the error", async ({ page }) => {
+  await page.route("**/song/10", (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "Song vanished" }) })
+  );
+  await setup(page, () => ({ status: 200, body: { current: [challenge()], recent: [] } }));
+
+  await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
+  await expect(page.locator(".error-modal")).toContainText("Song vanished");
+});
+
+test("challenges with no item have no Start session button", async ({ page }) => {
+  await setup(page, () => ({
+    status: 200,
+    body: { current: [{ ...manual, item_type: null, item_id: null, item_name: null }], recent: [] },
+  }));
+  await expect(page.locator('[data-challenge-id="3"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start session" })).toHaveCount(0);
 });

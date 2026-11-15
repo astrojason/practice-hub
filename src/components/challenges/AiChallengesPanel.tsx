@@ -15,10 +15,12 @@ interface Props {
   token: string;
   /** Changes whenever a session is logged, so measured progress is refetched. */
   refreshKey: number;
+  /** Starts a practice session (timer) for the challenge's song/exercise/study material. */
+  onStartSession: (challenge: AiChallenge) => void;
 }
 
 /** The AI-written daily, weekly and monthly challenges, shown above today's list. */
-export function AiChallengesPanel({ token, refreshKey }: Props) {
+export function AiChallengesPanel({ token, refreshKey, onStartSession }: Props) {
   const [challenges, setChallenges] = useState<AiChallenge[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +70,11 @@ export function AiChallengesPanel({ token, refreshKey }: Props) {
                   </div>
                   <div className="ai-challenge-name">{c.title}</div>
                   {c.description && <div className="ai-challenge-description">{c.description}</div>}
+                  {c.item_type && c.item_id != null && (
+                    <button className="btn-secondary" onClick={() => onStartSession(c)}>
+                      Start session
+                    </button>
+                  )}
                   {c.measurable ? (
                     <>
                       <div
