@@ -48,6 +48,7 @@ import { OpenSessionForm } from "./session/forms/OpenSessionForm";
 import { QuickAddPanel } from "./session/QuickAddPanel";
 import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
+import { requestSessionModal } from "../lib/sessionModalRequest";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
@@ -966,31 +967,38 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     const fail = (err: unknown) =>
       setActionError(`Couldn't start a session for "${name}": ${err instanceof Error ? err.message : String(err)}`);
 
+    // Start the timer and open the item's session window (its card may sit in a
+    // collapsed group, so the request is held until the card mounts).
+    const begin = (key: string) => {
+      startTimer(key);
+      requestSessionModal(key);
+    };
+
     if (challenge.item_type === "song") {
       const key = makeItemKey("song", id);
-      if (existingSongIds.has(id)) return startTimer(key);
+      if (existingSongIds.has(id)) return begin(key);
       getSong(token, id)
         .then((song) => {
           setAdditionalSongs((prev) => (prev.some((s) => s.id === song.id) ? prev : [...prev, song]));
-          startTimer(key);
+          begin(key);
         })
         .catch(fail);
     } else if (challenge.item_type === "exercise") {
       const key = makeItemKey("exercise", id);
-      if (allSuggestedIds.has(key) || additionalExercises.some((e) => e.id === id)) return startTimer(key);
+      if (allSuggestedIds.has(key) || additionalExercises.some((e) => e.id === id)) return begin(key);
       getExerciseById(token, id)
         .then((ex) => {
           setAdditionalExercises((prev) => (prev.some((e) => e.id === ex.id) ? prev : [...prev, ex]));
-          startTimer(key);
+          begin(key);
         })
         .catch(fail);
     } else {
       const key = makeItemKey("studymaterial", id);
-      if (allSuggestedIds.has(key) || additionalStudyMaterials.some((m) => m.id === id)) return startTimer(key);
+      if (allSuggestedIds.has(key) || additionalStudyMaterials.some((m) => m.id === id)) return begin(key);
       getStudyMaterialById(token, id)
         .then((sm) => {
           setAdditionalStudyMaterials((prev) => (prev.some((m) => m.id === sm.id) ? prev : [...prev, sm]));
-          startTimer(key);
+          begin(key);
         })
         .catch(fail);
     }
@@ -1363,6 +1371,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         {/* Exercises */}
         <ItemGroup
           title="Exercises"
+          itemKeys={dashboard.exercises.flatMap((e) => [e, ...(e.child_exercises ?? [])]).map((e) => makeItemKey("exercise", e.id))}
           completedCount={exerciseCompletedCount()}
           totalCount={exerciseTotalCount()}
         >
@@ -1404,6 +1413,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         {/* Study Materials */}
         <ItemGroup
           title="Study Materials"
+          itemKeys={dashboard.study_materials.flatMap((m) => [m, ...(m.child_study_materials ?? [])]).map((m) => makeItemKey("studymaterial", m.id))}
           completedCount={
             dashboard.study_materials.flatMap((sm) => [sm, ...(sm.child_study_materials ?? [])])
               .filter((sm) => isDone(makeItemKey("studymaterial", sm.id))).length
@@ -1450,6 +1460,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         {/* Project Songs */}
         <ItemGroup
           title="Project"
+          itemKeys={projectSongs.map((s) => makeItemKey("song", s.id))}
           completedCount={
             projectSongs.filter((s) => isDone(makeItemKey("song", s.id))).length
           }
@@ -1495,6 +1506,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           <ItemGroup
             key={pl.id}
             title={decodeHtml(pl.name)}
+            itemKeys={pl.songs.map((s) => makeItemKey("song", s.id))}
             completedCount={pl.songs.filter((s) => isDone(makeItemKey("song", s.id))).length}
             totalCount={pl.songs.length}
             headerAction={
@@ -1546,6 +1558,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         {/* Repertoire Review */}
         <ItemGroup
           title="Repertoire Review"
+          itemKeys={reviewSongs.map((s) => makeItemKey("song", s.id))}
           completedCount={
             reviewSongs.filter((s) => isDone(makeItemKey("song", s.id))).length
           }
@@ -1588,6 +1601,11 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         {additionalTotalCount() > 0 && (
           <ItemGroup
             title="Additional"
+            itemKeys={[
+              ...additionalSongs.map((s) => makeItemKey("song", s.id)),
+              ...additionalExercises.map((e) => makeItemKey("exercise", e.id)),
+              ...additionalStudyMaterials.map((m) => makeItemKey("studymaterial", m.id)),
+            ]}
             completedCount={additionalCompletedCount()}
             totalCount={additionalTotalCount()}
           >

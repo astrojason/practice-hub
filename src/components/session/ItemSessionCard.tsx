@@ -23,6 +23,7 @@ import { RatingTrendChart } from "../reports/RatingTrendChart";
 import { formatPracticeDuration, getStreakStatus, getUsageStalenessLevel, totalSessionSecondsToday } from "../../lib/itemUsage";
 import { useStreakTokens } from "./StreakTokenContext";
 import { ErrorModal } from "../ErrorModal";
+import { consumeSessionModalRequest, usePendingSessionModalKey } from "../../lib/sessionModalRequest";
 import type { ExerciseSession, Resource, SongSession, StudyMaterialSession } from "../../api/types";
 
 function formatElapsed(seconds: number): string {
@@ -189,6 +190,13 @@ export function ItemSessionCard({
   useEffect(() => {
     if (isFormOpen) setModalOpen(true);
   }, [isFormOpen]);
+
+  // Opened from outside the card (e.g. "Start session" on an AI challenge).
+  const pendingModalKey = usePendingSessionModalKey();
+  const ownKey = `${entityType === "study_material" ? "studymaterial" : entityType}-${entityId}`;
+  useEffect(() => {
+    if (pendingModalKey === ownKey && consumeSessionModalRequest(ownKey)) setModalOpen(true);
+  }, [pendingModalKey, ownKey]);
 
   useEffect(() => {
     if (!(isMediaActive ?? false) && mediaWasOpenedRef.current) {

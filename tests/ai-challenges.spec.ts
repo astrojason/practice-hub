@@ -172,7 +172,9 @@ test("a challenge for a song on today's list has a Start session button that sta
   );
 
   await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
-  await page.locator(".item-group", { hasText: "Project" }).locator(".item-group-header").click();
+  await expect(page.locator(".modal-card .modal-title")).toContainText("Song Ten");
+  await page.locator(".modal-close").click();
+  // The item's group expands itself so its card (and window) can open.
   await expect(page.locator(".item-card.active")).toContainText("Song Ten");
 });
 
@@ -183,7 +185,9 @@ test("a challenge for an item not on today's list fetches it and starts its time
   await setup(page, () => ({ status: 200, body: { current: [challenge()], recent: [] } }));
 
   await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
-  await page.locator(".item-group", { hasText: "Additional" }).locator(".item-group-header").click();
+  await expect(page.locator(".modal-card .modal-title")).toContainText("Song Ten");
+  await page.locator(".modal-close").click();
+  // The item's group expands itself so its card (and window) can open.
   await expect(page.locator(".item-card.active")).toContainText("Song Ten");
 });
 
