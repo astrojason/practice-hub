@@ -13,6 +13,7 @@ import { useMarkers, type WaveMarker } from "./useMarkers";
 import { useRegions, type Region } from "./useRegions";
 import { RegionsEditorModal, type RegionEdit } from "./RegionsEditorModal";
 import { PositiveIntInput } from "./PositiveIntInput";
+import { OptionalMinutesInput } from "./OptionalMinutesInput";
 import { OptionalIntInput } from "./OptionalIntInput";
 import { useShortcuts, shortcutMeta, shortcutOrder } from "./useShortcuts";
 import { seekVideo, getVideoTime } from "./videoSeek";
@@ -73,6 +74,9 @@ interface Preset {
   sequenceLoop?: boolean;
   loopMaxTimes?: number | null;
   sequenceLoopMaxTimes?: number | null;
+  /** Minutes of looping after which the single loop / loop sequence stops (blank = no limit). */
+  loopMaxMinutes?: number | null;
+  sequenceLoopMaxMinutes?: number | null;
   /** Instrument stems muted for this resource (see useStems). */
   mutedStems?: string[];
   updatedAt: number;
@@ -199,6 +203,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   const [sequenceLoopMaxTimes, setSequenceLoopMaxTimesLocal] = useState<number | null>(null);
   const sequenceLoopMaxTimesRef = useRef<number | null>(null);
   const sequenceLapRef = useRef(1);
+  const [loopMaxMinutes, setLoopMaxMinutesLocal] = useState<number | null>(null);
+  const loopMaxMinutesRef = useRef<number | null>(null);
+  const videoLoopElapsedRef = useRef(0);
+  const [sequenceLoopMaxMinutes, setSequenceLoopMaxMinutesLocal] = useState<number | null>(null);
+  const sequenceLoopMaxMinutesRef = useRef<number | null>(null);
+  const sequenceElapsedRef = useRef(0);
   const loopIncreaseEnabledRef = useRef(false);
   const loopIncreaseByRef = useRef(5);
   const loopIncreaseAtRef = useRef(3);
@@ -411,6 +421,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       sequenceLoop: sequenceLoopRef.current,
       loopMaxTimes: loopMaxTimesRef.current,
       sequenceLoopMaxTimes: sequenceLoopMaxTimesRef.current,
+      loopMaxMinutes: loopMaxMinutesRef.current,
+      sequenceLoopMaxMinutes: sequenceLoopMaxMinutesRef.current,
       mutedStems: mutedStemsRef.current,
       updatedAt: Date.now(),
     };
@@ -472,6 +484,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       audioActions.setLoopMaxTimes(null);
       setSequenceLoopMaxTimesLocal(null);
       sequenceLoopMaxTimesRef.current = null;
+      setLoopMaxMinutesLocal(null);
+      loopMaxMinutesRef.current = null;
+      audioActions.setLoopMaxSeconds(null);
+      setSequenceLoopMaxMinutesLocal(null);
+      sequenceLoopMaxMinutesRef.current = null;
       setMutedStems([]);
       setPresetStatusText("Not saved");
       return;
@@ -532,6 +549,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const seqMax = preset.sequenceLoopMaxTimes ?? null;
     setSequenceLoopMaxTimesLocal(seqMax);
     sequenceLoopMaxTimesRef.current = seqMax;
+    const maxMinutes = preset.loopMaxMinutes ?? null;
+    setLoopMaxMinutesLocal(maxMinutes);
+    loopMaxMinutesRef.current = maxMinutes;
+    audioActions.setLoopMaxSeconds(maxMinutes === null ? null : maxMinutes * 60);
+    const seqMaxMinutes = preset.sequenceLoopMaxMinutes ?? null;
+    setSequenceLoopMaxMinutesLocal(seqMaxMinutes);
+    sequenceLoopMaxMinutesRef.current = seqMaxMinutes;
     setMutedStems(Array.isArray(preset.mutedStems) ? preset.mutedStems : []);
     setPresetStatusText("All changes saved");
   }, [setMutedStems, audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions, regionState.setSelectedIds]);
@@ -623,6 +647,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       if (!vid) return;
       videoLoopCountRef.current = 0;
       videoPassCountRef.current = 0;
+      videoLoopElapsedRef.current = 0;
       videoBreakCountRef.current = 0;
       // Restore playback speed from preset
       vid.preservesPitch = true;
@@ -771,9 +796,16 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     // Counts a finished pass; once the requested number is reached, stops at the beginning.
     const finishVideoLoopRun = (v: HTMLVideoElement, restartAt: number): boolean => {
       videoPassCountRef.current++;
+      const ls = parseTimeInput(loopStartInput, v.duration) ?? 0;
+      const le = parseTimeInput(loopEndInput, v.duration) ?? v.duration;
+      videoLoopElapsedRef.current += Math.max(0, le - ls) / (speedRef.current || 1);
       const max = loopMaxTimesRef.current;
-      if (max === null || videoPassCountRef.current < max) return false;
+      const maxMin = loopMaxMinutesRef.current;
+      const countDone = max !== null && videoPassCountRef.current >= max;
+      const timeDone = maxMin !== null && videoLoopElapsedRef.current >= maxMin * 60;
+      if (!countDone && !timeDone) return false;
       videoPassCountRef.current = 0;
+      videoLoopElapsedRef.current = 0;
       videoLoopCountRef.current = 0;
       videoBreakCountRef.current = 0;
       v.pause();
@@ -1523,6 +1555,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     sequenceOrderRef.current = order;
     setSequenceIndex(0);
     sequenceLapRef.current = 1;
+    sequenceElapsedRef.current = 0;
     setSequenceActive(true);
     // A count-in step starts playback itself once the count finishes.
     if (!applySequenceStep(order[0])) {
@@ -1550,10 +1583,14 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   const advanceSequence = (): boolean => {
     const order = sequenceOrderRef.current;
     const nextIndex = sequenceIndexRef.current + 1;
+    const finished = order[sequenceIndexRef.current];
+    if (finished) sequenceElapsedRef.current += Math.max(0, finished.end - finished.start) / (speedRef.current || 1);
+    const sequenceMaxMin = sequenceLoopMaxMinutesRef.current;
+    const timeLeft = sequenceMaxMin === null || sequenceElapsedRef.current < sequenceMaxMin * 60;
     if (nextIndex < order.length) {
       setSequenceIndex(nextIndex);
       return !applySequenceStep(order[nextIndex]);
-    } else if (sequenceLoopRef.current && (sequenceLoopMaxTimesRef.current === null || sequenceLapRef.current < sequenceLoopMaxTimesRef.current)) {
+    } else if (sequenceLoopRef.current && (sequenceLoopMaxTimesRef.current === null || sequenceLapRef.current < sequenceLoopMaxTimesRef.current) && timeLeft) {
       sequenceLapRef.current++;
       setSequenceIndex(0);
       const countingIn = applySequenceStep(order[0]);
@@ -2169,6 +2206,22 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   }}
                 />
                 <span>times</span>
+                <span>or</span>
+                <OptionalMinutesInput
+                  id="loopMaxMinutes"
+                  className="media-player__loop-num-input"
+                  value={loopMaxMinutes}
+                  placeholder="∞"
+                  title="Minutes of looping before stopping — stops when the next pass would start at or after this (blank = no time limit)"
+                  onCommit={v => {
+                    setLoopMaxMinutesLocal(v);
+                    loopMaxMinutesRef.current = v;
+                    audioActions.setLoopMaxSeconds(v === null ? null : v * 60);
+                    videoLoopElapsedRef.current = 0;
+                    schedulePresetSave();
+                  }}
+                />
+                <span>min</span>
               </div>
               <div className="media-player__loop-increase">
                 <label className="media-player__checkbox-label">
@@ -2300,6 +2353,21 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     }}
                   />
                   <span>times</span>
+                  <span>or</span>
+                  <OptionalMinutesInput
+                    id="sequenceLoopMaxMinutes"
+                    className="media-player__loop-num-input"
+                    value={sequenceLoopMaxMinutes}
+                    placeholder="∞"
+                    disabled={sequenceActive}
+                    title="Minutes before stopping — stops when the next lap would start at or after this (blank = no time limit)"
+                    onCommit={v => {
+                      setSequenceLoopMaxMinutesLocal(v);
+                      sequenceLoopMaxMinutesRef.current = v;
+                      schedulePresetSave();
+                    }}
+                  />
+                  <span>min</span>
                   {sequenceActive && (
                     <span id="sequenceStatus" className="mp-marker-count">
                       Playing {sequenceIndex + 1}/{sequenceOrderRef.current.length}
