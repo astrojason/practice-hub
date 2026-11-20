@@ -445,7 +445,13 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     resources?: Resource[];
   } | null>(null);
 
+  // Which header tab is showing while media is open. "app" puts the player
+  // behind the session list but keeps it mounted so playback continues.
+  const [mediaTab, setMediaTab] = useState<"media" | "app">("media");
+  const mediaFullscreen = playerState !== null && mediaTab === "media";
+
   const openPlayer = (path: string, mediaType: "audio" | "video", itemName: string, itemKey?: string, resources?: Resource[]) => {
+    setMediaTab("media");
     const parsedKey = itemKey ? parseItemKey(itemKey) : null;
     const songId = parsedKey?.type === "song" ? parsedKey.id : undefined;
     setPlayerState({ path, mediaType, itemName, itemKey, songId: Number.isFinite(songId) ? songId : undefined, resources });
@@ -1251,9 +1257,14 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onCalendar={onCalendar}
         onBrowse={onBrowse}
         onSettings={onSettings}
+        mediaOpen={playerState !== null}
+        mediaTab={mediaTab}
+        onMediaTab={setMediaTab}
       />
 
-      <AiChallengesPanel token={token} refreshKey={serverTotal} onStartSession={handleStartChallengeSession} />
+      <div style={{ display: mediaFullscreen ? "none" : "contents" }}>
+        <AiChallengesPanel token={token} refreshKey={serverTotal} onStartSession={handleStartChallengeSession} />
+      </div>
 
       {openSessionModalOpen && (
         <OpenSessionForm
@@ -1299,6 +1310,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
       {/* In-app media player — inline above item groups */}
       {playerState && (
+        <div className={`media-player-slot${mediaFullscreen ? "" : " media-player-slot--hidden"}`}>
         <MediaPlayer
           filePath={playerState.path}
           mediaType={playerState.mediaType}
@@ -1317,6 +1329,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           }
           onGpView={onGpView}
         />
+        </div>
       )}
 
       {/* Sequential session overlay */}
@@ -1367,7 +1380,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         />
       )}
 
-      <main className="session-main">
+      <main className="session-main" style={mediaFullscreen ? { display: "none" } : undefined}>
         {/* Exercises */}
         <ItemGroup
           title="Exercises"

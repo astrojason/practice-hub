@@ -31,6 +31,9 @@ interface Props {
   onCalendar: () => void;
   onBrowse: () => void;
   onSettings: () => void;
+  mediaOpen: boolean;
+  mediaTab: "media" | "app";
+  onMediaTab: (tab: "media" | "app") => void;
 }
 
 function formatTime(totalSeconds: number): string {
@@ -61,6 +64,9 @@ export function SessionHeader({
   onCalendar,
   onBrowse,
   onSettings,
+  mediaOpen,
+  mediaTab,
+  onMediaTab,
 }: Props) {
   const progressPct = Math.min(
     100,
@@ -71,6 +77,30 @@ export function SessionHeader({
     <header className="session-header">
       <div className="session-header-top">
         <h1 className="session-title">Practice Hub</h1>
+        {mediaOpen && (
+          <div className="session-tabs" role="tablist">
+            <button
+              role="tab"
+              data-testid="header-tab-app"
+              aria-selected={mediaTab === "app"}
+              className={`session-tab${mediaTab === "app" ? " session-tab--active" : ""}`}
+              onClick={() => onMediaTab("app")}
+              title="Show the app (media keeps playing behind it)"
+            >
+              App
+            </button>
+            <button
+              role="tab"
+              data-testid="header-tab-media"
+              aria-selected={mediaTab === "media"}
+              className={`session-tab${mediaTab === "media" ? " session-tab--active" : ""}`}
+              onClick={() => onMediaTab("media")}
+              title="Show the media player"
+            >
+              Media
+            </button>
+          </div>
+        )}
         <div className="session-timer-row">
           <span className={`session-timer ${goalReached ? "goal-reached" : ""}`}>
             {formatTime(displayedSeconds)}

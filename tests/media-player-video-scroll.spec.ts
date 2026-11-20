@@ -81,9 +81,3 @@ for (const mode of ["single", "sequence"] as const) {
     })).toBe(true);
   });
 }
-
-test("a tall video player leaves the session list reachable", async ({ page }) => {
-  await openVideo(page);
-  const main = await page.locator(".session-main").evaluate(el => el.clientHeight);
-  expect(main).toBeGreaterThan(100);
-});

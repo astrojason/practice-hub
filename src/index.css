@@ -1216,11 +1216,35 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  /* A sibling of .session-main, so nothing else scrolls it: cap its height and
-     scroll internally or its controls overflow under the app footer. */
-  max-height: 70%;
+  /* Fills the slot (everything between the header and footer) and scrolls
+     internally so its controls never overflow under the app footer. */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
+
+/* Wraps the player so it can be hidden behind the app (display: none keeps it
+   mounted, so audio/video keep playing). */
+.media-player-slot {
+  flex: 1;
+  height: 0;
+  display: flex; flex-direction: column;
+}
+.media-player-slot--hidden { display: none; }
+
+.session-tabs {
+  display: flex; gap: 2px; padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.session-tab {
+  padding: 3px 12px; font-size: 12px; font-weight: 600;
+  background: transparent; border: none; border-radius: 6px;
+  color: var(--muted); cursor: pointer;
+}
+.session-tab:hover { color: var(--text-dim); }
+.session-tab--active { background: var(--accent); color: #fff; }
 
 .media-player__header {
   display: flex;
