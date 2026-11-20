@@ -47,6 +47,8 @@ interface Props {
   resources?: Resource[];
   onOpenFile?: (path: string, mediaType: "audio" | "video", itemKey?: string, resources?: Resource[]) => void;
   onGpView?: (path: string, resources?: Resource[]) => void;
+  /** Opens the owning item's edit form over the player, so the open resource (name, bpm, autoplay…) can be edited without stopping playback. */
+  onEditResource?: () => void;
 }
 
 interface Preset {
@@ -152,7 +154,7 @@ let toastCounter = 0;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentTimerElapsed, isTimerActive, activeSectionId, token, songId, resources, onOpenFile, onGpView }: Props) {
+export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentTimerElapsed, isTimerActive, activeSectionId, token, songId, resources, onOpenFile, onGpView, onEditResource }: Props) {
   const detectedType = getMediaTypeFromPath(filePath);
   const isVideo = detectedType === "video";
   const [resourcesOpen, setResourcesOpen] = useState(false);
@@ -1868,6 +1870,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
               🔗 Resources
             </button>
           )}
+          {onEditResource && (
+            <button className="btn-ghost btn-xs" data-testid="player-edit-resource" onClick={onEditResource} title="Edit this resource (name, BPM, what plays on open) without stopping playback">
+              ✏ Edit
+            </button>
+          )}
           <button className="btn-ghost btn-xs" onClick={() => shortcuts.setPaletteOpen(true)} title="Keyboard shortcuts">
             ⌨ Shortcuts
           </button>
@@ -2098,7 +2105,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           <div className="media-player__col">
 
             {/* Playback: Single (entire file or one region, with loop / auto-increase / break) or Sequence */}
-            <section className="mp-section">
+            <section className="mp-section mp-section--fill">
               <div className="mp-tabs" role="tablist" aria-label="Playback mode">
                 {(["single", "sequence"] as const).map(mode => (
                   <button
@@ -2381,7 +2388,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
           <div className="media-player__col">
 
             {/* Regions */}
-            <section className="mp-section">
+            <section className="mp-section mp-section--fill">
               <div className="mp-section-header">
                 <span className="mp-section-label">Regions</span>
                 {regionState.regions.length > 0 && (

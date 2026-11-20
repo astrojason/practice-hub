@@ -107,3 +107,45 @@ test("no header tabs without media; closing the player removes them", async ({ p
   await expect(page.locator('[data-testid="header-tab-app"]')).toHaveCount(0);
   await expect(page.locator(".session-main")).toBeVisible();
 });
+
+test("both control columns stretch down to the footer, Playback and Regions taking the slack", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 1300 });
+  await openVideo(page);
+  const r = await page.evaluate(() => {
+    const footerTop = document.querySelector(".app-footer")!.getBoundingClientRect().top;
+    const cols = [...document.querySelectorAll(".media-player__col")].map(c => footerTop - c.getBoundingClientRect().bottom);
+    const lastSections = [...document.querySelectorAll(".media-player__col")].map(c => footerTop - c.querySelector(".mp-section:last-child")!.getBoundingClientRect().bottom);
+    return { cols, lastSections, fill: document.querySelectorAll(".mp-section--fill").length };
+  });
+  expect(r.fill).toBe(2);
+  for (const g of [...r.cols, ...r.lastSections]) expect(Math.abs(g)).toBeLessThan(3);
+});
+
+test("the open resource can be edited from the player without stopping playback", async ({ page }) => {
+  let putBody: any = null;
+  await page.route("**/exercise/1", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    putBody = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...mockDashboard.exercises[0], resources: putBody.resources }) });
+  });
+  await openVideo(page);
+  await page.locator("video").evaluate((v: HTMLVideoElement) => { v.muted = true; v.loop = true; return v.play(); });
+  await page.locator('[data-testid="player-edit-resource"]').click();
+  await page.locator(".edit-resource-autoplay").selectOption("sequence");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator(".edit-form")).toHaveCount(0);
+  expect(putBody.resources[0].autoplay).toBe("sequence");
+  await expect(page.locator("video")).toHaveCount(1);
+  expect(await page.locator("video").evaluate((v: HTMLVideoElement) => !v.paused)).toBe(true);
+});
+
+test("a failed resource save from the player shows the error", async ({ page }) => {
+  await page.route("**/exercise/1", (route) =>
+    route.request().method() === "PUT"
+      ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "boom-edit" }) })
+      : route.fallback());
+  await openVideo(page);
+  await page.locator('[data-testid="player-edit-resource"]').click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText(/boom-edit|500/).first()).toBeVisible();
+});

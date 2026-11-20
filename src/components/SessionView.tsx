@@ -45,6 +45,9 @@ import { ExerciseCard } from "./session/ExerciseCard";
 import { SongCard } from "./session/SongCard";
 import { StudyMaterialCard } from "./session/StudyMaterialCard";
 import { OpenSessionForm } from "./session/forms/OpenSessionForm";
+import { ExerciseEditForm } from "./session/forms/ExerciseEditForm";
+import { SongEditForm } from "./session/forms/SongEditForm";
+import { StudyMaterialEditForm } from "./session/forms/StudyMaterialEditForm";
 import { QuickAddPanel } from "./session/QuickAddPanel";
 import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
@@ -463,6 +466,36 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const [additionalSongs, setAdditionalSongs] = useState<Song[]>([]);
   const [additionalExercises, setAdditionalExercises] = useState<DashboardExercise[]>([]);
   const [additionalStudyMaterials, setAdditionalStudyMaterials] = useState<DashboardStudyMaterial[]>([]);
+
+  // ── Edit the item whose resource is open in the player ──────────────────────
+  const [playerEditOpen, setPlayerEditOpen] = useState(false);
+  useEffect(() => { if (!playerState) setPlayerEditOpen(false); }, [playerState]);
+
+  const playerEditTarget = (() => {
+    const parsed = playerState?.itemKey ? parseItemKey(playerState.itemKey) : null;
+    if (!parsed || !dashboard) return null;
+    if (parsed.type === "song") {
+      const songs = [
+        ...(dashboard.project?.songs ?? []),
+        ...(dashboard.to_review?.songs ?? []),
+        ...(dashboard.to_learn?.songs ?? []),
+        ...(dashboard.overdue ?? []),
+        ...(dashboard.playlists ?? []).flatMap((pl) => pl.songs ?? []),
+        ...additionalSongs,
+      ];
+      const song = songs.find((x) => x.id === parsed.id);
+      return song ? ({ kind: "song", song } as const) : null;
+    }
+    if (parsed.type === "exercise") {
+      const all = [...dashboard.exercises, ...additionalExercises].flatMap((e) => [e, ...(e.child_exercises ?? [])]);
+      const exercise = all.find((x) => x.id === parsed.id);
+      return exercise ? ({ kind: "exercise", exercise } as const) : null;
+    }
+    const all = [...(dashboard.study_materials ?? []), ...additionalStudyMaterials]
+      .flatMap((m) => [m, ...(m.child_study_materials ?? [])]);
+    const material = all.find((x) => x.id === parsed.id);
+    return material ? ({ kind: "material", material } as const) : null;
+  })();
 
   // When the player is open on a child item, find its parent so the header
   // can name both and the timer can show child/parent.
@@ -1328,7 +1361,50 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             openPlayer(path, mt, playerState.itemName, itemKey ?? playerState.itemKey, resources ?? playerState.resources)
           }
           onGpView={onGpView}
+          onEditResource={playerEditTarget ? () => setPlayerEditOpen(true) : undefined}
         />
+        </div>
+      )}
+
+      {playerEditOpen && playerEditTarget && (
+        <div className="mp-palette-backdrop" onClick={() => setPlayerEditOpen(false)}>
+          <div className="mp-palette mp-edit-modal" onClick={(e) => e.stopPropagation()}>
+            {playerEditTarget.kind === "exercise" && (
+              <ExerciseEditForm
+                token={token}
+                exercise={playerEditTarget.exercise}
+                onSuccess={(id, name, resources) => {
+                  handleExerciseEdited(id, name, resources);
+                  setPlayerState((prev) => prev && { ...prev, resources: resources ?? undefined });
+                  setPlayerEditOpen(false);
+                }}
+                onCancel={() => setPlayerEditOpen(false)}
+              />
+            )}
+            {playerEditTarget.kind === "song" && (
+              <SongEditForm
+                token={token}
+                song={playerEditTarget.song}
+                onSuccess={(updated) => {
+                  handleSongEdited(updated);
+                  setPlayerState((prev) => prev && { ...prev, resources: updated.resources ?? undefined });
+                  setPlayerEditOpen(false);
+                }}
+                onCancel={() => setPlayerEditOpen(false)}
+              />
+            )}
+            {playerEditTarget.kind === "material" && (
+              <StudyMaterialEditForm
+                token={token}
+                material={playerEditTarget.material}
+                onSuccess={(id, name, url, type, bpm) => {
+                  handleStudyMaterialEdited(id, name, url, type, bpm);
+                  setPlayerEditOpen(false);
+                }}
+                onCancel={() => setPlayerEditOpen(false)}
+              />
+            )}
+          </div>
         </div>
       )}
 
