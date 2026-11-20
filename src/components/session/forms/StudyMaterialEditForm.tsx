@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { updateStudyMaterial } from "../../../api/client";
 import { ErrorModal } from "../../ErrorModal";
-import type { DashboardStudyMaterial, UpdateStudyMaterialPayload } from "../../../api/types";
+import type { DashboardStudyMaterial, ResourceAutoplay, UpdateStudyMaterialPayload } from "../../../api/types";
+import { readLocalAutoplay, writeLocalAutoplay } from "../../../lib/localAutoplay";
 import { SingleResourceField, isMediaResourceType, resourceUrlLabel } from "./shared/ResourceListEditor";
 import { inferResourceType } from "./shared/inferResourceType";
 
@@ -17,8 +18,10 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
   const [url, setUrl] = useState(material.url ?? "");
   const [type, setType] = useState<string>(inferResourceType(material.url ?? "", material.type));
   const [bpm, setBpm] = useState<number | "">(material.bpm ?? "");
+  const [initialAutoplay] = useState(() => readLocalAutoplay());
+  const [autoplay, setAutoplay] = useState<ResourceAutoplay>(initialAutoplay.value[material.url ?? ""] ?? "full");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialAutoplay.error);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,6 +38,7 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
     };
     try {
       await updateStudyMaterial(token, material.id, payload);
+      if (type === "local_file" && url) writeLocalAutoplay(url, autoplay);
       onSuccess(material.id, payload.name, url || null, type, resolvedBpm);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -84,6 +88,23 @@ export function StudyMaterialEditForm({ token, material, onSuccess, onCancel }: 
             value={bpm}
             onChange={(e) => setBpm(e.target.value === "" ? "" : Number(e.target.value))}
           />
+        </div>
+      )}
+      {type === "local_file" && (
+        <div className="edit-form-row">
+          <label htmlFor="sm-ef-autoplay">Auto-start</label>
+          <select
+            id="sm-ef-autoplay"
+            className="edit-resource-autoplay"
+            value={autoplay}
+            onChange={(e) => setAutoplay(e.target.value as ResourceAutoplay)}
+            title="What the player does as soon as this file is opened (saved on this computer)"
+          >
+            <option value="full">Whole file</option>
+            <option value="sequence">Sequence</option>
+            <option value="region">Single (saved loop)</option>
+            <option value="none">Don't start</option>
+          </select>
         </div>
       )}
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}

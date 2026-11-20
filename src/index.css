@@ -585,11 +585,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 }
 
 .edit-resource-row {
-  display: flex; gap: 4px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
 }
 
+/* Wrap rather than squeeze the name/path fields when the row is narrow (the
+   Auto-start label + dropdown is wide). */
 .edit-resource-row input[type="text"] {
-  flex: 1; min-width: 0;
+  flex: 1 1 110px; min-width: 110px;
 }
 
 .edit-resource-row select {

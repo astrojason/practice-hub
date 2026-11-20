@@ -10,6 +10,7 @@ import { AddChildStudyMaterialForm } from "./forms/AddChildStudyMaterialForm";
 import { inferResourceType } from "./forms/shared/inferResourceType";
 import { ErrorModal } from "../ErrorModal";
 import { toggleUserStudyMaterial } from "../../api/client";
+import { readLocalAutoplay } from "../../lib/localAutoplay";
 import type { DashboardStudyMaterial, ExerciseSession, Resource, StudyMaterialSession } from "../../api/types";
 
 type UserStudyMaterialMeta = DashboardStudyMaterial["meta"]["user_study_material"];
@@ -87,6 +88,7 @@ function StudyMaterialSingleCard({
 }: SingleCardProps) {
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [autoplayErrorDismissed, setAutoplayErrorDismissed] = useState(false);
 
   async function handleToggleUserList() {
     if (toggling) return;
@@ -102,8 +104,15 @@ function StudyMaterialSingleCard({
     }
   }
 
+  const localAutoplay = readLocalAutoplay();
   const resources: Resource[] = material.url
-    ? [{ name: "Open material", url: material.url, type: inferResourceType(material.url, material.type), bpm: material.bpm }]
+    ? [{
+        name: "Open material",
+        url: material.url,
+        type: inferResourceType(material.url, material.type),
+        bpm: material.bpm,
+        autoplay: localAutoplay.value[material.url] ?? null,
+      }]
     : [];
   const sessions = (material.meta.sessions ?? []) as StudyMaterialSession[];
   // Practicing a sub-item counts as practicing the group — a parent with no
@@ -127,6 +136,9 @@ function StudyMaterialSingleCard({
   return (
     <>
       {toggleError && <ErrorModal error={toggleError} onDismiss={() => setToggleError(null)} />}
+      {localAutoplay.error && !autoplayErrorDismissed && (
+        <ErrorModal error={localAutoplay.error} onDismiss={() => setAutoplayErrorDismissed(true)} />
+      )}
       <ItemSessionCard
         token={token}
         name={material.name}
