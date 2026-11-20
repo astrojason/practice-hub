@@ -77,6 +77,9 @@ interface Preset {
   /** Minutes of looping after which the single loop / loop sequence stops (blank = no limit). */
   loopMaxMinutes?: number | null;
   sequenceLoopMaxMinutes?: number | null;
+  /** Measure the time limit against the parent's rollup practice time instead of this loop's own playing time. */
+  loopMaxUseParent?: boolean;
+  sequenceLoopMaxUseParent?: boolean;
   /** Instrument stems muted for this resource (see useStems). */
   mutedStems?: string[];
   updatedAt: number;
@@ -209,6 +212,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   const [sequenceLoopMaxMinutes, setSequenceLoopMaxMinutesLocal] = useState<number | null>(null);
   const sequenceLoopMaxMinutesRef = useRef<number | null>(null);
   const sequenceElapsedRef = useRef(0);
+  const [loopMaxUseParent, setLoopMaxUseParentLocal] = useState(false);
+  const loopMaxUseParentRef = useRef(false);
+  const [sequenceLoopMaxUseParent, setSequenceLoopMaxUseParentLocal] = useState(false);
+  const sequenceLoopMaxUseParentRef = useRef(false);
+  // Latest parent rollup time (seconds); null when the item has no parent.
+  const parentElapsedRef = useRef<number | null>(null);
+  parentElapsedRef.current = parentTimerElapsed ?? null;
   const loopIncreaseEnabledRef = useRef(false);
   const loopIncreaseByRef = useRef(5);
   const loopIncreaseAtRef = useRef(3);
@@ -423,6 +433,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       sequenceLoopMaxTimes: sequenceLoopMaxTimesRef.current,
       loopMaxMinutes: loopMaxMinutesRef.current,
       sequenceLoopMaxMinutes: sequenceLoopMaxMinutesRef.current,
+      loopMaxUseParent: loopMaxUseParentRef.current,
+      sequenceLoopMaxUseParent: sequenceLoopMaxUseParentRef.current,
       mutedStems: mutedStemsRef.current,
       updatedAt: Date.now(),
     };
@@ -489,6 +501,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       audioActions.setLoopMaxSeconds(null);
       setSequenceLoopMaxMinutesLocal(null);
       sequenceLoopMaxMinutesRef.current = null;
+      setLoopMaxUseParentLocal(false);
+      loopMaxUseParentRef.current = false;
+      audioActions.setLoopElapsedSource(null);
+      setSequenceLoopMaxUseParentLocal(false);
+      sequenceLoopMaxUseParentRef.current = false;
       setMutedStems([]);
       setPresetStatusText("Not saved");
       return;
@@ -556,6 +573,13 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const seqMaxMinutes = preset.sequenceLoopMaxMinutes ?? null;
     setSequenceLoopMaxMinutesLocal(seqMaxMinutes);
     sequenceLoopMaxMinutesRef.current = seqMaxMinutes;
+    const useParent = Boolean(preset.loopMaxUseParent);
+    setLoopMaxUseParentLocal(useParent);
+    loopMaxUseParentRef.current = useParent;
+    audioActions.setLoopElapsedSource(useParent ? () => parentElapsedRef.current : null);
+    const seqUseParent = Boolean(preset.sequenceLoopMaxUseParent);
+    setSequenceLoopMaxUseParentLocal(seqUseParent);
+    sequenceLoopMaxUseParentRef.current = seqUseParent;
     setMutedStems(Array.isArray(preset.mutedStems) ? preset.mutedStems : []);
     setPresetStatusText("All changes saved");
   }, [setMutedStems, audioActions, isVideo, metronome.setBpmImmediate, markerState.loadMarkers, regionState.loadRegions, regionState.setSelectedIds]);
@@ -802,7 +826,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       const max = loopMaxTimesRef.current;
       const maxMin = loopMaxMinutesRef.current;
       const countDone = max !== null && videoPassCountRef.current >= max;
-      const timeDone = maxMin !== null && videoLoopElapsedRef.current >= maxMin * 60;
+      const elapsed = loopMaxUseParentRef.current && parentElapsedRef.current !== null
+        ? parentElapsedRef.current
+        : videoLoopElapsedRef.current;
+      const timeDone = maxMin !== null && elapsed >= maxMin * 60;
       if (!countDone && !timeDone) return false;
       videoPassCountRef.current = 0;
       videoLoopElapsedRef.current = 0;
@@ -1586,7 +1613,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const finished = order[sequenceIndexRef.current];
     if (finished) sequenceElapsedRef.current += Math.max(0, finished.end - finished.start) / (speedRef.current || 1);
     const sequenceMaxMin = sequenceLoopMaxMinutesRef.current;
-    const timeLeft = sequenceMaxMin === null || sequenceElapsedRef.current < sequenceMaxMin * 60;
+    const sequenceElapsed = sequenceLoopMaxUseParentRef.current && parentElapsedRef.current !== null
+      ? parentElapsedRef.current
+      : sequenceElapsedRef.current;
+    const timeLeft = sequenceMaxMin === null || sequenceElapsed < sequenceMaxMin * 60;
     if (nextIndex < order.length) {
       setSequenceIndex(nextIndex);
       return !applySequenceStep(order[nextIndex]);
@@ -2222,6 +2252,26 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   }}
                 />
                 <span>min</span>
+                <label
+                  className="media-player__checkbox-label"
+                  title={parentTimerElapsed === undefined
+                    ? "Only available when this item belongs to a parent"
+                    : "Count the parent's total practice time (the right-hand timer) toward the limit instead of just this loop's playing time"}
+                >
+                  <input
+                    type="checkbox"
+                    id="loopMaxUseParent"
+                    checked={loopMaxUseParent}
+                    disabled={parentTimerElapsed === undefined}
+                    onChange={e => {
+                      setLoopMaxUseParentLocal(e.target.checked);
+                      loopMaxUseParentRef.current = e.target.checked;
+                      audioActions.setLoopElapsedSource(e.target.checked ? () => parentElapsedRef.current : null);
+                      schedulePresetSave();
+                    }}
+                  />
+                  of parent total
+                </label>
               </div>
               <div className="media-player__loop-increase">
                 <label className="media-player__checkbox-label">
@@ -2368,6 +2418,25 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     }}
                   />
                   <span>min</span>
+                  <label
+                    className="media-player__checkbox-label"
+                    title={parentTimerElapsed === undefined
+                      ? "Only available when this item belongs to a parent"
+                      : "Count the parent's total practice time (the right-hand timer) toward the limit instead of just this sequence's playing time"}
+                  >
+                    <input
+                      type="checkbox"
+                      id="sequenceLoopMaxUseParent"
+                      checked={sequenceLoopMaxUseParent}
+                      disabled={parentTimerElapsed === undefined || sequenceActive}
+                      onChange={e => {
+                        setSequenceLoopMaxUseParentLocal(e.target.checked);
+                        sequenceLoopMaxUseParentRef.current = e.target.checked;
+                        schedulePresetSave();
+                      }}
+                    />
+                    of parent total
+                  </label>
                   {sequenceActive && (
                     <span id="sequenceStatus" className="mp-marker-count">
                       Playing {sequenceIndex + 1}/{sequenceOrderRef.current.length}

@@ -45,6 +45,8 @@ export interface AudioEngineActions {
   setLoopMaxTimes: (v: number | null) => void;
   /** Stop once the next pass would start at/after this many seconds of loop playback; null = no limit. */
   setLoopMaxSeconds: (v: number | null) => void;
+  /** Measure the time limit against this clock (seconds) instead of the loop's own playing time; null = use the loop's own. */
+  setLoopElapsedSource: (fn: (() => number | null) | null) => void;
   setLoopIncreaseEnabled: (v: boolean) => void;
   setLoopIncreaseBy: (v: number) => void;
   setLoopIncreaseAt: (v: number) => void;
@@ -214,6 +216,7 @@ interface EngineRef {
   loopMaxSeconds: number | null;
   /** Playing time (seconds, at the current speed) of the passes finished in this run. */
   loopElapsedSeconds: number;
+  loopElapsedSource: (() => number | null) | null;
   duration: number;
   pendingSrc: string | null;
   _pausedAt: number;
@@ -255,6 +258,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     loopMaxTimes: null,
     loopMaxSeconds: null,
     loopElapsedSeconds: 0,
+    loopElapsedSource: null,
     duration: 0,
     pendingSrc: null,
     _pausedAt: 0,
@@ -331,7 +335,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
     const end = eng.loopEnd ?? eng.duration;
     eng.loopElapsedSeconds += Math.max(0, end - start) / (eng.speed || 1);
     return (eng.loopMaxTimes !== null && eng.passCount >= eng.loopMaxTimes)
-      || (eng.loopMaxSeconds !== null && eng.loopElapsedSeconds >= eng.loopMaxSeconds);
+      || (eng.loopMaxSeconds !== null && (eng.loopElapsedSource?.() ?? eng.loopElapsedSeconds) >= eng.loopMaxSeconds);
   }, []);
 
   // The last requested pass is done: stop and park the playhead at the beginning.
@@ -616,6 +620,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
   const setLoopEnd = useCallback((v: number | null) => { e.current.loopEnd = v; _setLoopEnd(v); }, []);
   const setLoopEnabled = useCallback((v: boolean) => { e.current.loopEnabled = v; _setLoopEnabled(v); }, []);
   const setLoopMaxTimes = useCallback((v: number | null) => { e.current.loopMaxTimes = v; }, []);
+  const setLoopElapsedSource = useCallback((fn: (() => number | null) | null) => { e.current.loopElapsedSource = fn; }, []);
   const setLoopMaxSeconds = useCallback((v: number | null) => { e.current.loopMaxSeconds = v; e.current.loopElapsedSeconds = 0; }, []);
   const setLoopIncreaseEnabled = useCallback((v: boolean) => { e.current.loopIncreaseEnabled = v; _setLoopIncreaseEnabled(v); }, []);
   const setLoopIncreaseBy = useCallback((v: number) => { e.current.loopIncreaseBy = v; _setLoopIncreaseBy(v); }, []);
@@ -685,7 +690,7 @@ export function useAudioEngine(): [AudioEngineState, AudioEngineActions] {
 
   const actions: AudioEngineActions = {
     loadFile, swapSource, play, pause, seek, setSpeed,
-    setLoopStart, setLoopEnd, setLoopEnabled, setLoopMaxTimes, setLoopMaxSeconds,
+    setLoopStart, setLoopEnd, setLoopEnabled, setLoopMaxTimes, setLoopMaxSeconds, setLoopElapsedSource,
     setLoopIncreaseEnabled, setLoopIncreaseBy, setLoopIncreaseAt,
     setPitch, setCountIn,
     setLoopBreakEnabled, setLoopBreakAfter, setLoopBreakDuration, setBreakCountIn,
