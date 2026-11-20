@@ -130,18 +130,20 @@ export function ResourceListEditor({ resources, onChange, onError }: ListProps) 
                 />
               )}
               {r.type === "local_file" && (
-                <select
-                  className="edit-resource-autoplay"
-                  value={r.autoplay ?? "full"}
-                  onChange={(e) => updateResource(r.id, "autoplay", e.target.value)}
-                  title="What to play when this file is opened"
-                  aria-label="Autoplay"
-                >
-                  <option value="full">Play: full</option>
-                  <option value="sequence">Play: sequence</option>
-                  <option value="region">Play: region</option>
-                  <option value="none">Play: none</option>
-                </select>
+                <label className="edit-resource-autoplay-field" title="What the player does as soon as this file is opened">
+                  <span>Auto-start</span>
+                  <select
+                    className="edit-resource-autoplay"
+                    value={r.autoplay ?? "full"}
+                    onChange={(e) => updateResource(r.id, "autoplay", e.target.value)}
+                    aria-label="Autoplay"
+                  >
+                    <option value="full">Whole file</option>
+                    <option value="sequence">Sequence</option>
+                    <option value="region">Single (saved loop)</option>
+                    <option value="none">Don't start</option>
+                  </select>
+                </label>
               )}
               {isLocalResourceType(r.type) && (
                 <button

@@ -131,6 +131,8 @@ test("the open resource can be edited from the player without stopping playback"
   await openVideo(page);
   await page.locator("video").evaluate((v: HTMLVideoElement) => { v.muted = true; v.loop = true; return v.play(); });
   await page.locator('[data-testid="player-edit-resource"]').click();
+  await expect(page.locator(".edit-resource-autoplay-field")).toContainText("Auto-start");
+  await expect(page.locator(".edit-resource-autoplay option")).toHaveText(["Whole file", "Sequence", "Single (saved loop)", "Don't start"]);
   await page.locator(".edit-resource-autoplay").selectOption("sequence");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator(".edit-form")).toHaveCount(0);

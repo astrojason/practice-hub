@@ -595,8 +595,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .edit-resource-row select {
   flex-shrink: 0; width: 80px; min-width: 80px;
 }
+.edit-resource-autoplay-field {
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  font-size: 11px; color: var(--muted); white-space: nowrap;
+}
 .edit-resource-row select.edit-resource-autoplay {
-  width: 112px; min-width: 112px;
+  width: 140px; min-width: 140px;
 }
 
 .edit-resource-row input.edit-resource-bpm {
@@ -3179,4 +3183,4 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .edit-caret { fill: none; stroke: var(--accent); stroke-width: 1.5; pointer-events: none; }
 
 /* Item edit form shown over the player; scrolls if the form is tall. */
-.mp-edit-modal { max-height: 85vh; overflow-y: auto; padding: 14px; width: min(720px, 94vw); }
+.mp-edit-modal { max-height: 85vh; overflow-y: auto; padding: 14px; width: min(920px, 96vw); }
