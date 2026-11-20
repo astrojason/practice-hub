@@ -1,6 +1,7 @@
 import { sortByName } from "../../lib/sortByName";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { makeItemKey } from "../../lib/itemKey";
+import { usePendingSessionModalKey } from "../../lib/sessionModalRequest";
 import { mergeSessionsById } from "../../lib/itemUsage";
 import { ItemSessionCard } from "./ItemSessionCard";
 import { ExerciseSessionForm } from "./forms/ExerciseSessionForm";
@@ -261,6 +262,11 @@ export function ExerciseCard({
 }: ExerciseCardProps) {
   const hasChildren = exercise.child_exercises.length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(true);
+  // Expand when a session window is requested for one of the children (e.g. from an AI challenge).
+  const pendingKey = usePendingSessionModalKey();
+  useEffect(() => {
+    if (pendingKey && exercise.child_exercises.some((c) => makeItemKey("exercise", c.id) === pendingKey)) setChildrenCollapsed(false);
+  }, [pendingKey, exercise]);
   const state = getState(exercise.id);
   return (
     <div className="exercise-group">

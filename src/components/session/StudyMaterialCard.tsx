@@ -1,6 +1,7 @@
 import { sortByName } from "../../lib/sortByName";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { makeItemKey } from "../../lib/itemKey";
+import { usePendingSessionModalKey } from "../../lib/sessionModalRequest";
 import { mergeSessionsById } from "../../lib/itemUsage";
 import { ItemSessionCard } from "./ItemSessionCard";
 import { StudyMaterialSessionForm } from "./forms/StudyMaterialSessionForm";
@@ -251,6 +252,11 @@ export function StudyMaterialCard({
 }: StudyMaterialCardProps) {
   const hasChildren = (material.child_study_materials ?? []).length > 0;
   const [childrenCollapsed, setChildrenCollapsed] = useState(true);
+  // Expand when a session window is requested for one of the children (e.g. from an AI challenge).
+  const pendingKey = usePendingSessionModalKey();
+  useEffect(() => {
+    if (pendingKey && (material.child_study_materials ?? []).some((c) => makeItemKey("studymaterial", c.id) === pendingKey)) setChildrenCollapsed(false);
+  }, [pendingKey, material]);
   const state = getState(material.id);
 
   return (

@@ -209,3 +209,32 @@ test("challenges with no item have no Start session button", async ({ page }) =>
   await expect(page.locator('[data-challenge-id="3"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "Start session" })).toHaveCount(0);
 });
+
+const exerciseRow = (id: number, name: string, children: unknown[] = []) => ({
+  id, name, order: 1, session_type: "exercise", parent_exercise_id: null,
+  created_timestamp: 0, updated_timestamp: 0, child_exercises: children,
+  resources: [], meta: { user_exercise: null, sessions: [] },
+});
+
+test("a challenge for an exercise on today's list opens its session window", async ({ page }) => {
+  await setup(
+    page,
+    () => ({ status: 200, body: { current: [challenge({ item_type: "exercise", item_id: 20, item_name: "Ex Twenty" })], recent: [] } }),
+    { ...mockDashboard, exercises: [exerciseRow(20, "Ex Twenty")] },
+  );
+
+  await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
+  await expect(page.locator(".modal-card .modal-title")).toContainText("Ex Twenty");
+});
+
+test("a challenge for a child exercise under a collapsed parent opens its session window", async ({ page }) => {
+  const child = { ...exerciseRow(21, "Child Twentyone"), parent_exercise_id: 20 };
+  await setup(
+    page,
+    () => ({ status: 200, body: { current: [challenge({ item_type: "exercise", item_id: 21, item_name: "Child Twentyone" })], recent: [] } }),
+    { ...mockDashboard, exercises: [exerciseRow(20, "Parent Twenty", [child])] },
+  );
+
+  await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
+  await expect(page.locator(".modal-card .modal-title")).toContainText("Child Twentyone");
+});
