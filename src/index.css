@@ -1216,6 +1216,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  /* A sibling of .session-main, so nothing else scrolls it: cap its height and
+     scroll internally or its controls overflow under the app footer. */
+  max-height: 70%;
+  overflow-y: auto;
 }
 
 .media-player__header {
