@@ -1,113 +1,172 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftIcon } from "@heroicons/react/16/solid";
 import { ErrorModal } from "../ErrorModal";
+import { ChordBox } from "./ChordBox";
+import { Neck } from "./Neck";
 import { playNote, strum } from "../../lib/fretboard/audio";
 import { colourNotes, scaleInfo } from "../../lib/fretboard/scaleInfo";
 import {
   CHORDS,
   KEYS,
-  NUM_FRETS,
   SCALES,
   TUNINGS,
+  arpeggioPositions,
   chordVoicings,
-  degreeNumber,
   diatonicChords,
   differenceFromNatural,
+  intervalName,
   intervalShort,
-  isAltered,
+  plainName,
   roman,
   scalePositions,
   spell,
   tonality,
+  voicingMinFret,
   voicingNotes,
   wholeNeck,
+  type Mark,
+  type Voicing,
 } from "../../lib/fretboard/theory";
 import { logTrainerActivity } from "../../lib/trainerSession";
 
+type Page = "scales" | "arpeggios" | "chords";
 type LabelMode = "degree" | "note" | "both" | "interval" | "none";
+
+const PAGES: { id: Page; label: string }[] = [
+  { id: "scales", label: "Scales" },
+  { id: "arpeggios", label: "Arpeggios" },
+  { id: "chords", label: "Chords" },
+];
+
+function groupBy<T extends { group: string }>(list: T[]): [string, T[]][] {
+  const map = new Map<string, T[]>();
+  for (const item of list) {
+    const arr = map.get(item.group) ?? [];
+    arr.push(item);
+    map.set(item.group, arr);
+  }
+  return [...map.entries()];
+}
+
+const SCALE_GROUPS = groupBy(SCALES);
+const CHORD_GROUPS = groupBy(CHORDS);
 
 interface Props {
   onBack: () => void;
 }
 
-// Neck geometry (SVG units).
-const FRET_W = 56;
-const STRING_GAP = 32;
-const NUT_X = 44;
-const TOP = 24;
-const MARKER_FRETS = [3, 5, 7, 9, 12, 15, 17, 19, 21];
-
-const SCALE_GROUPS = SCALES.reduce<Record<string, typeof SCALES>>((acc, s) => {
-  (acc[s.group] ??= []).push(s);
-  return acc;
-}, {});
-
 export function FretboardView({ onBack }: Props) {
+  const [page, setPage] = useState<Page>("scales");
   const [key, setKey] = useState(0);
   const [scaleIdx, setScaleIdx] = useState(0);
+  const [chordIdx, setChordIdx] = useState(0);
   const [posIdx, setPosIdx] = useState(0);
   const [labelMode, setLabelMode] = useState<LabelMode>("degree");
   const [error, setError] = useState<string | null>(null);
 
   const tuning = TUNINGS[0].strings;
   const scale = SCALES[scaleIdx];
-  const tones = scale.tones;
-  const rootPc = key;
+  const chord = CHORDS[chordIdx];
+  const tones = page === "scales" ? scale.tones : chord.tones;
 
-  const positions = useMemo(() => scalePositions(tuning, rootPc, tones), [tuning, rootPc, tones]);
-  const position = positions[Math.min(posIdx, positions.length - 1)];
-  const inPosition = useMemo(() => new Set(position.notes.map(([s, f]) => `${s}:${f}`)), [position]);
-  const marks = useMemo(() => wholeNeck(tuning, rootPc, tones), [tuning, rootPc, tones]);
-  const colour = useMemo(() => colourNotes(scale.name, tones), [scale, tones]);
+  const scalePos = useMemo(() => scalePositions(tuning, key, scale.tones), [tuning, key, scale]);
+  const arpPos = useMemo(() => arpeggioPositions(tuning, key, chord.tones), [tuning, key, chord]);
+  const voicings = useMemo(() => chordVoicings(tuning, key, chord.tones), [tuning, key, chord]);
+
+  // The choices the Position/Shape select offers on the current page.
+  const choices: string[] = useMemo(() => {
+    if (page === "scales") return scalePos.map((p) => p.title);
+    if (page === "arpeggios") return arpPos.map((p) => p.title);
+    return voicings.map((v, i) => {
+      const fr = voicingNotes(v).map((n) => n[1]);
+      return `Shape ${i + 1} — bass on the ${["6th", "5th", "4th"][v.bassString]} string, frets ${Math.min(...fr)}–${Math.max(...fr)}`;
+    });
+  }, [page, scalePos, arpPos, voicings]);
+  const idx = Math.min(posIdx, Math.max(choices.length - 1, 0));
+
+  const voicing: Voicing | undefined = page === "chords" ? voicings[idx] : undefined;
+  const active = useMemo(() => {
+    const notes = page === "scales" ? scalePos[idx]?.notes : page === "arpeggios" ? arpPos[idx]?.notes : voicing ? voicingNotes(voicing) : [];
+    return new Set((notes ?? []).map(([s, f]) => `${s}:${f}`));
+  }, [page, idx, scalePos, arpPos, voicing]);
+
+  const marks: Mark[] = useMemo(
+    () => wholeNeck(tuning, key, tones).map((m) => ({ ...m, inPosition: active.has(`${m.string}:${m.fret}`) })),
+    [tuning, key, tones, active],
+  );
+
+  const colour = useMemo(() => colourNotes(scale.name, scale.tones), [scale]);
   const info = scaleInfo(scale.name);
-  const diff = useMemo(() => differenceFromNatural(tones), [tones]);
-  const chords = useMemo(() => diatonicChords(tones, false), [tones]);
+  const diff = useMemo(() => differenceFromNatural(scale.tones), [scale]);
+  const keyChords = useMemo(() => diatonicChords(scale.tones, false), [scale]);
 
-  const title = `${KEYS[key]} ${scale.name}`;
-  const width = NUT_X + (NUM_FRETS + 1) * FRET_W;
-  const height = TOP + 5 * STRING_GAP + 30;
-  const stringY = (s: number) => TOP + (5 - s) * STRING_GAP;
-  const noteX = (f: number) => (f === 0 ? NUT_X - 22 : NUT_X + (f - 0.5) * FRET_W);
+  const title =
+    page === "scales" ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
+  const posShort = (choices[idx] ?? "").split(" — ")[0];
 
-  function hear(action: () => void, what: string) {
+  function hear(action: () => void, detail?: string) {
     try {
       action();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;
     }
-    logTrainerActivity(`Fretboard Trainer — ${what}: ${title}, ${position.title.split(" — ")[0]}`);
+    const label = PAGES.find((p) => p.id === page)?.label;
+    logTrainerActivity(`Fretboard Trainer — ${label}: ${title}, ${posShort}${detail ? ` (${detail})` : ""}`);
   }
 
   function labelFor(m: { label: string; semis: number }): string {
-    const note = spell(key, m.semis, m.label);
     switch (labelMode) {
       case "degree": return m.label;
-      case "note": return note;
-      case "both": return `${m.label} ${note}`;
+      case "note": return spell(key, m.semis, m.label);
+      case "both": return `${m.label} ${spell(key, m.semis, m.label)}`;
       case "interval": return intervalShort(m.label);
       default: return "";
     }
   }
 
-  function changeKey(k: number) {
-    setKey(k);
+  function chordMidis(v: Voicing): number[] {
+    return voicingNotes(v).map(([s, f]) => tuning[s] + f);
   }
 
-  function changeScale(i: number) {
-    setScaleIdx(i);
+  function playKeyChord(degreeIdx: number, chordI: number) {
+    const c = CHORDS[chordI];
+    const root = (key + scale.tones[degreeIdx].semis) % 12;
+    const v = chordVoicings(tuning, root, c.tones)[0];
+    if (!v) throw new Error(`No playable shape found for ${c.name}.`);
+    strum(chordMidis(v));
+  }
+
+  function openChord(degreeIdx: number, chordI: number) {
+    setKey((key + scale.tones[degreeIdx].semis) % 12);
+    setChordIdx(chordI);
+    setPosIdx(0);
+    setPage("chords");
+  }
+
+  function goPage(p: Page) {
+    setPage(p);
     setPosIdx(0);
   }
 
-  function playChord(degreeIdx: number, chordIdx: number) {
-    const chord = CHORDS[chordIdx];
-    const root = (rootPc + tones[degreeIdx].semis) % 12;
-    const v = chordVoicings(tuning, root, chord.tones)[0];
-    if (!v) throw new Error(`No playable shape found for ${chord.name}.`);
-    strum(voicingNotes(v).map(([s, f]) => tuning[s] + f));
-  }
+  // Left/Right arrows step through positions or shapes.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (e.key === "ArrowRight") setPosIdx(Math.min(idx + 1, choices.length - 1));
+      else if (e.key === "ArrowLeft") setPosIdx(Math.max(idx - 1, 0));
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [idx, choices.length]);
 
   const changeNotes = diff.changes.map(([t]) => t).join(", ");
+  const chordNotes = chord.tones.map((t) => ({
+    note: spell(key, t.semis, t.label),
+    label: t.label,
+    interval: intervalName(t.label),
+  }));
 
   return (
     <div className="fretboard-view" data-testid="fretboard-view">
@@ -118,34 +177,57 @@ export function FretboardView({ onBack }: Props) {
         <h1 className="browse-title">Fretboard Trainer</h1>
       </header>
 
+      <div className="browse-tabs">
+        {PAGES.map((p) => (
+          <button key={p.id} className={`browse-tab fb-tab ${page === p.id ? "active" : ""}`} onClick={() => goPage(p.id)}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       <div className="fretboard-body">
         <div className="fretboard-main">
           <div className="fretboard-keys" role="group" aria-label="Key">
             {KEYS.map((k, i) => (
-              <button key={k} className={`fb-key ${i === key ? "active" : ""}`} onClick={() => changeKey(i)}>
+              <button key={k} className={`fb-key ${i === key ? "active" : ""}`} onClick={() => { setKey(i); setPosIdx(0); }}>
                 {k}
               </button>
             ))}
           </div>
 
           <div className="fretboard-controls">
+            {page === "scales" ? (
+              <label>
+                Scale
+                <select aria-label="Scale" value={scaleIdx} onChange={(e) => { setScaleIdx(parseInt(e.target.value)); setPosIdx(0); }}>
+                  {SCALE_GROUPS.map(([group, list]) => (
+                    <optgroup key={group} label={group}>
+                      {list.map((s) => (
+                        <option key={s.name} value={SCALES.indexOf(s)}>{s.name}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label>
+                Chord type
+                <select aria-label="Chord type" value={chordIdx} onChange={(e) => { setChordIdx(parseInt(e.target.value)); setPosIdx(0); }}>
+                  {CHORD_GROUPS.map(([group, list]) => (
+                    <optgroup key={group} label={group}>
+                      {list.map((c) => (
+                        <option key={c.name} value={CHORDS.indexOf(c)}>{c.name}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
-              Scale
-              <select aria-label="Scale" value={scaleIdx} onChange={(e) => changeScale(parseInt(e.target.value))}>
-                {Object.entries(SCALE_GROUPS).map(([group, list]) => (
-                  <optgroup key={group} label={group}>
-                    {list.map((s) => (
-                      <option key={s.name} value={SCALES.indexOf(s)}>{s.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-            <label>
-              Position
-              <select aria-label="Position" value={Math.min(posIdx, positions.length - 1)} onChange={(e) => setPosIdx(parseInt(e.target.value))}>
-                {positions.map((p, i) => (
-                  <option key={i} value={i}>{p.title}</option>
+              {page === "chords" ? "Shape" : "Position"}
+              <select aria-label={page === "chords" ? "Shape" : "Position"} value={idx} onChange={(e) => setPosIdx(parseInt(e.target.value))}>
+                {choices.map((c, i) => (
+                  <option key={i} value={i}>{c}</option>
                 ))}
               </select>
             </label>
@@ -159,106 +241,107 @@ export function FretboardView({ onBack }: Props) {
                 <option value="none">None</option>
               </select>
             </label>
+            {page === "chords" && voicing && (
+              <div className="fretboard-actions">
+                <button className="btn-secondary" onClick={() => hear(() => strum(chordMidis(voicing)))}>Strum</button>
+                <button
+                  className="btn-primary"
+                  onClick={() =>
+                    hear(() => {
+                      const midis = chordMidis(voicing);
+                      strum(midis);
+                      midis.forEach((m, i) => playNote(m, 1 + i * 0.28, 0.8));
+                    })
+                  }
+                >
+                  Play
+                </button>
+              </div>
+            )}
           </div>
 
           <h2 className="fretboard-title">{title}</h2>
           <p className="fretboard-tonality">
-            {tonality(tones)} —{" "}
-            {diff.changes.length === 0
-              ? `the ${diff.parent.toLowerCase()} scale itself`
-              : `compared with ${diff.parent}: ${changeNotes}`}
+            {page === "scales" ? (
+              <>
+                {tonality(scale.tones)} —{" "}
+                {diff.changes.length === 0 ? `the ${diff.parent.toLowerCase()} scale itself` : `compared with ${diff.parent}: ${changeNotes}`}
+              </>
+            ) : (
+              <>
+                {KEYS[key]}
+                {chord.symbol} — {chord.group}
+              </>
+            )}
           </p>
 
-          <div className="fretboard-neck-wrap">
-            <svg className="fretboard-neck" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title} on the guitar neck`}>
-              <rect x={NUT_X} y={TOP - 10} width={NUM_FRETS * FRET_W} height={5 * STRING_GAP + 20} className="fb-board" />
-              {MARKER_FRETS.map((f) => (
-                <circle key={f} cx={NUT_X + (f - 0.5) * FRET_W} cy={TOP + 2.5 * STRING_GAP} r={f === 12 ? 0 : 5} className="fb-inlay" />
-              ))}
-              <circle cx={NUT_X + 11.5 * FRET_W} cy={TOP + 1.5 * STRING_GAP} r={5} className="fb-inlay" />
-              <circle cx={NUT_X + 11.5 * FRET_W} cy={TOP + 3.5 * STRING_GAP} r={5} className="fb-inlay" />
-              {Array.from({ length: NUM_FRETS + 1 }, (_, f) => (
-                <line key={f} x1={NUT_X + f * FRET_W} x2={NUT_X + f * FRET_W} y1={TOP - 10} y2={TOP + 5 * STRING_GAP + 10} className={f === 0 ? "fb-nut" : "fb-fret"} />
-              ))}
-              {Array.from({ length: 6 }, (_, s) => (
-                <line key={s} x1={NUT_X} x2={NUT_X + NUM_FRETS * FRET_W} y1={stringY(s)} y2={stringY(s)} className="fb-string" strokeWidth={0.8 + (6 - s) * 0.35} />
-              ))}
-              {Array.from({ length: NUM_FRETS }, (_, i) => (
-                <text key={i} x={NUT_X + (i + 0.5) * FRET_W} y={height - 6} className="fb-fretnum" textAnchor="middle">{i + 1}</text>
-              ))}
-
-              {marks.map((m) => {
-                const inPos = inPosition.has(`${m.string}:${m.fret}`);
-                const isRoot = m.label === "1";
-                const isColour = colour.labels.includes(m.label);
-                const classes = [
-                  "fb-note",
-                  `fb-deg-${((degreeNumber(m.label) - 1) % 7) + 1}`,
-                  isAltered(m.label) ? "fb-note--alt" : "",
-                  isRoot ? "fb-note--root" : "",
-                  isColour ? "fb-note--colour" : "",
-                  inPos ? "" : "fb-note--dim",
-                ].join(" ");
-                const text = labelFor(m);
-                return (
-                  <g
-                    key={`${m.string}:${m.fret}`}
-                    className={classes}
-                    data-in-position={inPos}
-                    data-degree={m.label}
-                    data-string={m.string}
-                    data-fret={m.fret}
-                    onClick={() => hear(() => playNote(m.midi), "Note")}
-                  >
-                    <circle cx={noteX(m.fret)} cy={stringY(m.string)} r={inPos ? 12 : 8} className="fb-note__dot" />
-                    {text && inPos && (
-                      <text x={noteX(m.fret)} y={stringY(m.string) + 4} textAnchor="middle" className="fb-note__label">{text}</text>
-                    )}
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
+          <Neck
+            marks={marks}
+            title={title}
+            labelFor={labelFor}
+            colourLabels={page === "scales" ? colour.labels : []}
+            onNote={(m) => hear(() => playNote(m.midi))}
+          />
         </div>
 
         <aside className="fretboard-side">
+          {page === "chords" && voicing && (
+            <section className="fretboard-about">
+              <h3>Chord shape</h3>
+              <ChordBox voicing={voicing} names={tuning.map((_, s) => (voicing.frets[s] === null ? "" : plainName(tuning[s] + (voicing.frets[s] ?? 0))))} />
+              <p className="fb-dim">Lowest fret {voicingMinFret(voicing)}</p>
+            </section>
+          )}
+
           <section className="fretboard-about">
-            <h3>About this scale</h3>
-            {info ? (
+            {page === "scales" ? (
               <>
-                <p>{info.sound}</p>
-                <p><strong>Use it:</strong> {info.useIt}</p>
-                {info.heardIn.length > 0 && (
-                  <p><strong>Heard in:</strong> {info.heardIn.join(" · ")}</p>
+                <h3>About this scale</h3>
+                {info ? (
+                  <>
+                    <p>{info.sound}</p>
+                    <p><strong>Use it:</strong> {info.useIt}</p>
+                    {info.heardIn.length > 0 && <p><strong>Heard in:</strong> {info.heardIn.join(" · ")}</p>}
+                  </>
+                ) : (
+                  <p className="fb-dim">{scale.group}.</p>
                 )}
+                {colour.labels.length > 0 && (
+                  <p><strong>Colour notes:</strong> {colour.labels.join(", ")} (ringed in gold on the neck)</p>
+                )}
+                {colour.explanation && <p>{colour.explanation}</p>}
               </>
             ) : (
-              <p className="fb-dim">{scale.group}.</p>
+              <>
+                <h3>Notes of {KEYS[key]}{chord.symbol}</h3>
+                <ul className="fb-note-list">
+                  {chordNotes.map((n) => (
+                    <li key={n.label}>
+                      <strong>{n.note}</strong> — {n.interval} <span className="fb-dim">({n.label})</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
-            {colour.labels.length > 0 && (
-              <p>
-                <strong>Colour notes:</strong> {colour.labels.join(", ")} (ringed in gold on the neck)
-              </p>
-            )}
-            {colour.explanation && <p>{colour.explanation}</p>}
           </section>
 
-          {chords.length > 0 && (
+          {page === "scales" && keyChords.length > 0 && (
             <section className="fretboard-chords">
               <h3>Chords in this key</h3>
               <div className="fb-chord-chips">
-                {chords.map(([d, c]) => {
-                  const chord = CHORDS[c];
-                  const name = spell(key, tones[d].semis, tones[d].label) + chord.symbol;
+                {keyChords.map(([d, c]) => {
+                  const cd = CHORDS[c];
+                  const name = spell(key, scale.tones[d].semis, scale.tones[d].label) + cd.symbol;
                   return (
                     <button
                       key={d}
                       className="fb-chord-chip"
-                      title={`Hear ${name}`}
-                      onClick={() => hear(() => playChord(d, c), `Chord ${name}`)}
+                      title={`Click to hear ${name}, double-click to open it on the Chords page`}
+                      onClick={() => hear(() => playKeyChord(d, c), `chord ${name}`)}
+                      onDoubleClick={() => openChord(d, c)}
                     >
                       {name}
-                      <span className="fb-chord-chip__roman">{roman(d, chord)}</span>
+                      <span className="fb-chord-chip__roman">{roman(d, cd)}</span>
                     </button>
                   );
                 })}
