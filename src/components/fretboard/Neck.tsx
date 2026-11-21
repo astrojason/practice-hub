@@ -14,10 +14,12 @@ interface Props {
   labelFor: (m: Mark) => string;
   /** Degrees ringed in gold. */
   colourLabels?: string[];
+  /** The note sounding now, as "string:fret". */
+  playing?: string | null;
   onNote: (m: Mark) => void;
 }
 
-export function Neck({ marks, title, labelFor, colourLabels = [], onNote }: Props) {
+export function Neck({ marks, title, labelFor, colourLabels = [], playing = null, onNote }: Props) {
   const width = NUT_X + (NUM_FRETS + 1) * FRET_W;
   const height = TOP + 5 * STRING_GAP + 30;
   const stringY = (s: number) => TOP + (5 - s) * STRING_GAP;
@@ -52,6 +54,7 @@ export function Neck({ marks, title, labelFor, colourLabels = [], onNote }: Prop
             m.label === "1" ? "fb-note--root" : "",
             colourLabels.includes(m.label) ? "fb-note--colour" : "",
             m.inPosition ? "" : "fb-note--dim",
+            playing === `${m.string}:${m.fret}` ? "fb-note--playing" : "",
           ].join(" ");
           const text = labelFor(m);
           return (

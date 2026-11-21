@@ -573,3 +573,88 @@ export function chordIndex(symbol: string): number {
 export function findScale(name: string): ScaleDef {
   return SCALES.find((s) => s.name === name) ?? SCALES[0];
 }
+
+/** Roman numeral for a chord whose root is `semis` above the key ("bVII", "ii7", "V7"). */
+export function romanFor(semis: number, chord: ChordDef): string {
+  const base = ["I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII"][mod(semis, 12)];
+  const sym = chord.symbol;
+  const minorish = (sym.startsWith("m") && !sym.startsWith("maj")) || sym.startsWith("dim");
+  const s = minorish ? base.toLowerCase() : base;
+  let suffix: string;
+  if (sym === "" || sym === "m") suffix = "";
+  else if (sym === "dim") suffix = "°";
+  else if (sym === "dim7") suffix = "°7";
+  else if (sym === "m7b5") suffix = "ø7";
+  else if (sym === "aug") suffix = "+";
+  else if (minorish && sym.startsWith("m")) suffix = sym.slice(1);
+  else suffix = sym;
+  return s + suffix;
+}
+
+/** Degree labels for a 7-note set of half steps, measured against the major scale. */
+function sevenNoteLabels(semis: number[]): string[] | null {
+  const major = [0, 2, 4, 5, 7, 9, 11];
+  if (semis.length !== 7) return null;
+  const out: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = semis[i] - major[i];
+    if (d < -2 || d > 2) return null;
+    out.push(["bb", "b", "", "#", "##"][d + 2] + (i + 1));
+  }
+  return out;
+}
+
+/**
+ * The scale to play over one chord of a progression. If every chord tone belongs to the
+ * key's scale it is that scale started from the chord's root (Dm7 in C major gives D
+ * Dorian); otherwise the usual scale for the chord's quality.
+ */
+export function chordScale(parent: ScaleDef, chordSemis: number, chord: ChordDef): { name: string; tones: Tone[] } {
+  const cs = mod(chordSemis, 12);
+  const parentPcs = parent.tones.map((t) => mod(t.semis, 12));
+  const fits = chord.tones.every((t) => parentPcs.includes(mod(cs + t.semis, 12)));
+  if (fits) {
+    const rotated = [...new Set(parentPcs.map((p) => mod(p - cs, 12)))].sort((a, b) => a - b);
+    const labels = sevenNoteLabels(rotated) ?? rotated.map(chromaticLabel);
+    const tones = rotated.map((semis, i) => ({ semis, label: labels[i] }));
+    const found = SCALES.find((sc) => {
+      const v = [...new Set(sc.tones.map((t) => mod(t.semis, 12)))].sort((a, b) => a - b);
+      return v.length === rotated.length && v.every((x, i) => x === rotated[i]);
+    });
+    return { name: found?.name ?? `${parent.name} (from the chord's root)`, tones };
+  }
+  const byChord: Record<string, string> = {
+    "maj7#11": "Lydian", m: "Natural Minor (Aeolian)", madd9: "Natural Minor (Aeolian)",
+    m7: "Dorian", m9: "Dorian", m11: "Dorian", m13: "Dorian", m6: "Dorian",
+    "7": "Mixolydian", "9": "Mixolydian", "13": "Mixolydian", "11": "Mixolydian", "7sus4": "Mixolydian",
+    "9sus4": "Mixolydian", sus2: "Mixolydian", sus4: "Mixolydian",
+    "7#11": "Lydian Dominant", "7b9": "Diminished (Half-Whole)", "7#9": "Altered (Super Locrian)",
+    "7b13": "Mixolydian b6", "7b5": "Whole Tone", aug: "Whole Tone", "7#5": "Whole Tone",
+    "maj7#5": "Lydian Augmented", m7b5: "Locrian #2 (Half-diminished)", dim: "Diminished (Whole-Half)",
+    dim7: "Diminished (Whole-Half)", "m(maj7)": "Melodic Minor", "5": "Minor Pentatonic",
+  };
+  const sc = findScale(byChord[chord.symbol] ?? "Major (Ionian)");
+  return { name: sc.name, tones: sc.tones };
+}
+
+/**
+ * When following chords, the notes of the chord's scale (or arpeggio) that stay where the hand
+ * already is: the fixed position whose frets sit within 2 of lo..hi and closest to it, or, if
+ * none fits, every note of the scale inside that stretch of the neck (one fret either side).
+ */
+export function followPosition(tuning: number[], root: number, ts: Tone[], arpeggio: boolean, lo: number, hi: number): FretNote[] {
+  const candidates = arpeggio ? arpeggioPositions(tuning, root, ts) : scalePositions(tuning, root, ts);
+  const span = (n: FretNote[]) => [Math.min(...n.map((x) => x[1])), Math.max(...n.map((x) => x[1]))];
+  let best: PositionInfo | null = null;
+  let bestScore = Infinity;
+  for (const p of candidates) {
+    if (!p.notes.length || !p.notes.every((n) => n[1] >= lo - 2 && n[1] <= hi + 2)) continue;
+    const [a, b] = span(p.notes);
+    const score = Math.abs(a - lo) + Math.abs(b - hi);
+    if (score < bestScore) {
+      best = p;
+      bestScore = score;
+    }
+  }
+  return best ? best.notes : windowNotes(tuning, root, ts, Math.max(lo - 1, 0), Math.min(hi + 1, NUM_FRETS));
+}

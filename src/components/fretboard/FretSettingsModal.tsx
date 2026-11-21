@@ -1,0 +1,219 @@
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ConfirmModal } from "../ConfirmModal";
+import { ErrorModal } from "../ErrorModal";
+import { INSTRUMENTS, engine, type SoundFontPreset } from "../../lib/fretboard/audio";
+import type { FretSettings } from "../../lib/fretboard/settings";
+
+interface Props {
+  settings: FretSettings;
+  update: (p: Partial<FretSettings>) => void;
+  presets: SoundFontPreset[];
+  fontLoading: boolean;
+  userFonts: string[];
+  onAddFont: (file: File) => void;
+  onRemoveFont: (name: string) => void;
+  onClose: () => void;
+}
+
+export function FretSettingsModal({ settings, update, presets, fontLoading, userFonts, onAddFont, onRemoveFont, onClose }: Props) {
+  const [error, setError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [outputs, setOutputs] = useState<{ id: string; label: string }[]>([]);
+  const [output, setOutput] = useState("default");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !error && !confirmRemove) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, error, confirmRemove]);
+
+  useEffect(() => {
+    if (!engine.canChooseOutput) return;
+    engine.outputDevices().then(setOutputs).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, []);
+
+  function fail(err: unknown) {
+    setError(err instanceof Error ? err.message : String(err));
+  }
+
+  const soundValue = settings.instrument === "sf" ? "sf" : settings.instrument;
+  const guitarPresets = presets.filter((p) => p.guitar);
+  const otherPresets = presets.filter((p) => !p.guitar);
+
+  return createPortal(
+    <div className="error-modal-overlay" onClick={onClose}>
+      <div className="error-modal fb-settings" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Fretboard settings">
+        <div className="error-modal-header">
+          <h3 className="error-modal-title" style={{ color: "var(--text)" }}>Fretboard settings</h3>
+          <button className="error-modal-close" onClick={onClose} aria-label="Close settings">✕</button>
+        </div>
+
+        <section className="fb-settings__section">
+          <h4>Sound</h4>
+          <label>
+            Guitar sound
+            <select aria-label="Guitar sound" value={soundValue} onChange={(e) => update({ instrument: e.target.value })}>
+              <optgroup label="Built-in (synthesised)">
+                {INSTRUMENTS.map((i) => (
+                  <option key={i.id} value={i.id}>{i.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Real instruments">
+                <option value="sf">Real guitar samples (SoundFont)</option>
+              </optgroup>
+            </select>
+          </label>
+
+          {settings.instrument === "sf" && (
+            <>
+              <label>
+                SoundFont
+                <select aria-label="SoundFont" value={settings.soundFont} onChange={(e) => update({ soundFont: e.target.value })}>
+                  <option value="bundled">GeneralUser GS (bundled)</option>
+                  {userFonts.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Instrument
+                <select
+                  aria-label="SoundFont instrument"
+                  value={`${settings.preset[0]}:${settings.preset[1]}`}
+                  disabled={fontLoading || presets.length === 0}
+                  onChange={(e) => {
+                    const [bank, program] = e.target.value.split(":").map(Number);
+                    update({ preset: [bank, program] });
+                  }}
+                >
+                  {guitarPresets.length > 0 && (
+                    <optgroup label="Guitars">
+                      {guitarPresets.map((p) => (
+                        <option key={`${p.bank}:${p.program}`} value={`${p.bank}:${p.program}`}>{p.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Everything else">
+                    {otherPresets.map((p) => (
+                      <option key={`${p.bank}:${p.program}`} value={`${p.bank}:${p.program}`}>{p.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </label>
+              {fontLoading && <p className="fb-dim" role="status">Loading the SoundFont…</p>}
+              <div className="fb-settings__row">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".sf2"
+                  hidden
+                  aria-label="Add a SoundFont file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onAddFont(f);
+                    e.target.value = "";
+                  }}
+                />
+                <button className="btn-secondary" onClick={() => fileRef.current?.click()}>+ Add SoundFont (.sf2)</button>
+                {settings.soundFont !== "bundled" && (
+                  <button className="btn-ghost" onClick={() => setConfirmRemove(settings.soundFont)}>Remove this SoundFont</button>
+                )}
+                <a className="fb-dim" href="https://musical-artifacts.com/artifacts?formats=sf2&tags=guitar" target="_blank" rel="noreferrer">Free guitar SoundFonts</a>
+              </div>
+            </>
+          )}
+
+          <label>
+            Tone (warm to bright)
+            <input type="range" min={0} max={1} step={0.01} aria-label="Tone" value={settings.brightness} onChange={(e) => update({ brightness: parseFloat(e.target.value) })} />
+          </label>
+          <label>
+            Room reverb
+            <input type="range" min={0} max={1} step={0.01} aria-label="Room reverb" value={settings.reverb} onChange={(e) => update({ reverb: parseFloat(e.target.value) })} />
+          </label>
+          <label className="fb-settings__check">
+            <input type="checkbox" checked={settings.fingers} onChange={(e) => update({ fingers: e.target.checked })} />
+            Fingers instead of a pick (built-in guitars)
+          </label>
+          <label>
+            Drone volume
+            <input type="range" min={0} max={1} step={0.01} aria-label="Drone volume" value={settings.droneVolume} onChange={(e) => update({ droneVolume: parseFloat(e.target.value) })} />
+          </label>
+          <label>
+            Drum volume
+            <input type="range" min={0} max={1} step={0.01} aria-label="Drum volume" value={settings.drumVolume} onChange={(e) => update({ drumVolume: parseFloat(e.target.value) })} />
+          </label>
+        </section>
+
+        <section className="fb-settings__section">
+          <h4>Output</h4>
+          <div className="fb-settings__row">
+            {engine.canChooseOutput ? (
+              <select
+                aria-label="Audio output"
+                value={output}
+                onChange={(e) => {
+                  setOutput(e.target.value);
+                  engine.setOutput(e.target.value).catch(fail);
+                }}
+              >
+                <option value="default">System default</option>
+                {outputs.filter((o) => o.id !== "default").map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="fb-dim">Uses the system's sound output (change it in System Settings).</span>
+            )}
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                try {
+                  engine.test();
+                } catch (err) {
+                  fail(err);
+                }
+              }}
+            >
+              Test
+            </button>
+          </div>
+        </section>
+
+        <section className="fb-settings__section">
+          <h4>Playback</h4>
+          <label>
+            Count-in
+            <select aria-label="Count-in" value={settings.countIn} onChange={(e) => update({ countIn: parseInt(e.target.value) })}>
+              <option value={0}>Off</option>
+              <option value={1}>1 bar</option>
+              <option value={2}>2 bars</option>
+            </select>
+          </label>
+        </section>
+
+        <div className="error-modal-footer">
+          <button className="btn-primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+      {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
+      {confirmRemove && (
+        <ConfirmModal
+          title="Remove SoundFont?"
+          message={`Remove ${confirmRemove} from the Fretboard Trainer? The file you added stays wherever you got it from.`}
+          confirmLabel="Remove"
+          onConfirm={() => {
+            onRemoveFont(confirmRemove);
+            setConfirmRemove(null);
+          }}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+    </div>,
+    document.body,
+  );
+}

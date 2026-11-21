@@ -10,7 +10,6 @@
 
 Source: `/Users/jasonsylvester/Documents/Craft Anything/a-visual-scale-arpeggio-chord` (Rust/egui; `app/src/help.rs` lists every feature). Port the features, **not** the UI: everything must use this app's own styling/components (overlay view like Browse, `btn-*` classes, `ErrorModal`, `ConfirmModal`). Audio is Web Audio in the webview (no new Rust audio engine). Starting any practice item in the trainer (first Play of a routine, a speed-trainer session, a quiz) starts the app's **Open Session** timer with pre-filled notes describing what is being practised (key, scale, position, tempo…). Do the phases in order; remove each when committed.
 
-- [ ] Phase 3 — Playback engine: tempo, notes-per-beat, direction, loop, count-in, metronome, scale/arpeggio playback with highlight, drone, guitar sound/tone/room/pick, SoundFont (.sf2) support, output Test.
 - [ ] Phase 4 — Progressions: presets, editor (add/move/duplicate/remove with confirm), save/delete saved progressions, guitar and drum styles, follow-the-chords (scale/arpeggio per chord), highlight modes, play-over-progression on Scales/Arpeggios/Chords.
 - [ ] Phase 5 — Neck options: tuning, high-E-on-top, show previous/next, connect-to, degree and string filters, colour schemes, blend-with, positions past fret 12, focus mode, keyboard shortcuts, light/dark.
 - [ ] Phase 6 — Practice routines: position ladder, CAGED, chord changes in position, extended arpeggios, scale sequences, circle of fifths, chord relay, time keeping, click patterns, speed bursts, call-outs, tempo-raising speed trainer, step list.

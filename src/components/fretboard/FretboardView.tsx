@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftIcon } from "@heroicons/react/16/solid";
 import { ErrorModal } from "../ErrorModal";
 import { ChordBox } from "./ChordBox";
 import { Neck } from "./Neck";
-import { playNote, strum } from "../../lib/fretboard/audio";
+import { engine } from "../../lib/fretboard/audio";
+import { buildChordSequence, buildSequence, orderSteps, type Step } from "../../lib/fretboard/playback";
+import { useFretSettings } from "../../lib/fretboard/settings";
+import { FretSettingsModal } from "./FretSettingsModal";
+import { PlayBar } from "./PlayBar";
+import { useSoundFont } from "./useSoundFont";
 import { colourNotes, scaleInfo } from "../../lib/fretboard/scaleInfo";
 import {
   CHORDS,
@@ -63,6 +68,12 @@ export function FretboardView({ onBack }: Props) {
   const [posIdx, setPosIdx] = useState(0);
   const [labelMode, setLabelMode] = useState<LabelMode>("degree");
   const [error, setError] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [playingNote, setPlayingNote] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { settings, update, error: settingsError, clearError } = useFretSettings();
+  const showError = useCallback((m: string) => setError(m), []);
+  const font = useSoundFont(settings, update, showError);
 
   const tuning = TUNINGS[0].strings;
   const scale = SCALES[scaleIdx];
@@ -125,16 +136,111 @@ export function FretboardView({ onBack }: Props) {
     }
   }
 
-  function chordMidis(v: Voicing): number[] {
-    return voicingNotes(v).map(([s, f]) => tuning[s] + f);
+  function stepsOf(notes: [number, number][]): Step[] {
+    return notes.map(([s, f]) => ({ midi: tuning[s] + f, string: s, fret: f }));
   }
+
+  // What Play should sound for the current page and selection.
+  function buildCurrent(countInBars: number) {
+    if (page === "chords") {
+      if (!voicing) throw new Error("There is no chord shape to play.");
+      return buildChordSequence({ notes: stepsOf(voicingNotes(voicing)), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
+    }
+    const notes = page === "scales" ? scalePos[idx]?.notes : arpPos[idx]?.notes;
+    if (!notes?.length) throw new Error("There are no notes to play in this position.");
+    return buildSequence({ steps: orderSteps(stepsOf(notes), settings.direction), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
+  }
+
+  // The scale's root chord held softly under scale runs: root, 5th and the scale's own 3rd.
+  function droneNotes(): number[] | null {
+    if (page !== "scales" || !settings.drone) return null;
+    const root = 36 + key;
+    const third = scale.tones.find((t) => t.label === "3" || t.label === "b3");
+    return [root, root + 7, ...(third ? [root + third.semis] : [])];
+  }
+
+  const stopPlayback = useCallback(() => {
+    engine.stop();
+    engine.drone(null);
+    setPlaying(false);
+  }, []);
+
+  function startPlayback(countInBars: number, log = true) {
+    try {
+      const built = buildCurrent(countInBars);
+      setPlaying(true);
+      engine.drone(droneNotes());
+      engine.play({
+        events: built.events,
+        length: built.length,
+        loopFrom: built.loopFrom,
+        loop: settings.loop,
+        onHighlight: setPlayingNote,
+        onEnd: () => {
+          engine.drone(null);
+          setPlaying(false);
+        },
+      });
+    } catch (err) {
+      engine.stop();
+      setPlaying(false);
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (log) {
+      const label = PAGES.find((p) => p.id === page)?.label;
+      logTrainerActivity(`Fretboard Trainer — ${label}: ${title}, ${posShort} at ${settings.bpm} bpm`);
+    }
+  }
+
+  function togglePlayback() {
+    if (engine.playing) stopPlayback();
+    else startPlayback(settings.countIn);
+  }
+
+  // Follow changes while playing: restart on the new notes or tempo without another count-in.
+  const playingRef = useRef(false);
+  playingRef.current = playing;
+  const restartKey = [page, key, scaleIdx, chordIdx, idx, settings.bpm, settings.notesPerBeat, settings.direction, settings.loop, settings.click, settings.drone].join("|");
+  const lastKey = useRef(restartKey);
+  useEffect(() => {
+    if (lastKey.current === restartKey) return;
+    lastKey.current = restartKey;
+    if (playingRef.current) startPlayback(0, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restartKey]);
+
+  useEffect(() => {
+    engine.onProblem = (m) => setError(m);
+    return () => {
+      engine.onProblem = null;
+      engine.stop();
+      engine.drone(null);
+    };
+  }, []);
+
+  // Space plays and stops.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (e.code !== "Space" || (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      e.preventDefault();
+      if (e.type === "keydown" && !e.repeat) togglePlayback();
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+    };
+  });
 
   function playKeyChord(degreeIdx: number, chordI: number) {
     const c = CHORDS[chordI];
     const root = (key + scale.tones[degreeIdx].semis) % 12;
     const v = chordVoicings(tuning, root, c.tones)[0];
     if (!v) throw new Error(`No playable shape found for ${c.name}.`);
-    strum(chordMidis(v));
+    engine.strumNow(voicingNotes(v).map(([s, f]) => ({ midi: tuning[s] + f, string: s })));
   }
 
   function openChord(degreeIdx: number, chordI: number) {
@@ -243,19 +349,8 @@ export function FretboardView({ onBack }: Props) {
             </label>
             {page === "chords" && voicing && (
               <div className="fretboard-actions">
-                <button className="btn-secondary" onClick={() => hear(() => strum(chordMidis(voicing)))}>Strum</button>
-                <button
-                  className="btn-primary"
-                  onClick={() =>
-                    hear(() => {
-                      const midis = chordMidis(voicing);
-                      strum(midis);
-                      midis.forEach((m, i) => playNote(m, 1 + i * 0.28, 0.8));
-                    })
-                  }
-                >
-                  Play
-                </button>
+                <button className="btn-secondary" onClick={() => hear(() => engine.strumNow(voicingNotes(voicing).map(([s, f]) => ({ midi: tuning[s] + f, string: s }))))}>Strum</button>
+                <button className="btn-primary" onClick={togglePlayback}>{playing ? "Stop" : "Play"}</button>
               </div>
             )}
           </div>
@@ -280,7 +375,8 @@ export function FretboardView({ onBack }: Props) {
             title={title}
             labelFor={labelFor}
             colourLabels={page === "scales" ? colour.labels : []}
-            onNote={(m) => hear(() => playNote(m.midi))}
+            playing={playingNote}
+            onNote={(m) => hear(() => engine.pluck(m.midi, m.string))}
           />
         </div>
 
@@ -351,6 +447,28 @@ export function FretboardView({ onBack }: Props) {
         </aside>
       </div>
 
+      <PlayBar
+        settings={settings}
+        update={update}
+        playing={playing}
+        soundName={font.presets.find((p) => p.bank === settings.preset[0] && p.program === settings.preset[1])?.name ?? "SoundFont"}
+        onToggle={togglePlayback}
+        onSettings={() => setSettingsOpen(true)}
+      />
+
+      {settingsOpen && (
+        <FretSettingsModal
+          settings={settings}
+          update={update}
+          presets={font.presets}
+          fontLoading={font.loading}
+          userFonts={font.userFonts}
+          onAddFont={font.add}
+          onRemoveFont={font.remove}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {settingsError && <ErrorModal error={settingsError} onDismiss={clearError} />}
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
     </div>
   );

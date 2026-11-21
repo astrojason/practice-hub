@@ -3272,3 +3272,23 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .chord-box__mute { fill: var(--red); font-size: 12px; font-weight: 700; }
 .chord-box__base { fill: var(--text-dim); font-size: 10px; }
 .chord-box__name { fill: var(--muted); font-size: 9px; }
+.fb-note--playing .fb-note__dot { stroke: #fff; stroke-width: 4; filter: drop-shadow(0 0 6px var(--accent-light)); }
+.fb-note--playing { opacity: 1; }
+.fb-playbar {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px;
+  padding: 10px 16px; margin-top: auto;
+  background: var(--surface); border-top: 1px solid var(--border);
+}
+.fb-playbar__field { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.fb-playbar__field select, .fb-playbar__field input[type="number"] { font-size: 13px; text-transform: none; letter-spacing: 0; }
+.fb-playbar__bpm { display: flex; align-items: center; gap: 6px; font-size: 12px; text-transform: none; }
+.fb-playbar__bpm input { width: 64px; }
+.fb-playbar__check { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-dim); padding-bottom: 6px; }
+.fb-playbar__sound { margin-left: auto; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-settings { width: min(560px, 92vw); max-height: 86vh; overflow-y: auto; text-align: left; }
+.fb-settings__section { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 12px; border-bottom: 1px solid var(--border-dim); }
+.fb-settings__section h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.fb-settings label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.fb-settings__check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+.fb-settings__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

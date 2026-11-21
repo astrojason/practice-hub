@@ -1,6 +1,6 @@
 {
   "name": "practice-hub",
-  "version": "2.53.0",
+  "version": "2.54.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,8 @@
     "react": "^18",
     "react-dom": "^18",
     "react-markdown": "^10.1.0",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "spessasynth_lib": "^4.4.10"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
