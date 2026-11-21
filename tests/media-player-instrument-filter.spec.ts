@@ -58,6 +58,8 @@ interface MockOpts {
   cached?: boolean;
   separateError?: string;
   mixError?: string;
+  /** The one-time setup of the separation tools hasn't been done. */
+  runtimeMissing?: boolean;
 }
 
 type Calls = { cmd: string; args: Record<string, unknown> }[];
@@ -66,13 +68,29 @@ async function setup(page: Page, kind: "audio" | "video", opts: MockOpts = {}) {
   await page.addInitScript(({ stems, opts }) => {
     const calls: { cmd: string; args: Record<string, unknown> }[] = [];
     (window as unknown as { __stemCalls: typeof calls }).__stemCalls = calls;
+    // Tauri events: listen() hands over a callback id; tests fire an event by calling that callback.
+    const callbacks: Record<number, (e: unknown) => void> = {};
+    const eventHandlers: Record<string, number> = {};
+    (window as unknown as Record<string, unknown>).__emitEvent = (event: string, payload: unknown) =>
+      callbacks[eventHandlers[event]]?.({ event, id: eventHandlers[event], payload });
     window.__TAURI_INTERNALS__ = {
       invoke(cmd: string, args?: Record<string, unknown>) {
         if (cmd === "plugin:store|load") return Promise.resolve(1);
         if (cmd === "plugin:store|get") return Promise.resolve([null, false]);
         if (cmd === "plugin:store|has") return Promise.resolve(false);
+        if (cmd === "plugin:event|listen") {
+          eventHandlers[(args as { event: string }).event] = (args as { handler: number }).handler;
+          return Promise.resolve((args as { handler: number }).handler);
+        }
         if (cmd.startsWith("plugin:")) return Promise.resolve(null);
         calls.push({ cmd, args: args ?? {} });
+        if (cmd === "stems_status") return Promise.resolve(opts.runtimeMissing ? { ready: false, source: null } : { ready: true, source: "managed" });
+        if (cmd === "stems_setup") {
+          return new Promise((resolve, reject) => {
+            (window as unknown as Record<string, unknown>).__setupDone = () => resolve(null);
+            (window as unknown as Record<string, unknown>).__setupFail = (m: string) => reject(m);
+          });
+        }
         if (cmd === "get_cached_stems") return Promise.resolve(opts.cached ? stems : null);
         if (cmd === "separate_stems") {
           return opts.separateError ? Promise.reject(opts.separateError) : Promise.resolve(stems);
@@ -84,7 +102,11 @@ async function setup(page: Page, kind: "audio" | "video", opts: MockOpts = {}) {
         }
         return Promise.resolve(null);
       },
-      transformCallback() { return Math.random(); },
+      transformCallback(cb: (e: unknown) => void) {
+        const id = Math.floor(Math.random() * 1e9);
+        callbacks[id] = cb;
+        return id;
+      },
     } as unknown as typeof window.__TAURI_INTERNALS__;
   }, { stems: STEMS, opts });
 
@@ -246,4 +268,51 @@ test("muting a stem on a video mutes the video's own audio and plays the mix alo
   await stemToggle(page, "guitar").check();
   await expect(stemAudio).toHaveCount(0);
   await expect(video).toHaveJSProperty("muted", false);
+});
+
+const emitEvent = (page: Page, event: string, payload: unknown) =>
+  page.evaluate(([e, p]) => (window as unknown as { __emitEvent: (e: string, p: unknown) => void }).__emitEvent(e as string, p), [event, payload]);
+
+test("when the separation tools aren't set up, a one-click setup is offered with plain words, not Python errors", async ({ page }) => {
+  const { name } = await setup(page, "audio", { runtimeMissing: true });
+  await openPlayer(page, name);
+  const panel = page.getByTestId("stem-setup");
+  await expect(panel).toContainText("one-time setup");
+  await expect(panel).toContainText("2 GB");
+  await expect(page.getByRole("button", { name: "Separate instruments" })).toHaveCount(0);
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+
+  await panel.getByRole("button", { name: "Set up instrument separation" }).click();
+  await expect(panel).toContainText("Step 1 of 4");
+  await emitEvent(page, "stems-setup", { step: 1, steps: 4, label: "Downloading Python", message: "40% downloaded", percent: 40 });
+  await expect(panel).toContainText("Step 1 of 4: Downloading Python");
+  await expect(panel).toContainText("40% downloaded");
+  await expect(panel.locator(".mp-bar__fill")).toHaveAttribute("style", /width: 40%/);
+  await emitEvent(page, "stems-setup", { step: 3, steps: 4, label: "Installing the instrument splitter", message: "Installing Demucs…", percent: null });
+  await expect(panel).toContainText("Step 3 of 4: Installing the instrument splitter");
+  await expect(panel).toContainText("keep Practice Hub open");
+  // Finished: the normal Separate button appears and the setup panel goes.
+  await page.evaluate(() => (window as unknown as { __setupDone: () => void }).__setupDone());
+  await expect(page.getByRole("button", { name: "Separate instruments" })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  expect((await calls(page)).filter((c) => c.cmd === "stems_setup")).toHaveLength(1);
+});
+
+test("a setup that fails says why, and can be tried again", async ({ page }) => {
+  const { name } = await setup(page, "audio", { runtimeMissing: true });
+  await openPlayer(page, name);
+  await page.getByRole("button", { name: "Set up instrument separation" }).click();
+  await page.evaluate(() => (window as unknown as { __setupFail: (m: string) => void }).__setupFail("The download failed (exit 6). Check your internet connection and try again."));
+  await expect(page.locator(".error-modal")).toContainText("Setting up instrument separation failed");
+  await expect(page.locator(".error-modal")).toContainText("Check your internet connection");
+  await page.locator(".error-modal button", { hasText: "Dismiss" }).click();
+  await expect(page.getByRole("button", { name: "Set up instrument separation" })).toBeVisible();
+});
+
+test("if separating finds the tools missing, the setup is offered instead of an error", async ({ page }) => {
+  const { name } = await setup(page, "audio", { separateError: "STEMS_NOT_SET_UP: instrument separation needs a one-time setup." });
+  await openPlayer(page, name);
+  await page.getByRole("button", { name: "Separate instruments" }).click();
+  await expect(page.getByTestId("stem-setup")).toBeVisible();
+  await expect(page.locator(".error-modal")).toHaveCount(0);
 });

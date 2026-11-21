@@ -2497,7 +2497,32 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
               {stems.status === "checking" && (
                 <p className="mp-empty-state">Checking for separated instruments…</p>
               )}
-              {stems.status === "none" && (
+              {stems.status === "none" && (stems.runtime === "missing" || stems.runtime === "installing") && (
+                <div className="mp-stem-setup" data-testid="stem-setup">
+                  <p className="mp-empty-state">
+                    Splitting a song into instruments needs a one-time setup. It downloads about 2 GB (Python and the
+                    separation tools), takes roughly 5–15 minutes, and is kept on this Mac so you only do it once.
+                    Nothing else on your computer is changed.
+                  </p>
+                  {stems.runtime === "missing" ? (
+                    <button className="btn-primary btn-xs" onClick={stems.setup}>Set up instrument separation</button>
+                  ) : (
+                    <div className="mp-stem-setup__progress" role="status" aria-live="polite">
+                      <strong>
+                        Step {Math.max(1, stems.setupProgress?.step ?? 1)} of {stems.setupProgress?.steps ?? 4}: {stems.setupProgress?.label ?? "Starting"}
+                      </strong>
+                      <span className="mp-bar" aria-hidden="true">
+                        <span
+                          className={`mp-bar__fill ${stems.setupProgress?.percent == null ? "mp-bar__fill--busy" : ""}`}
+                          style={{ width: stems.setupProgress?.percent == null ? "35%" : `${stems.setupProgress.percent}%` }}
+                        />
+                      </span>
+                      <span className="mp-empty-state">{stems.setupProgress?.message ?? "Working…"} Please keep Practice Hub open.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {stems.status === "none" && stems.runtime !== "missing" && stems.runtime !== "installing" && (
                 <div className="mp-row mp-row--wrap">
                   <button className="btn-ghost btn-xs" onClick={stems.separate}>Separate instruments</button>
                   <span className="mp-empty-state">Splits this file into vocals, drums, bass, guitar, piano and other so you can mute any of them. Takes a few minutes the first time.</span>

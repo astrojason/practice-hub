@@ -33,6 +33,24 @@ def fail(msg: str) -> None:
     sys.exit(1)
 
 
+def ensure_ffmpeg() -> None:
+    """Demucs reads mp3, video and most other formats through ffmpeg. People without ffmpeg installed
+    use the copy that comes with imageio-ffmpeg (installed alongside Demucs by the app's setup)."""
+    if shutil.which("ffmpeg"):
+        return
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return  # Demucs will say what it can't read; plain .wav files work without ffmpeg.
+    exe = imageio_ffmpeg.get_ffmpeg_exe()
+    shim = os.path.join(tempfile.gettempdir(), "practice-hub-ffmpeg")
+    os.makedirs(shim, exist_ok=True)
+    link = os.path.join(shim, "ffmpeg")
+    if not os.path.exists(link):
+        os.symlink(exe, link)
+    os.environ["PATH"] = shim + os.pathsep + os.environ.get("PATH", "")
+
+
 def separate(input_path: str, outdir: str) -> None:
     if not os.path.isfile(input_path):
         fail(f"File not found: {input_path}")
@@ -44,6 +62,7 @@ def separate(input_path: str, outdir: str) -> None:
             f"  {sys.executable} -m pip install demucs"
         )
 
+    ensure_ffmpeg()
     os.makedirs(outdir, exist_ok=True)
     work = tempfile.mkdtemp(prefix="stems-", dir=outdir)
     try:

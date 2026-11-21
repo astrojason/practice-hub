@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 // Instrument stems for the media player's instrument filter. The Rust side
 // (separate_stems / mix_stems / get_cached_stems) runs Demucs via a Python
@@ -23,6 +24,17 @@ export interface StemFile {
 
 export type StemStatus = "unavailable" | "checking" | "none" | "separating" | "ready";
 
+/** The one-time setup of the Python that separation runs on. */
+export type StemRuntime = "unknown" | "ready" | "missing" | "installing";
+
+export interface SetupProgress {
+  step: number;
+  steps: number;
+  label: string;
+  message: string;
+  percent: number | null;
+}
+
 export interface StemsState {
   status: StemStatus;
   stems: StemFile[] | null;
@@ -30,6 +42,10 @@ export interface StemsState {
   mixPath: string | null;
   mixing: boolean;
   separate: () => void;
+  runtime: StemRuntime;
+  setupProgress: SetupProgress | null;
+  /** Download and set up what separation runs on (one time). */
+  setup: () => void;
 }
 
 function hasTauri(): boolean {
@@ -51,6 +67,8 @@ export function useStems(
   const [stemsState, setStemsState] = useState<Tagged<StemFile[]> | null>(null);
   const [mixState, setMixState] = useState<Tagged<string> | null>(null);
   const [mixing, setMixing] = useState(false);
+  const [runtime, setRuntime] = useState<StemRuntime>("unknown");
+  const [setupProgress, setSetupProgress] = useState<SetupProgress | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const currentFileRef = useRef(filePath);
@@ -80,6 +98,45 @@ export function useStems(
     return () => { cancelled = true; };
   }, [filePath]);
 
+  // Is what separation runs on already set up? (Not asked outside the desktop app.)
+  useEffect(() => {
+    if (!hasTauri()) return;
+    let cancelled = false;
+    invoke<{ ready: boolean } | null>("stems_status")
+      .then((r) => {
+        // No answer (nothing to ask) is treated as ready: separation will say if it isn't.
+        if (!cancelled) setRuntime(r && !r.ready ? "missing" : "ready");
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setRuntime("ready");
+          onErrorRef.current(`Couldn't check whether instrument separation is set up: ${errorText(err)}`);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const setup = useCallback(() => {
+    setRuntime("installing");
+    setSetupProgress({ step: 0, steps: 4, label: "Starting", message: "Starting the setup…", percent: null });
+    let unlisten: (() => void) | null = null;
+    listen<SetupProgress>("stems-setup", (e) => setSetupProgress(e.payload))
+      .then((u) => { unlisten = u; })
+      .catch((err) => onErrorRef.current(`Couldn't follow the setup's progress: ${errorText(err)}`))
+      .finally(() => {
+        invoke("stems_setup")
+          .then(() => setRuntime("ready"))
+          .catch((err) => {
+            setRuntime("missing");
+            onErrorRef.current(`Setting up instrument separation failed: ${errorText(err)}`);
+          })
+          .finally(() => {
+            unlisten?.();
+            setSetupProgress(null);
+          });
+      });
+  }, []);
+
   const separate = useCallback(() => {
     const target = filePath;
     setStatusState({ file: target, value: "separating" });
@@ -90,6 +147,11 @@ export function useStems(
       })
       .catch((err) => {
         setStatusState({ file: target, value: "none" });
+        // The setup hasn't been done: offer it rather than showing an error.
+        if (errorText(err).startsWith("STEMS_NOT_SET_UP")) {
+          setRuntime("missing");
+          return;
+        }
         if (currentFileRef.current !== target) return;
         onErrorRef.current(`Couldn't separate instruments: ${errorText(err)}`);
       });
@@ -119,5 +181,5 @@ export function useStems(
     return () => { cancelled = true; };
   }, [stems, mutedKey, filePath]);
 
-  return { status, stems, mixPath, mixing, separate };
+  return { status, stems, mixPath, mixing, separate, runtime, setupProgress, setup };
 }

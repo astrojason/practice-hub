@@ -112,3 +112,11 @@ this needs the **Email/Password** sign-in provider enabled in the Firebase conso
 `package.json` automatically. To sign and notarize it, set `APPLE_SIGNING_IDENTITY` (a "Developer ID
 Application" certificate), `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and `APPLE_TEAM_ID`
 first; see the top of the script.
+
+## Instrument separation (stems)
+
+Splitting a song into instruments uses Demucs, which needs Python. Users don't install anything: the
+first time they press **Separate instruments** the app offers a one-click **Set up instrument
+separation** (about 2 GB, once). It downloads a private standalone Python and Demucs into the app's own
+data folder (`~/Library/Application Support/com.astrojason.practicehub/stems-runtime`) and never touches
+the rest of the computer. A Mac that already has a Python with Demucs is used as it is.

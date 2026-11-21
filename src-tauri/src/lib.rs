@@ -11,6 +11,7 @@ use tauri::{Manager, path::BaseDirectory};
 use tiny_http::Header;
 use url::Url;
 
+mod stems_runtime;
 mod tab;
 
 // ─── App configuration ────────────────────────────────────────────────────────
@@ -765,11 +766,13 @@ fn run_stem_sidecar(app: &tauri::AppHandle, args: &[&std::ffi::OsStr]) -> Result
         .path()
         .resolve("sidecar/separate_stems.py", BaseDirectory::Resource)
         .map_err(|e| format!("Could not locate stem separation script: {e}"))?;
-    let output = std::process::Command::new("python3")
+    // The app's own Python with Demucs (set up on first use), or one the computer already has.
+    let python = stems_runtime::stem_python(app)?;
+    let output = std::process::Command::new(&python)
         .arg(&script)
         .args(args)
         .output()
-        .map_err(|e| format!("Failed to launch python3: {e}"))?;
+        .map_err(|e| format!("Failed to launch {}: {e}", python.display()))?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
@@ -981,6 +984,8 @@ pub fn run() {
             voice::voice_start,
             voice::voice_stop,
             voice::voice_pause,
+            stems_runtime::stems_status,
+            stems_runtime::stems_setup,
             get_app_config,
             save_app_config,
             start_auth,
