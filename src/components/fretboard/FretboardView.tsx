@@ -658,7 +658,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
   const sayIt = useCallback(
     (text: string) => {
       try {
-        speak(text, settingsRef.current.voiceRate);
+        speak(text, settingsRef.current.voiceRate, settingsRef.current.voiceName);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         update({ practice: { ...settingsRef.current.practice, speak: false } });

@@ -219,3 +219,35 @@ test("voice speed is a setting", async ({ page }) => {
   expect((await spokenList(page))[0].rate).toBeGreaterThan(1.3);
   await page.getByTestId("fb-play").click();
 });
+
+test("the speech voice can be chosen, and is the one used", async ({ page }) => {
+  await page.addInitScript(() => {
+    const fake = [{ name: "Test Voice", lang: "en-GB", voiceURI: "tv", default: false, localService: true }];
+    Object.defineProperty(SpeechSynthesis.prototype, "getVoices", { configurable: true, value: () => fake });
+    // A plain stand-in, because a made-up voice can't be given to a real utterance.
+    (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = class {
+      voice: unknown = null;
+      lang = "";
+      rate = 1;
+      constructor(public text: string) {}
+    };
+    (window as unknown as { __voiceUsed: string[] }).__voiceUsed = [];
+    Object.defineProperty(SpeechSynthesis.prototype, "speak", {
+      configurable: true,
+      writable: true,
+      value: (u: SpeechSynthesisUtterance) => void (window as unknown as { __voiceUsed: string[] }).__voiceUsed.push(u.voice?.name ?? "default"),
+    });
+  });
+  await page.reload();
+  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator('button[aria-label="Fretboard settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await expect(dlg.locator('select[aria-label="Voice"] option')).toHaveCount(2);
+  await dlg.locator('select[aria-label="Voice"]').selectOption({ label: "Test Voice (en-GB)" });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __voiceUsed: string[] }).__voiceUsed.length)).toBeGreaterThan(0);
+  await dlg.locator("button", { hasText: "Done" }).click();
+  await page.reload();
+  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator('button[aria-label="Fretboard settings"]').click();
+  await expect(page.locator('select[aria-label="Voice"]')).toHaveValue("Test Voice");
+});

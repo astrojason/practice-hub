@@ -57,8 +57,14 @@ export const voiceBackend = (): VoiceBackend => window.__fretboardVoice ?? tauri
 /** Words per minute for the speech voice, as a speech-synthesis rate (175 wpm is normal speed). */
 export const rateFor = (wpm: number) => Math.max(0.5, Math.min(2, wpm / 175));
 
-/** Say something aloud. Throws if this webview cannot speak. */
-export function speak(text: string, wpm: number): void {
+/** The voices this computer offers, English ones first. */
+export function availableVoices(): SpeechSynthesisVoice[] {
+  const voices = window.speechSynthesis?.getVoices() ?? [];
+  return [...voices].sort((a, b) => Number(b.lang.startsWith("en")) - Number(a.lang.startsWith("en")) || a.name.localeCompare(b.name));
+}
+
+/** Say something aloud with the named voice (or the default). Throws if this webview cannot speak. */
+export function speak(text: string, wpm: number, voiceName = ""): void {
   const synth = window.speechSynthesis;
   if (!synth || typeof SpeechSynthesisUtterance === "undefined") {
     throw new Error("This webview cannot speak aloud (no speech synthesis).");
@@ -67,5 +73,10 @@ export function speak(text: string, wpm: number): void {
   const u = new SpeechSynthesisUtterance(text);
   u.rate = rateFor(wpm);
   u.lang = "en-US";
+  const chosen = voiceName ? window.speechSynthesis.getVoices().find((v) => v.name === voiceName) : undefined;
+  if (chosen) {
+    u.voice = chosen;
+    u.lang = chosen.lang;
+  }
   synth.speak(u);
 }

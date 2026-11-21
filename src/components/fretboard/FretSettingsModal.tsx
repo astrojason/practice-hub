@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ConfirmModal } from "../ConfirmModal";
 import { ErrorModal } from "../ErrorModal";
 import { INSTRUMENTS, engine, type SoundFontPreset } from "../../lib/fretboard/audio";
-import { speak } from "../../lib/fretboard/voice";
+import { availableVoices, speak } from "../../lib/fretboard/voice";
 import { SCHEMES } from "../../lib/fretboard/schemes";
 import type { FretSettings, LabelMode } from "../../lib/fretboard/settings";
 import { TUNINGS, plainName } from "../../lib/fretboard/theory";
@@ -28,6 +28,15 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<{ id: string; label: string }[]>([]);
   const [output, setOutput] = useState("default");
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => availableVoices());
+  useEffect(() => {
+    // Voices can arrive after the page loads.
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const on = () => setVoices(availableVoices());
+    synth.addEventListener("voiceschanged", on);
+    return () => synth.removeEventListener("voiceschanged", on);
+  }, []);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -254,6 +263,27 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
             <input type="range" min={0} max={1} step={0.01} aria-label="Drone volume" value={settings.droneVolume} onChange={(e) => update({ droneVolume: parseFloat(e.target.value) })} />
           </label>
           <label>
+            Voice
+            <select
+              aria-label="Voice"
+              value={settings.voiceName}
+              onChange={(e) => {
+                update({ voiceName: e.target.value });
+                try {
+                  speak("G major", settings.voiceRate, e.target.value);
+                } catch (err) {
+                  fail(err);
+                }
+              }}
+            >
+              <option value="">System default</option>
+              {voices.map((v) => (
+                <option key={v.voiceURI} value={v.name}>{v.name} ({v.lang})</option>
+              ))}
+            </select>
+            <span className="fb-dim">More voices: System Settings &gt; Accessibility &gt; Spoken Content &gt; System Voice &gt; Manage Voices.</span>
+          </label>
+          <label>
             Voice speed
             <input
               type="range"
@@ -265,7 +295,7 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
               onChange={(e) => update({ voiceRate: parseInt(e.target.value) })}
               onMouseUp={() => {
                 try {
-                  speak("G major", settings.voiceRate);
+                  speak("G major", settings.voiceRate, settings.voiceName);
                 } catch (err) {
                   fail(err);
                 }

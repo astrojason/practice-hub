@@ -37,6 +37,8 @@ export interface PlaybackSettings {
   voice: boolean;
   /** How fast the voice talks, in words per minute. */
   voiceRate: number;
+  /** The speech voice by name ("" for the system default). */
+  voiceName: string;
 }
 
 export type LabelMode = "degree" | "note" | "both" | "interval" | "none";
@@ -95,6 +97,7 @@ export const DEFAULT_SETTINGS: FretSettings = {
   pace: { type: "average" },
   voice: false,
   voiceRate: 175,
+  voiceName: "",
   theme: "dark",
   scheme: 0,
   labels: "degree",
