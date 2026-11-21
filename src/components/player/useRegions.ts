@@ -12,7 +12,7 @@ export interface Region {
   increaseEnabled: boolean;
   createdAt: number;
   section_id?: number;
-  /** "1% better every day" — nudge this region's saved speed up 1% each new day it's practiced, capped at 100%. */
+  /** "1% better every day" — nudge this region's saved speed up 1% each new day it's practiced, stopping at 100% or the speed where its own bpm reaches the resource's bpm (the target tempo), whichever comes first. */
   dailyBoostEnabled?: boolean;
   /** Local YYYY-MM-DD the boost last checked/applied — prevents more than one nudge per day. */
   lastBoostDate?: string;

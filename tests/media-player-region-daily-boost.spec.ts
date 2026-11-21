@@ -261,3 +261,80 @@ test("a daily +1% nudge leaves the previous → new bpm on the region card until
   await openPlayer(page);
   await expect(page.locator(".mp-region-item", { hasText: "Verse" }).locator("[data-boost-note]")).toHaveCount(0);
 });
+
+// The resource's BPM is the target tempo. The boost stops at 100% or at the speed where the
+// region's own tempo reaches it, whichever comes first.
+async function targetTempoRegion(page: import("@playwright/test").Page, speed: string, regionBpm: string) {
+  await page.route("**/user/dashboard**", (route) =>
+    route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        ...mockDashboard,
+        exercises: [{ ...mockDashboard.exercises[0], resources: [{ name: "Practice Track", url: "/path/to/practice.mp3", type: "local_file", bpm: 120 }] }],
+      }),
+    }));
+  await page.reload();
+  await openPlayer(page);
+  await page.locator('button[title="Pause"]').click();
+  const speedInput = page.locator(".media-player__speed-input");
+  await speedInput.fill(speed);
+  await speedInput.blur();
+  await page.locator('button[title="Set from playhead"]').first().click();
+  await page.locator('button[title="Skip forward 5%"]').click();
+  await page.locator('button[title="Set from playhead"]').nth(1).click();
+  await page.fill("#regionNameInput", "Riff");
+  await page.fill("#regionBpmInput", regionBpm);
+  await page.locator("#addRegionBtn").click();
+  const item = page.locator(".mp-region-item", { hasText: "Riff" });
+  await expect(item).toBeVisible();
+  await item.locator('[data-region-action="daily-boost"]').click();
+  await backdateRegionBoost(page, "Riff");
+  await page.reload();
+  await openPlayer(page);
+  return page.locator(".mp-region-item", { hasText: "Riff" });
+}
+
+test("the daily boost stops at the speed that matches the target tempo, which can be below 100%", async ({ page }) => {
+  // 150 BPM at 79% is 118.5 BPM; one more 1% would pass the 120 target, so it lands on 80% (120 BPM).
+  const item = await targetTempoRegion(page, "0.79", "150");
+  await item.click();
+  await expect(page.locator("#speedIndicator")).toHaveText("80%");
+  await expect(item.locator(".mp-region-meta")).toContainText("80%");
+  // Already at the target: another day changes nothing.
+  await item.click();
+  await backdateRegionBoost(page, "Riff");
+  await page.reload();
+  await openPlayer(page);
+  await page.locator(".mp-region-item", { hasText: "Riff" }).click();
+  await expect(page.locator("#speedIndicator")).toHaveText("80%");
+});
+
+test("a target tempo that needs more than 100% doesn't take the boost past 100%", async ({ page }) => {
+  // 100 BPM needs 120% to reach the 120 target, but the boost still stops at 100%.
+  const item = await targetTempoRegion(page, "0.995", "100");
+  await item.click();
+  await expect(page.locator("#speedIndicator")).toHaveText("100%");
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+});
+
+const storedSpeed = (page: import("@playwright/test").Page, name: string) =>
+  page.evaluate((n) => {
+    const presets = JSON.parse(localStorage.getItem("practicePlayerPresets") ?? "{}");
+    return presets["/path/to/practice.mp3"].regions.find((r: { name: string }) => r.name === n).playbackSpeed as number;
+  }, name);
+
+test("when the nudge rounds to the target tempo, the speed is set to match it exactly so it doesn't fire again", async ({ page }) => {
+  // 150 BPM at 79.15% nudges to 79.94% = 119.9 BPM, which rounds to the 120 target: stored as exactly 80%.
+  const item = await targetTempoRegion(page, "0.7915", "150");
+  await item.click();
+  await expect(page.locator("#speedIndicator")).toHaveText("80%");
+  await expect.poll(() => storedSpeed(page, "Riff")).toBe(0.8);
+});
+
+test("when the nudge rounds to 100%, the speed is set to exactly 100% so it doesn't fire again", async ({ page }) => {
+  // No region BPM: 98.95% nudges to 99.94%, which rounds to 100%, so it is stored as 100%.
+  const item = await targetTempoRegion(page, "0.9895", "");
+  await item.click();
+  await expect(page.locator("#speedIndicator")).toHaveText("100%");
+  await expect.poll(() => storedSpeed(page, "Riff")).toBe(1);
+});

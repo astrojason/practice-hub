@@ -123,6 +123,12 @@ function parseTimeInput(value: string, duration: number): number | null {
   return Math.min(seconds, duration);
 }
 
+/** The speed a daily boost climbs to: 100%, or less when the region's own tempo already reaches the target tempo (the resource's BPM) at a slower speed. */
+export function boostSpeedCap(regionBpm: number | null | undefined, targetBpm: number | null | undefined): number {
+  if (!regionBpm || !targetBpm || regionBpm <= 0 || targetBpm <= 0) return 1;
+  return Math.min(1, Math.max(0.25, targetBpm / regionBpm));
+}
+
 function todayLocalDateStr(): string {
   const d = new Date();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -322,11 +328,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     mutedStemsRef.current = next;
     setMutedStemsState(next);
   }, []);
-  const stems = useStems(filePath, mutedStems, (msg) => setPersistError((prev) => prev ?? msg));
+  // Instrument separation is for audio files; a video has nothing to separate here, so it gets none.
+  const stems = useStems(isVideo ? "" : filePath, mutedStems, (msg) => setPersistError((prev) => prev ?? msg));
   // The file the audio engine is currently playing: filePath, or a stem mix.
   const loadedAudioSourceRef = useRef<string | null>(null);
-  const stemAudioRef = useRef<HTMLAudioElement>(null);
-  const videoStemMix = isVideo ? stems.mixPath : null;
 
   // ── Metronome ────────────────────────────────────────────────────────────────
   const [metronomeFollowSpeed, setMetronomeFollowSpeed] = useState(true);
@@ -753,58 +758,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVideo, audioState.status, desiredAudioSource]);
-
-  // Video: mute the video's own soundtrack and play the stem mix on a hidden
-  // <audio> element kept in step with it (play/pause/seek/rate, drift > 150ms).
-  useEffect(() => {
-    const vid = videoRef.current;
-    const aud = stemAudioRef.current;
-    if (!isVideo || !vid) return;
-    if (!videoStemMix || !aud) {
-      vid.muted = false;
-      return;
-    }
-    vid.muted = true;
-    aud.preservesPitch = true;
-    const sync = (force: boolean) => {
-      aud.playbackRate = vid.playbackRate;
-      if (force || Math.abs(aud.currentTime - vid.currentTime) > 0.15) aud.currentTime = vid.currentTime;
-    };
-    const onPlay = () => {
-      sync(true);
-      aud.play().catch((err) => {
-        // AbortError just means a pause/seek interrupted this play() — expected.
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setPersistError(`Couldn't play the instrument mix: ${err instanceof Error ? err.message : String(err)}`);
-      });
-    };
-    const onPause = () => aud.pause();
-    const onSeeked = () => sync(true);
-    const onRate = () => { aud.playbackRate = vid.playbackRate; };
-    const onTime = () => { if (!vid.paused) sync(false); };
-    const onAudioError = () => {
-      const detail = aud.error?.message || (aud.error?.code ? `media error code ${aud.error.code}` : "unknown error");
-      setPersistError(`Couldn't load the instrument mix: ${detail}`);
-    };
-    vid.addEventListener("play", onPlay);
-    vid.addEventListener("pause", onPause);
-    vid.addEventListener("seeked", onSeeked);
-    vid.addEventListener("ratechange", onRate);
-    vid.addEventListener("timeupdate", onTime);
-    aud.addEventListener("error", onAudioError);
-    sync(true);
-    if (!vid.paused) onPlay();
-    return () => {
-      vid.removeEventListener("play", onPlay);
-      vid.removeEventListener("pause", onPause);
-      vid.removeEventListener("seeked", onSeeked);
-      vid.removeEventListener("ratechange", onRate);
-      vid.removeEventListener("timeupdate", onTime);
-      aud.removeEventListener("error", onAudioError);
-      aud.pause();
-      vid.muted = false;
-    };
-  }, [isVideo, videoStemMix]);
 
   const toggleStem = (name: string) => {
     const current = mutedStemsRef.current;
@@ -1329,13 +1282,23 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     if (!region.dailyBoostEnabled) return region.playbackSpeed;
     const today = todayLocalDateStr();
     if (region.lastBoostDate === today) return region.playbackSpeed;
-    if (region.lastBoostDate === undefined || region.playbackSpeed >= 1) {
+    // The resource's BPM is the target tempo: the boost stops at the speed where the
+    // region's own tempo reaches it, if that comes before 100%.
+    const targetBpm = resources?.find(r => r.url === filePath)?.bpm ?? null;
+    const cap = boostSpeedCap(region.bpm, targetBpm);
+    if (region.lastBoostDate === undefined || region.playbackSpeed >= cap - 1e-9) {
       regionState.updateRegionAt(region.id, { lastBoostDate: today });
       savePreset({ silent: true });
       return region.playbackSpeed;
     }
-    const boosted = Math.min(1, region.playbackSpeed * 1.01);
-    const noteBpm = region.bpm ?? resources?.find(r => r.url === filePath)?.bpm ?? null;
+    let boosted = Math.min(cap, region.playbackSpeed * 1.01);
+    // Close enough to round to the target (the target tempo, or 100%): land on it exactly,
+    // so the next day sees it as reached instead of nudging a fraction of a percent more.
+    const roundsToTarget = region.bpm && targetBpm && cap < 1
+      ? Math.round(region.bpm * boosted) >= Math.round(targetBpm)
+      : Math.round(boosted * 100) >= 100;
+    if (roundsToTarget) boosted = cap;
+    const noteBpm = region.bpm ?? targetBpm;
     const note = `${noteBpm != null ? `${Math.round(noteBpm * boosted)} BPM ` : ""}(${(region.playbackSpeed * 100).toFixed(2)}-${(boosted * 100).toFixed(2)}%) on ${today}`;
     setBoostNotes(n => ({ ...n, [region.id]: note }));
     regionState.updateRegionAt(region.id, { playbackSpeed: boosted, lastBoostDate: today });
@@ -1961,9 +1924,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
             playsInline
             preload="auto"
           />
-          {videoStemMix && (
-            <audio ref={stemAudioRef} className="mp-stem-audio" src={assetUrl(videoStemMix)} preload="auto" />
-          )}
         </div>
       )}
 
@@ -2482,8 +2442,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
               </section>
             )}
 
-            {/* Instrument filter */}
-            <section className="mp-section mp-instruments">
+            {/* Instrument filter (audio only) */}
+            {!isVideo && <section className="mp-section mp-instruments">
               <div className="mp-section-header">
                 <span className="mp-section-label">Instruments</span>
                 {stems.mixing && <span className="mp-marker-count">Mixing…</span>}
@@ -2541,7 +2501,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   ))}
                 </div>
               )}
-            </section>
+            </section>}
 
 
           </div>
@@ -2657,7 +2617,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                           <button
                             className={`btn-ghost btn-xs ${region.dailyBoostEnabled ? "is-active" : ""}`}
                             data-region-action="daily-boost"
-                            title="1% better every day — nudges this region's saved speed up 1% each day you practice it, until it reaches 100%"
+                            title="1% better every day — nudges this region's saved speed up 1% each day you practice it, until it reaches 100% or the speed that matches the resource's BPM (the target tempo), whichever comes first"
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleRegionDailyBoost(region.id);

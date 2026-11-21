@@ -253,21 +253,14 @@ test("a mix failure is shown in the error modal", async ({ page }) => {
   await expect(page.locator(".error-modal")).toContainText("numpy missing");
 });
 
-test("muting a stem on a video mutes the video's own audio and plays the mix alongside it", async ({ page }) => {
+test("a video has no instrument separation to offer", async ({ page }) => {
   const { name } = await setup(page, "video", { cached: true });
   await openPlayer(page, name);
-  const video = page.locator("video");
-  await expect(video).toBeVisible();
-  await expect(video).toHaveJSProperty("muted", false);
-
-  await stemToggle(page, "guitar").uncheck();
-  const stemAudio = page.locator("audio.mp-stem-audio");
-  await expect(stemAudio).toHaveAttribute("src", /mix-guitar\.wav/);
-  await expect(video).toHaveJSProperty("muted", true);
-
-  await stemToggle(page, "guitar").check();
-  await expect(stemAudio).toHaveCount(0);
-  await expect(video).toHaveJSProperty("muted", false);
+  await expect(page.locator("video")).toBeVisible();
+  await expect(page.locator(".mp-instruments")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Separate instruments" })).toHaveCount(0);
+  const calls = await page.evaluate(() => (window as unknown as { __stemCalls: { cmd: string }[] }).__stemCalls.map((c) => c.cmd));
+  expect(calls).not.toContain("get_cached_stems");
 });
 
 const emitEvent = (page: Page, event: string, payload: unknown) =>
