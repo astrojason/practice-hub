@@ -218,7 +218,7 @@ export function cagedScale(chosen: ScaleDef, minor: boolean): ScaleDef {
 function cagedScaleNotes(tun: number[], root: number, tones: Tone[], lo: number, hi: number): FretNote[] {
   const centre2 = lo + hi;
   const out: FretNote[] = [];
-  for (let s = 0; s < 6; s++) {
+  for (let s = 0; s < tun.length; s++) {
     const on = windowNotes(tun, root, tones, Math.max(lo - 1, 0), hi + 1).filter((n) => n[0] === s);
     while (on.length > 3) {
       let far = 0;
@@ -266,7 +266,7 @@ function fingerLine(tun: number[], pitches: number[]): FretNote[] {
   let onString = 0;
   for (const p of pitches) {
     let best: [number, number, number] | null = null;
-    for (let st = string; st < 6; st++) {
+    for (let st = string; st < tun.length; st++) {
       const f = p - tun[st];
       if (f < 0 || f > NUM_FRETS || (st === string && onString >= 2 && out.length > 0)) continue;
       const last = out[out.length - 1];
@@ -431,7 +431,7 @@ export function buildPlan(
         let pitches = tones.map((t) => base + t.semis);
         if (count === 4) pitches = [...pitches, ...tones.map((t) => base + 12 + t.semis), base + 24];
         else if (count === 7) pitches.push(base + 24);
-        pitches = pitches.filter((p) => p <= tun[5] + NUM_FRETS);
+        pitches = pitches.filter((p) => p <= Math.max(...tun) + NUM_FRETS);
         const line = fingerLine(tun, pitches);
         if (!line.length) continue;
         const notes = upDown(line);
@@ -468,6 +468,10 @@ export function buildPlan(
       break;
     }
     case "relay": {
+      if (tun.length !== 6) {
+        message = "The chord relay is built for six-string guitars: choose the 6-string guitar to use it.";
+        break;
+      }
       const chords = diatonicChords(scale.tones, set.relaySevenths);
       const sets = relayStringSets(set.relaySevenths);
       const strings = sets[Math.min(set.relaySet, sets.length - 1)].strings;

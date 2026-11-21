@@ -174,6 +174,54 @@ export const TUNINGS: Tuning[] = [
   { name: "Open G", strings: [38, 43, 50, 55, 59, 62] },
 ];
 
+/** A stringed instrument the neck can show, with its usual tunings (lowest string first, MIDI numbers). */
+export interface InstrumentType {
+  id: string;
+  name: string;
+  tunings: Tuning[];
+}
+
+export const INSTRUMENT_TYPES: InstrumentType[] = [
+  { id: "guitar6", name: "6-string guitar", tunings: TUNINGS },
+  {
+    id: "guitar7",
+    name: "7-string guitar",
+    tunings: [
+      { name: "Standard (B E A D G B E)", strings: [35, 40, 45, 50, 55, 59, 64] },
+      { name: "Drop A (A E A D G B E)", strings: [33, 40, 45, 50, 55, 59, 64] },
+      { name: "Half-step down", strings: [34, 39, 44, 49, 54, 58, 63] },
+    ],
+  },
+  {
+    id: "bass4",
+    name: "4-string bass",
+    tunings: [
+      { name: "Standard (E A D G)", strings: [28, 33, 38, 43] },
+      { name: "Drop D (D A D G)", strings: [26, 33, 38, 43] },
+      { name: "Half-step down", strings: [27, 32, 37, 42] },
+    ],
+  },
+  {
+    id: "bass5",
+    name: "5-string bass",
+    tunings: [
+      { name: "Standard (B E A D G)", strings: [23, 28, 33, 38, 43] },
+      { name: "High C (E A D G C)", strings: [28, 33, 38, 43, 48] },
+    ],
+  },
+  {
+    id: "ukulele",
+    name: "Ukulele",
+    tunings: [
+      { name: "Standard (G C E A, high G)", strings: [67, 60, 64, 69] },
+      { name: "Low G (G C E A)", strings: [55, 60, 64, 69] },
+      { name: "Baritone (D G B E)", strings: [50, 55, 59, 64] },
+    ],
+  },
+];
+
+export const instrumentType = (id: string): InstrumentType => INSTRUMENT_TYPES.find((i) => i.id === id) ?? INSTRUMENT_TYPES[0];
+
 export function bothNames(pc: number): string {
   return BOTH_NAMES[mod(pc, 12)];
 }
@@ -310,7 +358,23 @@ const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
  * Positions for a scale: 3 notes per string for 7-note scales, 2 per string for
  * pentatonics, and a 5-fret box for the rest. One position starts on each degree.
  */
+/** String indexes from the lowest-sounding string up (a re-entrant ukulele's high G is not the lowest). */
+function pitchOrder(tuning: number[]): number[] {
+  return tuning.map((_, i) => i).sort((a, b) => tuning[a] - tuning[b] || a - b);
+}
+
+/** Run a position builder on the strings sorted by pitch, and map its notes back to the real strings. */
+function viaPitchOrder(tuning: number[], build: (sorted: number[]) => PositionInfo[]): PositionInfo[] {
+  const order = pitchOrder(tuning);
+  if (order.every((o, i) => o === i)) return build(tuning);
+  return build(order.map((i) => tuning[i])).map((p) => ({ ...p, notes: p.notes.map(([s, f]) => [order[s], f] as FretNote) }));
+}
+
 export function scalePositions(tuning: number[], root: number, ts: Tone[]): PositionInfo[] {
+  return viaPitchOrder(tuning, (t) => scalePositionsSorted(t, root, ts));
+}
+
+function scalePositionsSorted(tuning: number[], root: number, ts: Tone[]): PositionInfo[] {
   const nps = ts.length === 7 ? 3 : ts.length === 5 ? 2 : 0;
   const out: PositionInfo[] = [];
   anchors(tuning, root, ts).forEach(([anchor, label], i) => {
@@ -357,6 +421,10 @@ function withOctaveRepeats(base: PositionInfo[]): PositionInfo[] {
 
 /** Positions for an arpeggio: a 5-fret box starting on each chord tone on the low string. */
 export function arpeggioPositions(tuning: number[], root: number, ts: Tone[]): PositionInfo[] {
+  return viaPitchOrder(tuning, (t) => arpeggioPositionsSorted(t, root, ts));
+}
+
+function arpeggioPositionsSorted(tuning: number[], root: number, ts: Tone[]): PositionInfo[] {
   const base = anchors(tuning, root, ts).map(([anchor, label], i) => {
     const lo = anchor === 0 ? 0 : anchor - 1;
     const notes = fitOnNeck(windowNotes(tuning, root, ts, lo, lo + 4));
@@ -416,7 +484,7 @@ function scoreVoicing(tuning: number[], frets: (number | null)[], bass: number, 
   });
   if (!required.every((p) => present.includes(p))) return null;
   const sounded = present.length;
-  if (sounded < 3) return null;
+  if (sounded < Math.min(3, tuning.length)) return null;
   let top = bass;
   frets.forEach((f, s) => {
     if (f !== null) top = s;
@@ -437,14 +505,14 @@ export function chordVoicings(tuning: number[], root: number, ts: Tone[]): Voici
   const found: Voicing[] = [];
   const same = (a: Voicing, b: Voicing) => a.bassString === b.bassString && a.frets.every((f, i) => f === b.frets[i]);
 
-  for (let bass = 0; bass < 3; bass++) {
+  for (let bass = 0; bass < Math.min(3, tuning.length - 1); bass++) {
     const r = mod(root - tuning[bass], 12);
     for (const base of [r, r + 12]) {
       if (base > 15) continue;
       const lo = Math.max(base - 3, 0);
       const hi = base + 4;
       const options: (number | null)[][] = [];
-      for (let s = bass + 1; s < 6; s++) {
+      for (let s = bass + 1; s < tuning.length; s++) {
         const o: (number | null)[] = [null];
         if (pcs.includes(mod(tuning[s], 12)) && base <= 5) o.push(0);
         for (let f = Math.max(lo, 1); f <= hi; f++) if (pcs.includes(mod(tuning[s] + f, 12))) o.push(f);
@@ -453,7 +521,7 @@ export function chordVoicings(tuning: number[], root: number, ts: Tone[]): Voici
       let best: Voicing | null = null;
       const idx = options.map(() => 0);
       for (;;) {
-        const frets: (number | null)[] = [null, null, null, null, null, null];
+        const frets: (number | null)[] = tuning.map(() => null);
         frets[bass] = base;
         idx.forEach((i, k) => {
           frets[bass + 1 + k] = options[k][i];

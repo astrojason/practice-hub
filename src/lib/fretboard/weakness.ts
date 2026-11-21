@@ -174,14 +174,14 @@ export class Weakness {
   }
 
   /** Why a note on the neck is a weak spot, if it is: one line per reason. */
-  reasons(keyPc: number, degree: string, pc: number, spot: [number, number]): string[] {
+  reasons(keyPc: number, degree: string, pc: number, spot: [number, number], strings = 6): string[] {
     const out: string[] = [];
     const d = this.degree.get(`${keyPc}:${degree}`);
     if (d && this.isWeak(d)) out.push(this.describe(`Finding the ${degree} in ${KEYS[((keyPc % 12) + 12) % 12]} (only in this key)`, d));
     const n = this.note.get(((pc % 12) + 12) % 12);
     if (n && this.isWeak(n)) out.push(this.describe(`Naming ${bothNames(pc)} (every ${bothNames(pc)} on the neck, any key)`, n));
     const sp = this.spot.get(`${spot[0]}:${spot[1]}`);
-    if (sp && this.isWeak(sp)) out.push(this.describe(`This spot (string ${6 - spot[0]}, fret ${spot[1]} only)`, sp));
+    if (sp && this.isWeak(sp)) out.push(this.describe(`This spot (string ${strings - spot[0]}, fret ${spot[1]} only)`, sp));
     return out;
   }
 }

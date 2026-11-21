@@ -88,7 +88,8 @@ export function itemName(choice: string): string {
 export function makeQuestion(kind: QuizKind, rng: Rng, tun: number[], key: number, scaleIdx: number, maxFret: number): Question {
   switch (kind) {
     case "note": {
-      const s = rng.below(6);
+      const n = tun.length;
+      const s = rng.below(n);
       const f = rng.below(maxFret + 1);
       const pc = mod(tun[s] + f, 12);
       return {
@@ -97,7 +98,7 @@ export function makeQuestion(kind: QuizKind, rng: Rng, tun: number[], key: numbe
         reveal: [plainName(pc)],
         choices: [...BOTH_NAMES],
         answer: pc,
-        explain: `String ${6 - s}, fret ${f} is ${bothNames(pc)}.`,
+        explain: `String ${n - s}, fret ${f} is ${bothNames(pc)}.`,
         together: false,
       };
     }
@@ -123,12 +124,12 @@ export function makeQuestion(kind: QuizKind, rng: Rng, tun: number[], key: numbe
     case "earinterval": {
       for (let attempt = 0; attempt < 200; attempt++) {
         const iv = rng.below(12) + 1;
-        const s = rng.below(5);
+        const s = rng.below(tun.length - 1);
         const f = rng.below(Math.min(maxFret, 12) + 1);
         const p = tun[s] + f;
         // Second note on the same or a higher string, within a hand's reach.
         const options: FretNote[] = [];
-        for (let s2 = s; s2 < 6; s2++) {
+        for (let s2 = s; s2 < tun.length; s2++) {
           const f2 = p + iv - tun[s2];
           if (f2 >= 0 && f2 <= maxFret && Math.abs(f2 - f) <= 4 && !(s2 === s && f2 === f)) options.push([s2, f2]);
         }

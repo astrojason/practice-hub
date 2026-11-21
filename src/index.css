@@ -3467,3 +3467,5 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .fb-pick-string { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: center; }
 .fb-pick-string__bar { height: 8px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
 .fb-pick-string__bar span { display: block; height: 100%; background: var(--accent); }
+.fb-instrument { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.fb-instrument select { text-transform: none; letter-spacing: 0; font-size: 13px; }

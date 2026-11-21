@@ -66,8 +66,8 @@ export function summarize(records: QuizRecord[]): { answered: number; right: num
 }
 
 /** "Find the note" (kind 5): how often each string was picked, and how often that pick was right. */
-export function stringPicks(records: QuizRecord[]): { string: number; picks: number; right: number }[] {
-  const out = Array.from({ length: 6 }, (_, s) => ({ string: s, picks: 0, right: 0 }));
+export function stringPicks(records: QuizRecord[], strings = 6): { string: number; picks: number; right: number }[] {
+  const out = Array.from({ length: strings }, (_, s) => ({ string: s, picks: 0, right: 0 }));
   for (const r of records) {
     if (r.kind !== 5 || !r.spot) continue;
     const e = out[r.spot[0]];

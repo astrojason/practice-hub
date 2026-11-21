@@ -28,7 +28,8 @@ import {
   CHORDS,
   KEYS,
   SCALES,
-  TUNINGS,
+  INSTRUMENT_TYPES,
+  instrumentType,
   arpeggioPositions,
   chordVoicings,
   diatonicChords,
@@ -112,7 +113,10 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   const showError = useCallback((m: string) => setError(m), []);
   const font = useSoundFont(settings, update, showError);
 
-  const tuning = TUNINGS[settings.tuning]?.strings ?? TUNINGS[0].strings;
+  const instType = instrumentType(settings.stringed);
+  const tuning = (instType.tunings[settings.tuning] ?? instType.tunings[0]).strings;
+  // CAGED and the chord relay are built for a standard six-string guitar.
+  const standardGuitar = settings.stringed === "guitar6" && settings.tuning === 0;
   const labelMode = settings.labels;
   const scale = SCALES[scaleIdx];
   const chord = CHORDS[chordIdx];
@@ -148,7 +152,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       const sum = summarize(quiz.session);
       const kindName = QUIZ_KINDS.find((k) => k.id === quiz.kind)?.name ?? "Quiz";
       const slow = byItem(quiz.session)[0];
-      const strings = quiz.kind === "findnote" ? stringPicks(quiz.session).filter((e) => e.picks > 0) : [];
+      const strings = quiz.kind === "findnote" ? stringPicks(quiz.session, tuning.length).filter((e) => e.picks > 0) : [];
       logTrainerActivity(
         `Theory Training — Quiz result: ${kindName}: ${sum.right} of ${sum.answered} right (${Math.round((sum.right * 100) / sum.answered)}%), average ${(sum.avgMs / 1000).toFixed(1)} s, fastest right ${(sum.fastestMs / 1000).toFixed(1)} s` +
           (slow ? `; slowest: ${slow.item} (${(slow.avgMs / 1000).toFixed(1)} s)` : "") +
@@ -193,7 +197,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
     if (page === "arpeggios") return [...arpPos.map((p) => p.title), "Whole neck"];
     return voicings.map((v, i) => {
       const fr = voicingNotes(v).map((n) => n[1]);
-      return `Shape ${i + 1} — bass on the ${["6th", "5th", "4th"][v.bassString]} string, frets ${Math.min(...fr)}–${Math.max(...fr)}`;
+      return `Shape ${i + 1} — bass on string ${tuning.length - v.bassString}, frets ${Math.min(...fr)}–${Math.max(...fr)}`;
     });
   }, [page, scaleLike, scalePos, arpPos, voicings]);
   const idx = Math.min(posIdx, Math.max(choices.length - 1, 0));
@@ -218,7 +222,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   }, [tuning, key, prog.chords, settings.beatsPerChord]);
   const items = useMemo(() => progItems.map((p) => ({ ...p, voicing: p.voicing.length ? p.voicing : null })), [progItems]);
   const plan: Plan = useMemo(() => {
-    if (page === "practice") return buildPlan(settings.practice, settings.notesPerBeat, tuning, settings.tuning === 0, key, scale, idx, items);
+    if (page === "practice") return buildPlan(settings.practice, settings.notesPerBeat, tuning, standardGuitar, key, scale, idx, items);
     if (page !== "speed") return { steps: [], message: null };
     // The speed trainer's run: the chosen position, arpeggio, sequence or the progression's arpeggios.
     const pb = settings.notesPerBeat;
@@ -231,8 +235,8 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       return singleRun(tuning, `${KEYS[key]}${chord.symbol} arpeggio · position ${ai + 1}`, key, chord.tones, arpPos[ai]?.notes ?? [], pb);
     }
     const routine = ex === "sequence" ? "sequences" : "changes";
-    return buildPlan({ ...settings.practice, routine, changesScale: false, backing: true }, pb, tuning, settings.tuning === 0, key, scale, idx, items);
-  }, [page, settings.practice, settings.speed.exercise, settings.notesPerBeat, tuning, settings.tuning, key, scale, idx, items, scalePos, arpPos, chord]);
+    return buildPlan({ ...settings.practice, routine, changesScale: false, backing: true }, pb, tuning, standardGuitar, key, scale, idx, items);
+  }, [page, settings.practice, settings.speed.exercise, settings.notesPerBeat, tuning, standardGuitar, key, scale, idx, items, scalePos, arpPos, chord]);
   const planned = page === "practice" || page === "speed";
   const stepIdx = planned ? (playing ? practiceMarker : page === "practice" ? selectedStep : null) : null;
   const practiceStep = stepIdx !== null ? plan.steps[stepIdx] : undefined;
@@ -641,7 +645,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   playingRef.current = playing;
   const restartKey = [
     page, key, scaleIdx, chordIdx, idx, settings.bpm, settings.notesPerBeat, settings.direction, settings.loop, settings.click, settings.drone,
-    settings.comp, settings.drums, settings.beatsPerChord, settings.playOver, settings.suitScale, JSON.stringify(activeProg), JSON.stringify(settings.practice), settings.tuning,
+    settings.comp, settings.drums, settings.beatsPerChord, settings.playOver, settings.suitScale, JSON.stringify(activeProg), JSON.stringify(settings.practice), settings.tuning, settings.stringed,
   ].join("|");
   const lastKey = useRef(restartKey);
   useEffect(() => {
@@ -876,6 +880,23 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       <div className="fretboard-body">
         <div className="fretboard-main">
           {!focus && (
+          <>
+          <label className="fb-instrument">
+            Instrument
+            <select
+              aria-label="Instrument"
+              value={settings.stringed}
+              onChange={(e) => {
+                if (playing) stopPlayback();
+                update({ stringed: e.target.value, tuning: 0, hiddenStrings: [], connectStrings: [] });
+                setPosIdx(0);
+              }}
+            >
+              {INSTRUMENT_TYPES.map((i) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </label>
           <div className="fretboard-keys" role="group" aria-label="Key">
             {KEYS.map((k, i) => (
               <button key={k} className={`fb-key ${i === key ? "active" : ""}`} onClick={() => { setKey(i); setPosIdx(0); }}>
@@ -883,6 +904,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
               </button>
             ))}
           </div>
+          </>
           )}
 
           {!focus && (
@@ -1041,7 +1063,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
               selected={selectedStep}
               playingStep={playing ? practiceMarker : null}
               onStep={previewStep}
-              standardTuning={settings.tuning === 0}
+              standardTuning={standardGuitar}
             />
           )}
 

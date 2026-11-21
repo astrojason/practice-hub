@@ -358,7 +358,7 @@ test("the Find the note results include the strings picked", async ({ page }) =>
   await quiz(page);
   await page.locator(".fb-quiz-kind", { hasText: "Find the note" }).click();
   await start(page);
-  await page.locator('.fb-note[data-pickable="true"][data-string="1"]').first().click({ force: true });
+  await page.locator('.fb-note[data-pickable="true"][data-string="1"]').first().dispatchEvent("click");
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(page.locator(".modal-card textarea")).toHaveValue(/Quiz result: Find the note: \d of 1 right.*strings picked: A 1/);
 });

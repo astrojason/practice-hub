@@ -45,7 +45,7 @@ async function spot(page: P, wantRight: boolean, onString?: number) {
   if (!found) throw new Error("no spot");
   return found as [number, number];
 }
-const click = (page: P, [s, f]: [number, number]) => page.locator(`.fb-note[data-string="${s}"][data-fret="${f}"]`).click({ force: true });
+const click = (page: P, [s, f]: [number, number]) => page.locator(`.fb-note[data-string="${s}"][data-fret="${f}"]`).dispatchEvent("click");
 
 test("Find the note names a note and lets you click it anywhere on the neck", async ({ page }) => {
   await startFind(page);

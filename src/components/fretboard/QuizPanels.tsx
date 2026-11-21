@@ -68,8 +68,8 @@ export function QuizMain({ quiz, scaleLabel, voice, voiceOn, tuning, onStop }: {
               <strong className={quiz.picked === q.answer ? "fb-good" : "fb-bad"}>{quiz.picked === q.answer ? "Correct!" : "Not quite."}</strong>
               <span>
                 {quiz.picked === q.answer
-                  ? `String ${6 - quiz.pickSpot[0]}, fret ${quiz.pickSpot[1]} is ${bothNames(q.targetPc)}.`
-                  : `That was string ${6 - quiz.pickSpot[0]}, fret ${quiz.pickSpot[1]}: ${bothNames((tuning[quiz.pickSpot[0]] + quiz.pickSpot[1]) % 12)}. ${bothNames(q.targetPc)} is shown on the neck.`}
+                  ? `String ${tuning.length - quiz.pickSpot[0]}, fret ${quiz.pickSpot[1]} is ${bothNames(q.targetPc)}.`
+                  : `That was string ${tuning.length - quiz.pickSpot[0]}, fret ${quiz.pickSpot[1]}: ${bothNames((tuning[quiz.pickSpot[0]] + quiz.pickSpot[1]) % 12)}. ${bothNames(q.targetPc)} is shown on the neck.`}
               </span>
               <button className="btn-primary" onClick={quiz.next} title="Enter or Space">Next question ▶</button>
             </div>
@@ -178,9 +178,9 @@ export function QuizSide({ quiz, voiceOn, onVoice, tuning, onReport, onConfirmRe
       {quiz.kind === "findnote" && (
         <div className="fb-pick-strings" aria-label="Strings picked this session">
           <strong>Strings you picked</strong>
-          {stringPicks(quiz.session).map((e) => (
+          {stringPicks(quiz.session, tuning.length).map((e) => (
             <div key={e.string} className="fb-pick-string" data-picks={e.picks}>
-              <span className="fb-pick-string__name">{plainName(tuning[e.string])} · string {6 - e.string}</span>
+              <span className="fb-pick-string__name">{plainName(tuning[e.string])} · string {tuning.length - e.string}</span>
               <span className="fb-pick-string__bar"><span style={{ width: `${Math.min(100, e.picks * 20)}%` }} /></span>
               <span className="fb-pick-string__count">{e.picks}{e.picks > 0 ? ` (${Math.round((e.right * 100) / e.picks)}% right)` : ""}</span>
             </div>
@@ -328,9 +328,9 @@ export function QuizReport({ history, tuning, onClear, onClose }: { history: Qui
                 <table className="fb-speed-log">
                   <thead><tr><th>String</th><th>Picks</th><th>Right</th></tr></thead>
                   <tbody>
-                    {stringPicks(recs).map((e) => (
+                    {stringPicks(recs, tuning.length).map((e) => (
                       <tr key={e.string}>
-                        <td>{plainName(tuning[e.string])} (string {6 - e.string})</td>
+                        <td>{plainName(tuning[e.string])} (string {tuning.length - e.string})</td>
                         <td>{e.picks}</td>
                         <td>{e.picks ? `${Math.round((e.right * 100) / e.picks)}%` : "—"}</td>
                       </tr>

@@ -29,7 +29,8 @@ export function ChordBox({ voicing, names, tones, root = 0, tuning, scheme = 0, 
   const base = max <= ROWS ? 1 : min;
   const x = (s: number) => LEFT + s * SX;
   const y = (row: number) => TOP + row * FY;
-  const width = LEFT * 2 + 5 * SX;
+  const last = voicing.frets.length - 1;
+  const width = LEFT * 2 + last * SX;
   const height = TOP + ROWS * FY + (names ? 22 : 10);
 
   return (
@@ -43,12 +44,12 @@ export function ChordBox({ voicing, names, tones, root = 0, tuning, scheme = 0, 
       {base > 1 ? (
         <text x={LEFT - 12} y={y(0) + FY / 2 + 4} textAnchor="end" className="chord-box__base">{base}fr</text>
       ) : (
-        <line x1={x(0)} x2={x(5)} y1={y(0)} y2={y(0)} className="chord-box__nut" />
+        <line x1={x(0)} x2={x(last)} y1={y(0)} y2={y(0)} className="chord-box__nut" />
       )}
       {Array.from({ length: ROWS + 1 }, (_, r) => (
-        <line key={r} x1={x(0)} x2={x(5)} y1={y(r)} y2={y(r)} className="chord-box__fret" />
+        <line key={r} x1={x(0)} x2={x(last)} y1={y(r)} y2={y(r)} className="chord-box__fret" />
       ))}
-      {Array.from({ length: 6 }, (_, s) => (
+      {voicing.frets.map((_, s) => (
         <line key={s} x1={x(s)} x2={x(s)} y1={y(0)} y2={y(ROWS)} className="chord-box__string" />
       ))}
       {voicing.frets.map((f, s) => {

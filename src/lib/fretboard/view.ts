@@ -303,7 +303,7 @@ export function computeView(i: ViewInput): ViewModel {
   if (i.weak) {
     for (const m of kept) {
       if (!m.inPosition) continue;
-      const why = i.weak.reasons(i.key, m.label, m.midi % 12, [m.string, m.fret]);
+      const why = i.weak.reasons(i.key, m.label, m.midi % 12, [m.string, m.fret], i.tuning.length);
       if (why.length) m.weak = why.join("\n");
     }
   }

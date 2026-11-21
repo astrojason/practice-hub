@@ -19,7 +19,8 @@ Every note is a circle coloured by its scale degree; the root has a white ring.
 - **Show previous / next.** Shows the whole position below and/or above yours, a little faded, so you can see how they join.
 - **Connect to.** Join your position to another one along the strings you pick (for example only the A string). Play then climbs your position, travels along that string, and finishes in the other position.
 - **High E on top.** In Settings > The neck: turn it off to turn the neck over if you prefer the low string at the top.
-- **Tuning.** In Settings > The neck: standard, half-step down, Drop D, DADGAD and Open G. Everything (positions, shapes, quizzes) follows the tuning.
+- **Instrument.** The Instrument menu above the keys (and in Settings > The neck) switches the neck between a 6-string guitar, 7-string guitar, 4-string bass, 5-string bass and ukulele. Positions, chord shapes, practice, speed training and quizzes all follow the instrument's strings. CAGED and the chord relay are built for a standard six-string guitar and say so on the others.
+- **Tuning.** In Settings > The neck: each instrument has its own tunings (for the 6-string guitar: standard, half-step down, Drop D, DADGAD and Open G; the ukulele has high-G, low-G and baritone). Everything follows the tuning.
 
 ## Scales
 

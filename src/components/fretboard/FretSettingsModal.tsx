@@ -6,7 +6,7 @@ import { INSTRUMENTS, engine, type SoundFontPreset } from "../../lib/fretboard/a
 import { availableVoices, speak, voiceBackend } from "../../lib/fretboard/voice";
 import { SCHEMES } from "../../lib/fretboard/schemes";
 import type { FretSettings, LabelMode } from "../../lib/fretboard/settings";
-import { TUNINGS, plainName } from "../../lib/fretboard/theory";
+import { INSTRUMENT_TYPES, instrumentType, plainName } from "../../lib/fretboard/theory";
 import { QUIZ_KINDS } from "../../lib/fretboard/quiz";
 import type { Weakness } from "../../lib/fretboard/weakness";
 import { degreeColour } from "../../lib/fretboard/schemes";
@@ -117,9 +117,17 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
         <section className="fb-settings__section">
           <h4>The neck</h4>
           <label>
+            Instrument
+            <select aria-label="Instrument" value={settings.stringed} onChange={(e) => update({ stringed: e.target.value, tuning: 0, hiddenStrings: [], connectStrings: [] })}>
+              {INSTRUMENT_TYPES.map((i) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Tuning
-            <select aria-label="Tuning" value={settings.tuning} onChange={(e) => update({ tuning: parseInt(e.target.value) })}>
-              {TUNINGS.map((t, i) => (
+            <select aria-label="Tuning" value={Math.min(settings.tuning, instrumentType(settings.stringed).tunings.length - 1)} onChange={(e) => update({ tuning: parseInt(e.target.value) })}>
+              {instrumentType(settings.stringed).tunings.map((t, i) => (
                 <option key={t.name} value={i}>{t.name}</option>
               ))}
             </select>
@@ -164,9 +172,10 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
           </div>
           <div className="fb-settings__row">
             <span className="fb-settings__label">Show strings</span>
-            {TUNINGS[settings.tuning].strings.map((open, s) => {
+            {(instrumentType(settings.stringed).tunings[settings.tuning] ?? instrumentType(settings.stringed).tunings[0]).strings.map((open, s) => {
               const on = !settings.hiddenStrings.includes(s);
-              const name = s === 5 && open % 12 === TUNINGS[settings.tuning].strings[0] % 12 ? plainName(open).toLowerCase() : plainName(open);
+              const tn = (instrumentType(settings.stringed).tunings[settings.tuning] ?? instrumentType(settings.stringed).tunings[0]).strings;
+              const name = tn.length === 6 && s === 5 && open % 12 === tn[0] % 12 ? plainName(open).toLowerCase() : plainName(open);
               return (
                 <button
                   key={s}

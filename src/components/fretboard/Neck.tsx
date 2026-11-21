@@ -65,10 +65,11 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
   const lineX = [NUT_X];
   widths.forEach((w) => lineX.push(lineX[lineX.length - 1] + w));
   const width = lineX[NUM_FRETS] + FRET_W * 0.6;
-  const height = TOP + 5 * STRING_GAP + 30;
-  const stringY = (s: number) => TOP + (highOnTop ? 5 - s : s) * STRING_GAP;
+  const last = tuning.length - 1;
+  const height = TOP + last * STRING_GAP + 30;
+  const stringY = (s: number) => TOP + (highOnTop ? last - s : s) * STRING_GAP;
   const noteX = (f: number) => (f === 0 ? NUT_X - 26 : (lineX[f - 1] + lineX[f]) / 2);
-  const mid = TOP + 2.5 * STRING_GAP;
+  const mid = TOP + (last / 2) * STRING_GAP;
 
   return (
     <div className="fretboard-neck-wrap">
@@ -78,7 +79,7 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
         role="img"
         aria-label={`${title} on the guitar neck`}
       >
-        <rect x={NUT_X} y={TOP - 10} width={lineX[NUM_FRETS] - NUT_X} height={5 * STRING_GAP + 20} className="fb-board" />
+        <rect x={NUT_X} y={TOP - 10} width={lineX[NUM_FRETS] - NUT_X} height={last * STRING_GAP + 20} className="fb-board" />
         {MARKER_FRETS.map((f) => (
           <circle key={f} cx={(lineX[f - 1] + lineX[f]) / 2} cy={mid} r={5} className="fb-inlay" />
         ))}
@@ -86,13 +87,13 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
           <circle key={y} cx={(lineX[11] + lineX[12]) / 2} cy={y} r={5} className="fb-inlay" />
         ))}
         {lineX.map((x, f) => (
-          <line key={f} x1={x} x2={x} y1={TOP - 10} y2={TOP + 5 * STRING_GAP + 10} className={f === 0 ? "fb-nut" : "fb-fret"} />
+          <line key={f} x1={x} x2={x} y1={TOP - 10} y2={TOP + last * STRING_GAP + 10} className={f === 0 ? "fb-nut" : "fb-fret"} />
         ))}
         {tuning.map((open, s) => (
           <g key={s}>
-            <line x1={NUT_X} x2={lineX[NUM_FRETS]} y1={stringY(s)} y2={stringY(s)} className="fb-string" strokeWidth={0.8 + (6 - s) * 0.35} />
+            <line x1={NUT_X} x2={lineX[NUM_FRETS]} y1={stringY(s)} y2={stringY(s)} className="fb-string" strokeWidth={0.8 + (tuning.length - s) * 0.35} />
             <text x={10} y={stringY(s) + 4} className="fb-open-name" data-string={s}>
-              {s === 5 && open % 12 === tuning[0] % 12 ? plainName(open).toLowerCase() : plainName(open)}
+              {tuning.length === 6 && s === 5 && open % 12 === tuning[0] % 12 ? plainName(open).toLowerCase() : plainName(open)}
             </text>
           </g>
         ))}

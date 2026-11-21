@@ -52,7 +52,9 @@ export interface NeckSettings {
   /** Index into SCHEMES. */
   scheme: number;
   labels: LabelMode;
-  /** Index into TUNINGS. */
+  /** Which stringed instrument the neck shows (an INSTRUMENT_TYPES id). */
+  stringed: string;
+  /** Index into that instrument's tunings. */
   tuning: number;
   highOnTop: boolean;
   /** Give the chosen position more room. */
@@ -107,6 +109,7 @@ export const DEFAULT_SETTINGS: FretSettings = {
   theme: "dark",
   scheme: 0,
   labels: "degree",
+  stringed: "guitar6",
   tuning: 0,
   highOnTop: true,
   zoom: false,
