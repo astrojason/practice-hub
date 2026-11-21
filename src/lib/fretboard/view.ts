@@ -6,8 +6,10 @@ import { followTones, chordRoot, type ChordFocus, type Follow, type ProgChord } 
 import {
   CHORDS,
   SCALES,
+  blend,
   chromaticLabel,
   chordVoicings,
+  degreeNumber,
   followPosition,
   plainName,
   romanFor,
@@ -39,6 +41,15 @@ export interface ViewInput {
   overlay: boolean;
   follow: Follow;
   focus: ChordFocus;
+  hiddenDegrees: number[];
+  hiddenStrings: number[];
+  ghosts: boolean;
+  showPrev: boolean;
+  showNext: boolean;
+  connect: "off" | "next" | "prev";
+  connectStrings: number[];
+  blendScale: number;
+  blendRoot: number;
 }
 
 export interface ViewModel {
@@ -50,7 +61,13 @@ export interface ViewModel {
   nowLine: string | null;
   /** Whether the key's scale colour notes apply (only the plain scale view). */
   plainScale: boolean;
+  /** The notes a run plays on scale and arpeggio pages (the position, plus any connection). */
+  runNotes: FretNote[];
+  /** The fret range of the highlighted position(s), for giving it more room. */
+  window: [number, number];
 }
+
+const nowActive = (now: ProgChord | undefined, show: boolean) => now !== undefined && show;
 
 const range = (notes: FretNote[]): [number, number] =>
   notes.length ? [Math.min(...notes.map((n) => n[1])), Math.max(...notes.map((n) => n[1]))] : [0, 4];
@@ -115,9 +132,63 @@ export function computeView(i: ViewInput): ViewModel {
     }
   }
 
+  // Connect the position to a neighbour along the chosen strings.
+  let linkSet = new Set<string>();
+  let runNotes = active;
+  if (i.page === "scales" && !nowActive(now, showNow) && i.connect !== "off") {
+    const other = i.scalePos[i.idx + (i.connect === "next" ? 1 : -1)]?.notes;
+    if (other?.length) {
+      const [lo2, hi2] = range(other);
+      const [a, b] = [Math.min(lo, lo2), Math.max(hi, hi2)];
+      const inBoth = new Set([...active, ...other].map(([s, f]) => `${s}:${f}`));
+      const path: FretNote[] = [];
+      for (const s of i.connectStrings) {
+        for (let f = a; f <= b; f++) {
+          if (toneFor(tones, root, i.tuning[s] + f) && !inBoth.has(`${s}:${f}`)) {
+            path.push([s, f]);
+            linkSet.add(`${s}:${f}`);
+          }
+        }
+      }
+      active = [...active, ...other, ...path];
+      runNotes = active;
+    }
+  }
+
+  // Blend a second scale over the first: notes only in the first are ringed, only in the second are diamonds.
+  let blendSrc: [number, number][] | null = null;
+  if (i.page === "scales" && i.blendScale >= 0 && !nowActive(now, showNow)) {
+    const b = blend(tones, SCALES[i.blendScale].tones, i.blendRoot);
+    tones = b.tones;
+    blendSrc = b.src;
+  }
+
   const activeSet = new Set(active.map(([s, f]) => `${s}:${f}`));
   const shapeSet = new Set(shapeNotes.map(([s, f]) => `${s}:${f}`));
-  const marks: NeckMark[] = wholeNeck(i.tuning, root, tones).map((m) => ({ ...m, inPosition: activeSet.has(`${m.string}:${m.fret}`) }));
+  const marks: NeckMark[] = wholeNeck(i.tuning, root, tones).map((m) => {
+    const key = `${m.string}:${m.fret}`;
+    const mark: NeckMark = { ...m, inPosition: activeSet.has(key) };
+    if (linkSet.has(key)) mark.link = true;
+    if (blendSrc) {
+      const src = blendSrc.find((e) => e[0] === m.semis)?.[1];
+      mark.source = src as 0 | 1 | 2 | undefined;
+      // The second scale's own notes show across the position's frets too.
+      if (src === 2 && m.fret >= lo && m.fret <= hi) mark.inPosition = true;
+    }
+    return mark;
+  });
+
+  // Neighbouring positions, a little faded, so you can see how they join.
+  const neighbours: FretNote[][] = [];
+  const list = scaleLike ? i.scalePos : i.page === "arpeggios" ? i.arpPos : [];
+  if (i.showPrev && list[i.idx - 1]) neighbours.push(list[i.idx - 1].notes);
+  if (i.showNext && list[i.idx + 1]) neighbours.push(list[i.idx + 1].notes);
+  for (const notes of neighbours) {
+    for (const [s, f] of notes) {
+      const m = marks.find((x) => x.string === s && x.fret === f);
+      if (m && !m.inPosition) m.neighbor = true;
+    }
+  }
 
   if (extraChordMarks && chordTonePcs) {
     // Chord tones that fall outside the scale still show during a progression.
@@ -149,5 +220,15 @@ export function computeView(i: ViewInput): ViewModel {
     }
   }
 
-  return { root, tones, marks, voicing, nowLine, plainScale };
+  const hiddenDeg = new Set(i.hiddenDegrees);
+  const hiddenStr = new Set(i.hiddenStrings);
+  const kept = marks.filter((m) => {
+    if (hiddenStr.has(m.string)) return false;
+    if (hiddenDeg.has(((degreeNumber(m.label) - 1) % 7) + 1)) return false;
+    if (!i.ghosts && !m.inPosition && !m.neighbor) return false;
+    return true;
+  });
+  const [wlo, whi] = range(active);
+
+  return { root, tones, marks: kept, voicing, nowLine, plainScale: plainScale && !blendSrc, runNotes, window: [wlo, whi] };
 }

@@ -36,8 +36,6 @@ import { useProgression } from "../../lib/fretboard/useProgression";
 import { computeView, type Page } from "../../lib/fretboard/view";
 import { logTrainerActivity } from "../../lib/trainerSession";
 
-type LabelMode = "degree" | "note" | "both" | "interval" | "none";
-
 const PAGES: { id: Page; label: string }[] = [
   { id: "scales", label: "Scales" },
   { id: "arpeggios", label: "Arpeggios" },
@@ -68,7 +66,8 @@ export function FretboardView({ onBack }: Props) {
   const [scaleIdx, setScaleIdx] = useState(0);
   const [chordIdx, setChordIdx] = useState(0);
   const [posIdx, setPosIdx] = useState(0);
-  const [labelMode, setLabelMode] = useState<LabelMode>("degree");
+  const [focus, setFocus] = useState(false);
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true);
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [playingNote, setPlayingNote] = useState<string | null>(null);
@@ -80,7 +79,8 @@ export function FretboardView({ onBack }: Props) {
   const showError = useCallback((m: string) => setError(m), []);
   const font = useSoundFont(settings, update, showError);
 
-  const tuning = TUNINGS[0].strings;
+  const tuning = TUNINGS[settings.tuning]?.strings ?? TUNINGS[0].strings;
+  const labelMode = settings.labels;
   const scale = SCALES[scaleIdx];
   const chord = CHORDS[chordIdx];
   const scaleLike = page === "scales" || page === "progressions";
@@ -115,8 +115,11 @@ export function FretboardView({ onBack }: Props) {
       computeView({
         page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow,
         overlay: overlay && playing, follow: settings.follow, focus: settings.focus,
+        hiddenDegrees: settings.hiddenDegrees, hiddenStrings: settings.hiddenStrings, ghosts: settings.ghosts,
+        showPrev: settings.showPrev, showNext: settings.showNext, connect: settings.connect, connectStrings: settings.connectStrings,
+        blendScale: settings.blendScale, blendRoot: settings.blendRoot,
       }),
-    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus],
+    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus, settings.hiddenDegrees, settings.hiddenStrings, settings.ghosts, settings.showPrev, settings.showNext, settings.connect, settings.connectStrings, settings.blendScale, settings.blendRoot],
   );
   const voicing: Voicing | undefined = view.voicing;
 
@@ -214,7 +217,7 @@ export function FretboardView({ onBack }: Props) {
       if (!voicing) throw new Error("There is no chord shape to play.");
       return buildChordSequence({ notes: stepsOf(voicingNotes(voicing)), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
     }
-    const notes = page === "arpeggios" ? arpPos[idx]?.notes : scalePos[idx]?.notes;
+    const notes = page === "scales" ? view.runNotes : page === "arpeggios" ? arpPos[idx]?.notes : scalePos[idx]?.notes;
     if (!notes?.length) throw new Error("There are no notes to play in this position.");
     return buildSequence({ steps: orderSteps(stepsOf(notes), settings.direction), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
   }
@@ -301,7 +304,9 @@ export function FretboardView({ onBack }: Props) {
       if (e.code === "Space") {
         e.preventDefault();
         if (e.type === "keydown" && !e.repeat) togglePlayback();
-      } else if (e.type === "keydown" && e.key === "ArrowRight") setPosIdx(Math.min(idx + 1, choices.length - 1));
+      } else if (e.type === "keydown" && (e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey) setFocus((f) => !f);
+      else if (e.type === "keydown" && e.key === "Escape" && focus) setFocus(false);
+      else if (e.type === "keydown" && e.key === "ArrowRight") setPosIdx(Math.min(idx + 1, choices.length - 1));
       else if (e.type === "keydown" && e.key === "ArrowLeft") setPosIdx(Math.max(idx - 1, 0));
     }
     window.addEventListener("keydown", onKey);
@@ -312,6 +317,19 @@ export function FretboardView({ onBack }: Props) {
     };
   });
 
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+    const on = () => setSystemDark(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const theme = settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
+
+  function stepPosition(delta: number) {
+    setPosIdx(Math.max(0, Math.min(idx + delta, choices.length - 1)));
+  }
+
   const changeNotes = diff.changes.map(([t]) => t).join(", ");
   const chordNotes = chord.tones.map((t) => ({
     note: spell(key, t.semis, t.label),
@@ -320,14 +338,47 @@ export function FretboardView({ onBack }: Props) {
   }));
 
   return (
-    <div className="fretboard-view" data-testid="fretboard-view">
+    <div className="fretboard-view" data-testid="fretboard-view" data-theme={theme}>
+      {focus && (
+        <div className="fb-focusbar" role="toolbar" aria-label="Focus mode">
+          <button className="btn-secondary" onClick={() => setFocus(false)}>Leave focus (Esc)</button>
+          <button className={playing ? "btn-secondary" : "btn-primary"} onClick={togglePlayback}>{playing ? "Stop" : "Play"}</button>
+          <label className="fb-playbar__bpm">
+            <input type="number" min={30} max={300} aria-label="Focus tempo (bpm)" value={settings.bpm} onChange={(e) => update({ bpm: Math.max(30, Math.min(300, parseInt(e.target.value) || settings.bpm)) })} />
+            bpm
+          </label>
+          {page !== "progressions" && (
+            <>
+              <button className="btn-ghost" onClick={() => stepPosition(-1)} aria-label="Previous position">◀</button>
+              <button className="btn-ghost" onClick={() => stepPosition(1)} aria-label="Next position">▶</button>
+            </>
+          )}
+          {page === "progressions" && (
+            <label className="fb-playbar__field">
+              Follow the chords
+              <select aria-label="Focus follow" value={settings.follow} onChange={(e) => update({ follow: e.target.value as typeof settings.follow })}>
+                <option value="off">Off</option>
+                <option value="chordscale">Scale</option>
+                <option value="arpeggio">Arpeggio</option>
+              </select>
+            </label>
+          )}
+          <span className="fb-focusbar__label">FOCUS MODE</span>
+        </div>
+      )}
+      {!focus && (
       <header className="browse-header">
         <button className="btn-ghost" onClick={onBack} title="Back to session">
           <ArrowLeftIcon className="icon-sm" /> Back
         </button>
         <h1 className="browse-title">Fretboard Trainer</h1>
+        <button className="btn-secondary fb-focus-btn" onClick={() => setFocus(true)} title="Hide everything but the neck and play controls (F)">
+          Focus
+        </button>
       </header>
+      )}
 
+      {!focus && (
       <div className="browse-tabs">
         {PAGES.map((p) => (
           <button key={p.id} className={`browse-tab fb-tab ${page === p.id ? "active" : ""}`} onClick={() => goPage(p.id)}>
@@ -335,9 +386,11 @@ export function FretboardView({ onBack }: Props) {
           </button>
         ))}
       </div>
+      )}
 
       <div className="fretboard-body">
         <div className="fretboard-main">
+          {!focus && (
           <div className="fretboard-keys" role="group" aria-label="Key">
             {KEYS.map((k, i) => (
               <button key={k} className={`fb-key ${i === key ? "active" : ""}`} onClick={() => { setKey(i); setPosIdx(0); }}>
@@ -345,7 +398,9 @@ export function FretboardView({ onBack }: Props) {
               </button>
             ))}
           </div>
+          )}
 
+          {!focus && (
           <div className="fretboard-controls">
             {scaleLike ? (
               <label>
@@ -384,7 +439,7 @@ export function FretboardView({ onBack }: Props) {
             </label>
             <label>
               Labels
-              <select aria-label="Labels" value={labelMode} onChange={(e) => setLabelMode(e.target.value as LabelMode)}>
+              <select aria-label="Labels" value={labelMode} onChange={(e) => update({ labels: e.target.value as typeof settings.labels })}>
                 <option value="degree">Degree (1, b3, 5)</option>
                 <option value="note">Note name</option>
                 <option value="both">Degree and note</option>
@@ -399,8 +454,73 @@ export function FretboardView({ onBack }: Props) {
               </div>
             )}
           </div>
+          )}
 
-          {page === "progressions" && (
+          {!focus && page !== "chords" && (
+            <div className="fretboard-controls fb-neck-controls">
+              <label className="fb-playbar__check">
+                <input type="checkbox" checked={settings.showPrev} onChange={(e) => update({ showPrev: e.target.checked })} /> Show previous
+              </label>
+              <label className="fb-playbar__check">
+                <input type="checkbox" checked={settings.showNext} onChange={(e) => update({ showNext: e.target.checked })} /> Show next
+              </label>
+              {page === "scales" && (
+                <>
+                  <label>
+                    Connect to
+                    <select aria-label="Connect to" value={settings.connect} onChange={(e) => update({ connect: e.target.value as typeof settings.connect })}>
+                      <option value="off">Nothing</option>
+                      <option value="next">Next position</option>
+                      <option value="prev">Previous position</option>
+                    </select>
+                  </label>
+                  {settings.connect !== "off" && (
+                    <div className="fb-chip-row" role="group" aria-label="Connect along">
+                      {tuning.map((open, s) => {
+                        const on = settings.connectStrings.includes(s);
+                        return (
+                          <button
+                            key={s}
+                            className={`fb-chip ${on ? "fb-chip--on" : ""}`}
+                            aria-label={`Connect along string ${s + 1}`}
+                            aria-pressed={on}
+                            onClick={() => update({ connectStrings: on ? settings.connectStrings.filter((x) => x !== s) : [...settings.connectStrings, s] })}
+                          >
+                            {plainName(open)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <label>
+                    Blend with
+                    <select aria-label="Blend with" value={settings.blendScale} onChange={(e) => update({ blendScale: parseInt(e.target.value) })}>
+                      <option value={-1}>None</option>
+                      {SCALE_GROUPS.map(([group, list]) => (
+                        <optgroup key={group} label={group}>
+                          {list.map((sc) => (
+                            <option key={sc.name} value={SCALES.indexOf(sc)}>{sc.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                  {settings.blendScale >= 0 && (
+                    <label>
+                      Blend root
+                      <select aria-label="Blend root" value={settings.blendRoot} onChange={(e) => update({ blendRoot: parseInt(e.target.value) })}>
+                        {KEYS.map((_, semis) => (
+                          <option key={semis} value={semis}>{plainName(key + semis)}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {!focus && page === "progressions" && (
             <ProgressionPanel
               prog={prog}
               keyIdx={key}
@@ -434,13 +554,29 @@ export function FretboardView({ onBack }: Props) {
           <Neck
             marks={view.marks}
             title={title}
+            tuning={tuning}
             labelFor={labelFor}
             colourLabels={view.plainScale ? colour.labels : []}
             playing={playingNote}
+            scheme={settings.scheme}
+            highOnTop={settings.highOnTop}
+            zoomWindow={settings.zoom ? view.window : null}
+            dimOpacity={settings.dim}
             onNote={(m) => hear(() => engine.pluck(m.midi, m.string))}
           />
+
+          {focus && page === "progressions" && (
+            <div className="fb-chord-cards" aria-label="Progression">
+              {activeProg.map((c, i) => (
+                <span key={i} className={`fb-chord-card ${playing && markerIdx === i ? "fb-chord-card--playing" : ""}`}>
+                  <span className="fb-chord-card__name">{plainName(chordRoot(key, c)) + CHORDS[c.chord].symbol}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
+        {!focus && (
         <aside className="fretboard-side">
           {page === "chords" && voicing && (
             <section className="fretboard-about">
@@ -506,6 +642,7 @@ export function FretboardView({ onBack }: Props) {
             </section>
           )}
         </aside>
+        )}
       </div>
 
       <PlayBar

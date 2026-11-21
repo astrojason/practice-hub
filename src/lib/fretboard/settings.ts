@@ -28,7 +28,40 @@ export interface PlaybackSettings {
   suitScale: boolean;
 }
 
-export type FretSettings = SoundSettings & PlaybackSettings;
+export type LabelMode = "degree" | "note" | "both" | "interval" | "none";
+
+export interface NeckSettings {
+  theme: "dark" | "light" | "system";
+  /** Index into SCHEMES. */
+  scheme: number;
+  labels: LabelMode;
+  /** Index into TUNINGS. */
+  tuning: number;
+  highOnTop: boolean;
+  /** Give the chosen position more room. */
+  zoom: boolean;
+  /** Show the scale's other notes, faintly. */
+  ghosts: boolean;
+  /** How much to dim everything outside the position (0-1). */
+  dim: number;
+  /** Degree families (1-7) hidden from the neck. */
+  hiddenDegrees: number[];
+  /** Strings (0 = lowest) hidden from the neck. */
+  hiddenStrings: number[];
+  showPrev: boolean;
+  showNext: boolean;
+  /** Join the position to a neighbour along the chosen strings. */
+  connect: "off" | "next" | "prev";
+  connectStrings: number[];
+  /** Index into SCALES of a second scale laid over the first, or -1. */
+  blendScale: number;
+  /** Half steps above the key the blended scale starts on. */
+  blendRoot: number;
+  /** Mark weak spots from the quiz with a ! badge. */
+  showWeak: boolean;
+}
+
+export type FretSettings = SoundSettings & PlaybackSettings & NeckSettings;
 
 export const DEFAULT_SETTINGS: FretSettings = {
   ...DEFAULT_SOUND,
@@ -46,6 +79,23 @@ export const DEFAULT_SETTINGS: FretSettings = {
   focus: "shape",
   playOver: false,
   suitScale: true,
+  theme: "dark",
+  scheme: 0,
+  labels: "degree",
+  tuning: 0,
+  highOnTop: true,
+  zoom: false,
+  ghosts: true,
+  dim: 0.72,
+  hiddenDegrees: [],
+  hiddenStrings: [],
+  showPrev: false,
+  showNext: false,
+  connect: "off",
+  connectStrings: [],
+  blendScale: -1,
+  blendRoot: 0,
+  showWeak: true,
 };
 
 const KEY = "ph:fretboard:settings";

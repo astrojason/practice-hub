@@ -3,7 +3,10 @@ import { createPortal } from "react-dom";
 import { ConfirmModal } from "../ConfirmModal";
 import { ErrorModal } from "../ErrorModal";
 import { INSTRUMENTS, engine, type SoundFontPreset } from "../../lib/fretboard/audio";
-import type { FretSettings } from "../../lib/fretboard/settings";
+import { SCHEMES } from "../../lib/fretboard/schemes";
+import type { FretSettings, LabelMode } from "../../lib/fretboard/settings";
+import { TUNINGS, plainName } from "../../lib/fretboard/theory";
+import { degreeColour } from "../../lib/fretboard/schemes";
 
 interface Props {
   settings: FretSettings;
@@ -51,6 +54,109 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
           <h3 className="error-modal-title" style={{ color: "var(--text)" }}>Fretboard settings</h3>
           <button className="error-modal-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
+
+        <section className="fb-settings__section">
+          <h4>Appearance</h4>
+          <label>
+            Theme
+            <select aria-label="Theme" value={settings.theme} onChange={(e) => update({ theme: e.target.value as FretSettings["theme"] })}>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">Same as the computer</option>
+            </select>
+          </label>
+          <label>
+            Degree colours
+            <select aria-label="Degree colours" value={settings.scheme} onChange={(e) => update({ scheme: parseInt(e.target.value) })}>
+              {SCHEMES.map((sc, i) => (
+                <option key={sc.name} value={i}>{sc.name}</option>
+              ))}
+            </select>
+            <span className="fb-swatches">
+              {[1, 2, 3, 4, 5, 6, 7].map((f) => (
+                <span key={f} className="fb-swatch" style={{ background: degreeColour(settings.scheme, f, false).fill }} />
+              ))}
+            </span>
+          </label>
+          <label>
+            Note labels
+            <select aria-label="Note labels" value={settings.labels} onChange={(e) => update({ labels: e.target.value as LabelMode })}>
+              <option value="degree">Degree (1, b3, 5)</option>
+              <option value="note">Note name</option>
+              <option value="both">Degree and note</option>
+              <option value="interval">Interval (R, m3, P5)</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+        </section>
+
+        <section className="fb-settings__section">
+          <h4>The neck</h4>
+          <label>
+            Tuning
+            <select aria-label="Tuning" value={settings.tuning} onChange={(e) => update({ tuning: parseInt(e.target.value) })}>
+              {TUNINGS.map((t, i) => (
+                <option key={t.name} value={i}>{t.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="fb-settings__check">
+            <input type="checkbox" checked={settings.highOnTop} onChange={(e) => update({ highOnTop: e.target.checked })} />
+            High E string on top
+          </label>
+          <label className="fb-settings__check">
+            <input type="checkbox" checked={settings.zoom} onChange={(e) => update({ zoom: e.target.checked })} />
+            Give the chosen position more room
+          </label>
+          <label className="fb-settings__check">
+            <input type="checkbox" checked={settings.ghosts} onChange={(e) => update({ ghosts: e.target.checked })} />
+            Show the scale's other notes, faintly
+          </label>
+          <label className="fb-settings__check">
+            <input type="checkbox" checked={settings.showWeak} onChange={(e) => update({ showWeak: e.target.checked })} />
+            Mark my weak spots from the quiz (!)
+          </label>
+          <label>
+            Dim the rest
+            <input type="range" min={0} max={1} step={0.01} aria-label="Dim the rest" value={settings.dim} onChange={(e) => update({ dim: parseFloat(e.target.value) })} />
+          </label>
+          <div className="fb-settings__row">
+            <span className="fb-settings__label">Show degrees</span>
+            {[1, 2, 3, 4, 5, 6, 7].map((f) => {
+              const on = !settings.hiddenDegrees.includes(f);
+              return (
+                <button
+                  key={f}
+                  className={`fb-chip ${on ? "fb-chip--on" : ""}`}
+                  aria-label={`Show degree ${f}`}
+                  aria-pressed={on}
+                  style={on ? { borderColor: degreeColour(settings.scheme, f, false).fill } : undefined}
+                  onClick={() => update({ hiddenDegrees: on ? [...settings.hiddenDegrees, f] : settings.hiddenDegrees.filter((d) => d !== f) })}
+                >
+                  {f === 1 ? "R" : f}
+                </button>
+              );
+            })}
+          </div>
+          <div className="fb-settings__row">
+            <span className="fb-settings__label">Show strings</span>
+            {TUNINGS[settings.tuning].strings.map((open, s) => {
+              const on = !settings.hiddenStrings.includes(s);
+              const name = s === 5 && open % 12 === TUNINGS[settings.tuning].strings[0] % 12 ? plainName(open).toLowerCase() : plainName(open);
+              return (
+                <button
+                  key={s}
+                  className={`fb-chip ${on ? "fb-chip--on" : ""}`}
+                  aria-label={`Show string ${s + 1}`}
+                  aria-pressed={on}
+                  onClick={() => update({ hiddenStrings: on ? [...settings.hiddenStrings, s] : settings.hiddenStrings.filter((x) => x !== s) })}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         <section className="fb-settings__section">
           <h4>Sound</h4>

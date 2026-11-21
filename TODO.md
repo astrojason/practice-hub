@@ -10,7 +10,6 @@
 
 Source: `/Users/jasonsylvester/Documents/Craft Anything/a-visual-scale-arpeggio-chord` (Rust/egui; `app/src/help.rs` lists every feature). Port the features, **not** the UI: everything must use this app's own styling/components (overlay view like Browse, `btn-*` classes, `ErrorModal`, `ConfirmModal`). Audio is Web Audio in the webview (no new Rust audio engine). Starting any practice item in the trainer (first Play of a routine, a speed-trainer session, a quiz) starts the app's **Open Session** timer with pre-filled notes describing what is being practised (key, scale, position, tempo…). Do the phases in order; remove each when committed.
 
-- [ ] Phase 5 — Neck options: tuning, high-E-on-top, show previous/next, connect-to, degree and string filters, colour schemes, blend-with, positions past fret 12, focus mode, keyboard shortcuts, light/dark.
 - [ ] Phase 6 — Practice routines: position ladder, CAGED, chord changes in position, extended arpeggios, scale sequences, circle of fifths, chord relay, time keeping, click patterns, speed bursts, call-outs, tempo-raising speed trainer, step list.
 - [ ] Phase 7 — Speed trainer: setup, timed rounds with rests, session strip, saved log and trend chart.
 - [ ] Phase 8 — Quiz: note/degree/interval/hear-interval/chord-quality quizzes, timing, keyboard answers, both-note-names, history, report, weak spots (badges on neck, panel, focus mode), clear history with confirm, fret limits.
