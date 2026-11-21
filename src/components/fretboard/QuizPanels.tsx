@@ -150,7 +150,7 @@ export function QuizSide({ quiz, onReport, onConfirmReset, scaleLabel }: SidePro
         <button className="btn-secondary" onClick={onReport}>Open the report</button>
         <button className="btn-ghost" onClick={onConfirmReset}>Reset score…</button>
       </div>
-      <div className="fretboard-about fb-quiz-saved">
+      <div className="fb-weak-card fb-quiz-saved">
         <strong>Saved between sessions</strong>
         <p>
           {quiz.history.length} answers from {sessions} session{sessions === 1 ? "" : "s"} are kept on this computer and come back when you reopen the app. Best streak ever: {quiz.bestEver}.
@@ -337,7 +337,7 @@ export function WeakCard({
       : `${(pace.ms / 1000).toFixed(1)} s or faster (the pace you set)`;
   void statInfo;
   return (
-    <section className="fretboard-about fb-weak-card">
+    <section className="fb-weak-card">
       <h3><span className="fb-weak-dot">!</span> Your weak spots</h3>
       {quiz.history.length === 0 ? (
         <p>Take a quiz and the app will point out the notes and degrees you find hard, here and on the neck.</p>
