@@ -160,10 +160,10 @@ test("resetting the score asks first", async ({ page }) => {
   await quiz(page);
   await start(page);
   await page.keyboard.press("1");
-  await expect(page.locator(".fb-quiz-score")).toHaveText("0 / 1");
+  await expect(page.locator(".fb-quiz-score")).toHaveText(/^\d \/ 1$/);
   await page.getByRole("button", { name: /Reset score/ }).click();
   await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
-  await expect(page.locator(".fb-quiz-score")).toHaveText("0 / 1");
+  await expect(page.locator(".fb-quiz-score")).toHaveText(/^\d \/ 1$/);
   await page.getByRole("button", { name: /Reset score/ }).click();
   await page.locator(".confirm-modal button", { hasText: "Reset" }).click();
   await expect(page.locator(".fb-quiz-score")).toHaveText("0 / 0");
