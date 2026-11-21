@@ -36,6 +36,8 @@ interface Props {
   onCancel: () => void;  // cancel session entirely (clears timer + closes modal)
   onClose: () => void;   // close modal only (keeps timer running)
   onSubmit: (dailyPracticeTime: number) => void;
+  /** Notes to start with (e.g. what the Fretboard Trainer was practising). */
+  initialNotes?: string;
 }
 
 export function OpenSessionForm({
@@ -47,11 +49,12 @@ export function OpenSessionForm({
   onCancel,
   onClose,
   onSubmit,
+  initialNotes = "",
 }: Props) {
   type Phase = "running" | "form";
   const [phase, setPhase] = useState<Phase>("running");
   const [formSeconds, setFormSeconds] = useState("");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes);
   const [rating, setRating] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

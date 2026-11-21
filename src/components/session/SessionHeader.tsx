@@ -30,6 +30,7 @@ interface Props {
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
+  onFretboard: () => void;
   onSettings: () => void;
   mediaOpen: boolean;
   mediaTab: "media" | "app";
@@ -63,6 +64,7 @@ export function SessionHeader({
   onGpLibrary,
   onCalendar,
   onBrowse,
+  onFretboard,
   onSettings,
   mediaOpen,
   mediaTab,
@@ -134,6 +136,9 @@ export function SessionHeader({
           </button>
           <button onClick={onCalendar} className="btn-ghost" title="Practice calendar">
             Calendar
+          </button>
+          <button onClick={onFretboard} className="btn-ghost" title="Fretboard Trainer: scales, arpeggios and chords on the neck">
+            <MusicalNoteIcon className="icon-sm" /> Fretboard
           </button>
           <button onClick={onBrowse} className="btn-ghost" title="Browse catalog">
             <RectangleStackIcon className="icon-sm" /> Browse

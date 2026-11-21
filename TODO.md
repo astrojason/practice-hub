@@ -6,6 +6,20 @@
 
 - [ ] Undo for all player actions, not just region edits: region create/update/delete, region settings (tempo, etc.), and any other state-changing action in the player. Motivated by the region-update bug above, but should cover every case. History is scoped to the current resource and session: ending the session or switching to a different resource clears the undo stack (in-memory only, nothing persisted).
 
+### Fretboard Trainer (port of the Craft "visual scale, arpeggio, chord" app)
+
+Source: `/Users/jasonsylvester/Documents/Craft Anything/a-visual-scale-arpeggio-chord` (Rust/egui; `app/src/help.rs` lists every feature). Port the features, **not** the UI: everything must use this app's own styling/components (overlay view like Browse, `btn-*` classes, `ErrorModal`, `ConfirmModal`). Audio is Web Audio in the webview (no new Rust audio engine). Starting any practice item in the trainer (first Play of a routine, a speed-trainer session, a quiz) starts the app's **Open Session** timer with pre-filled notes describing what is being practised (key, scale, position, tempo…). Do the phases in order; remove each when committed.
+
+- [ ] Phase 2 — Arpeggios and Chords pages: chord type groups, arpeggio positions, chord voicings with chord box (X for muted), Strum/Play, chords-in-this-key panel, About card.
+- [ ] Phase 3 — Playback engine: tempo, notes-per-beat, direction, loop, count-in, metronome, scale/arpeggio playback with highlight, drone, guitar sound/tone/room/pick, SoundFont (.sf2) support, output Test.
+- [ ] Phase 4 — Progressions: presets, editor (add/move/duplicate/remove with confirm), save/delete saved progressions, guitar and drum styles, follow-the-chords (scale/arpeggio per chord), highlight modes, play-over-progression on Scales/Arpeggios/Chords.
+- [ ] Phase 5 — Neck options: tuning, high-E-on-top, show previous/next, connect-to, degree and string filters, colour schemes, blend-with, positions past fret 12, focus mode, keyboard shortcuts, light/dark.
+- [ ] Phase 6 — Practice routines: position ladder, CAGED, chord changes in position, extended arpeggios, scale sequences, circle of fifths, chord relay, time keeping, click patterns, speed bursts, call-outs, tempo-raising speed trainer, step list.
+- [ ] Phase 7 — Speed trainer: setup, timed rounds with rests, session strip, saved log and trend chart.
+- [ ] Phase 8 — Quiz: note/degree/interval/hear-interval/chord-quality quizzes, timing, keyboard answers, both-note-names, history, report, weak spots (badges on neck, panel, focus mode), clear history with confirm, fret limits.
+- [ ] Phase 9 — Voice: spoken call-outs (speechSynthesis) and answering quizzes out loud (needs speech recognition working in the Tauri webview; may need a Rust helper).
+- [ ] Phase 10 — Fretboard Trainer help topics in the in-app help.
+
 ## Enhancements
 
 - [ ] Standard notation (tab player): no key signatures (accidentals are always sharps), ties and slurs aren't drawn, beams are flat and aren't carried across rests, and it isn't shown while editing a standard-only view (the editor switches to tab + standard).

@@ -6,6 +6,7 @@ import { SessionView } from "./components/SessionView";
 import { GpLibraryView } from "./components/GpLibraryView";
 import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { BrowseView } from "./components/BrowseView";
+import { FretboardView } from "./components/fretboard/FretboardView";
 import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
 import { PracticeTimeReport } from "./components/reports/PracticeTimeReport";
@@ -23,7 +24,7 @@ import pkgJson from "../package.json";
 
 const APP_VERSION: string = pkgJson.version;
 
-type AppView = "session" | "gp-library" | "calendar" | "browse" | "changelog" | "settings" | "reports" | "badges" | "leaderboard";
+type AppView = "session" | "gp-library" | "calendar" | "browse" | "fretboard" | "changelog" | "settings" | "reports" | "badges" | "leaderboard";
 
 const MUSIC_QUOTES = [
   { text: "Without music, life would be a mistake.", author: "Nietzsche" },
@@ -114,6 +115,8 @@ export function App() {
     overlay = <InterleavedCalendarView token={token} onBack={() => setView("session")} />;
   } else if (view === "browse") {
     overlay = <BrowseView token={token} onBack={() => setView("session")} />;
+  } else if (view === "fretboard") {
+    overlay = <FretboardView onBack={() => setView("session")} />;
   } else if (view === "changelog") {
     overlay = <Changelog onBack={() => setView("session")} />;
   } else if (view === "settings") {
@@ -137,6 +140,7 @@ export function App() {
           onGpLibrary={() => setView("gp-library")}
           onCalendar={() => setView("calendar")}
           onBrowse={() => setView("browse")}
+          onFretboard={() => setView("fretboard")}
           onSettings={() => setView("settings")}
           onReports={() => setView("reports")}
           onBadges={() => setView("badges")}

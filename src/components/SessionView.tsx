@@ -52,6 +52,7 @@ import { QuickAddPanel } from "./session/QuickAddPanel";
 import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
 import { requestSessionModal } from "../lib/sessionModalRequest";
+import { clearTrainerActivity, useTrainerActivity } from "../lib/trainerSession";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
@@ -369,6 +370,7 @@ interface Props {
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
+  onFretboard: () => void;
   onSettings: () => void;
   onReports: () => void;
   onBadges: () => void;
@@ -376,7 +378,7 @@ interface Props {
   onGpView?: (path: string, resources?: Resource[]) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {
+export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onFretboard, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -461,6 +463,17 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   };
 
   const OPEN_SESSION_KEY = "open-session";
+
+  // The Fretboard Trainer starts the Open Session timer the first time it
+  // does something, and its activity becomes the session's notes.
+  const trainerActivity = useTrainerActivity();
+  useEffect(() => {
+    if (trainerActivity.length === 0) return;
+    if (!activeTimers.has(OPEN_SESSION_KEY) && !pausedElapsed.has(OPEN_SESSION_KEY)) {
+      startTimer(OPEN_SESSION_KEY);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trainerActivity]);
 
   // ── User-added items (Quick Add) ─────────────────────────────────────────────
   const [additionalSongs, setAdditionalSongs] = useState<Song[]>([]);
@@ -1289,6 +1302,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
         onBrowse={onBrowse}
+        onFretboard={onFretboard}
         onSettings={onSettings}
         mediaOpen={playerState !== null}
         mediaTab={mediaTab}
@@ -1306,14 +1320,17 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           isActive={activeTimers.has(OPEN_SESSION_KEY)}
           onPause={() => pauseTimer(OPEN_SESSION_KEY)}
           onResume={() => startTimer(OPEN_SESSION_KEY)}
+          initialNotes={trainerActivity.join("\n")}
           onClose={() => setOpenSessionModalOpen(false)}
           onCancel={() => {
             cancelSession(OPEN_SESSION_KEY);
+            clearTrainerActivity();
             setOpenSessionModalOpen(false);
           }}
           onSubmit={(dpt) => {
             setServerTotal(dpt);
             cancelSession(OPEN_SESSION_KEY);
+            clearTrainerActivity();
             setOpenSessionModalOpen(false);
           }}
         />
