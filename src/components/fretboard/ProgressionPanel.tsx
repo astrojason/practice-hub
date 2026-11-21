@@ -52,6 +52,12 @@ export function ProgressionPanel({ prog, keyIdx, scaleIdx, onScale, settings, up
 
   const chordName = (c: ProgChord) => plainName(chordRoot(keyIdx, c)) + CHORDS[c.chord].symbol;
   const sel = selected !== null ? chords[selected] : undefined;
+  // The preset the progression matches exactly, if any.
+  const matchedPreset = PROGRESSIONS.findIndex((_, i) => {
+    const p = presetChords(i);
+    return p.length === chords.length && p.every((c, k) => c.semis === chords[k].semis && c.chord === chords[k].chord && c.beats === chords[k].beats);
+  });
+  const matchedValue = matchedPreset >= 0 ? String(matchedPreset) : "";
 
   function patch(i: number, change: Partial<ProgChord>) {
     setChords(chords.map((c, k) => (k === i ? { ...c, ...change } : c)));
@@ -108,7 +114,7 @@ export function ProgressionPanel({ prog, keyIdx, scaleIdx, onScale, settings, up
           Preset
           <select
             aria-label="Preset"
-            value=""
+            value={matchedValue}
             onChange={(e) => {
               const i = parseInt(e.target.value);
               if (Number.isNaN(i)) return;

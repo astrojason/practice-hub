@@ -93,21 +93,21 @@ test("the chosen position can have more room", async ({ page }) => {
 
 test("neighbouring positions can be shown faintly", async ({ page }) => {
   expect(await page.locator('.fb-note[data-neighbor="true"]').count()).toBe(0);
-  await page.locator(".fretboard-controls label", { hasText: "Show next" }).locator("input").check();
+  await page.getByRole("button", { name: "Show next position" }).click();
   expect(await page.locator('.fb-note[data-neighbor="true"]').count()).toBeGreaterThan(5);
-  await page.locator(".fretboard-controls label", { hasText: "Show next" }).locator("input").uncheck();
-  await page.locator(".fretboard-controls label", { hasText: "Show previous" }).locator("input").check();
+  await page.getByRole("button", { name: "Show next position" }).click();
+  await page.getByRole("button", { name: "Show previous position" }).click();
   await page.locator('select[aria-label="Position"]').selectOption({ index: 2 });
   expect(await page.locator('.fb-note[data-neighbor="true"]').count()).toBeGreaterThan(5);
 });
 
 test("a position can be connected to the next along a string, and Play travels the link", async ({ page }) => {
-  await page.locator('select[aria-label="Connect to"]').selectOption("next");
+  await page.locator('select[aria-label="Connect to"]').selectOption({ label: "Position 2" });
   await page.locator('button[aria-label="Connect along string 2"]').click();
   expect(await page.locator('.fb-note[data-link="true"]').count()).toBeGreaterThan(0);
   const linked = await page.locator('.fb-note[data-in-position="true"]').count();
   expect(linked).toBeGreaterThan(18);
-  await page.locator('select[aria-label="Connect to"]').selectOption("off");
+  await page.locator('select[aria-label="Connect to"]').selectOption({ label: "Nothing" });
   await expect(page.locator('.fb-note[data-link="true"]')).toHaveCount(0);
 });
 

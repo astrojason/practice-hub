@@ -77,5 +77,11 @@ export function useSoundFont(settings: FretSettings, update: (p: Partial<FretSet
     [fail, settings.soundFont, update],
   );
 
-  return { presets, loading, ready: wanted !== null && wanted === loadedId, userFonts, add, remove };
+  /** Load the SoundFont again (after the sound output was reconnected). */
+  const reload = useCallback(() => {
+    failed.current = null;
+    setLoadedId(null);
+  }, []);
+
+  return { reload, presets, loading, ready: wanted !== null && wanted === loadedId, userFonts, add, remove };
 }

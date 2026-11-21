@@ -47,7 +47,8 @@ export interface ViewInput {
   ghosts: boolean;
   showPrev: boolean;
   showNext: boolean;
-  connect: "off" | "next" | "prev";
+  /** Position number (1-based) to join the chosen position to, or 0 for none. */
+  connect: number;
   connectStrings: number[];
   blendScale: number;
   blendRoot: number;
@@ -72,6 +73,10 @@ export interface ViewModel {
   runNotes: FretNote[];
   /** The fret range of the highlighted position(s), for giving it more room. */
   window: [number, number];
+  /** The chord sounding (or selected) while following a progression. */
+  nowChord?: { name: string; roman: string; root: number; chord: number; voicing: Voicing | undefined };
+  /** When two scales are blended: [semitones, 0 both / 1 first / 2 second]. */
+  blendSrc: [number, number][] | null;
 }
 
 const nowActive = (now: ProgChord | undefined, show: boolean) => now !== undefined && show;
@@ -85,11 +90,21 @@ export function computeView(i: ViewInput): ViewModel {
       const midi = i.tuning[s] + f;
       return { string: s, fret: f, midi, label: "1", semis: 0, inPosition: true, quiz: true, text: i.quizNotes?.text[k] ?? "" };
     });
-    return { root: i.key, tones: [], marks, voicing: undefined, nowLine: null, plainScale: false, runNotes: [], window: [0, 0] };
+    return { root: i.key, tones: [], marks, voicing: undefined, nowLine: null, plainScale: false, runNotes: [], window: [0, 0], blendSrc: null };
   }
   const scale = SCALES[i.scaleIdx];
   const scaleLike = i.page === "scales" || i.page === "progressions" || i.page === "practice" || i.page === "speed";
-  const baseNotes: FretNote[] = scaleLike ? (i.scalePos[i.idx]?.notes ?? []) : i.page === "arpeggios" ? (i.arpPos[i.idx]?.notes ?? []) : [];
+  // The last choice on the Position list is the whole neck.
+  const list0 = scaleLike ? i.scalePos : i.page === "arpeggios" ? i.arpPos : [];
+  const whole = i.page !== "chords" && list0.length > 0 && i.idx >= list0.length;
+  const wholeNotes = (ts: Tone[]): FretNote[] => wholeNeck(i.tuning, i.key, ts).map((m) => [m.string, m.fret]);
+  const baseNotes: FretNote[] = whole
+    ? wholeNotes(scaleLike ? scale.tones : CHORDS[i.chordIdx].tones)
+    : scaleLike
+      ? (i.scalePos[i.idx]?.notes ?? [])
+      : i.page === "arpeggios"
+        ? (i.arpPos[i.idx]?.notes ?? [])
+        : [];
   const baseVoicing = i.page === "chords" ? i.voicings[i.idx] : undefined;
   const [lo, hi] = baseVoicing ? range(voicingNotes(baseVoicing)) : range(baseNotes);
 
@@ -109,6 +124,7 @@ export function computeView(i: ViewInput): ViewModel {
 
   const now = i.page === "practice" || i.page === "speed" ? undefined : i.chordNow;
   const showNow = now !== undefined && (i.overlay || i.page === "progressions");
+  let nowChord: ViewModel["nowChord"];
   let chordTonePcs: Set<number> | null = null;
   let shapeNotes: FretNote[] = [];
   let extraChordMarks = false;
@@ -121,6 +137,7 @@ export function computeView(i: ViewInput): ViewModel {
     chordTonePcs = new Set(cd.tones.map((t) => (cr + t.semis) % 12));
     const list = chordVoicings(i.tuning, cr, cd.tones);
     const near = list.length ? [...list].sort((a, b) => Math.abs(voicingMinFret(a) - lo) - Math.abs(voicingMinFret(b) - lo))[0] : undefined;
+    nowChord = { name, roman: romanFor(now.semis, cd), root: cr, chord: now.chord, voicing: near };
 
     if (i.page === "arpeggios") {
       root = cr;
@@ -156,8 +173,8 @@ export function computeView(i: ViewInput): ViewModel {
   // Connect the position to a neighbour along the chosen strings.
   let linkSet = new Set<string>();
   let runNotes = active;
-  if (i.page === "scales" && !nowActive(now, showNow) && i.connect !== "off") {
-    const other = i.scalePos[i.idx + (i.connect === "next" ? 1 : -1)]?.notes;
+  if (i.page === "scales" && !nowActive(now, showNow) && i.connect > 0 && i.connect - 1 !== i.idx && !whole) {
+    const other = i.scalePos[i.connect - 1]?.notes;
     if (other?.length) {
       const [lo2, hi2] = range(other);
       const [a, b] = [Math.min(lo, lo2), Math.max(hi, hi2)];
@@ -200,14 +217,17 @@ export function computeView(i: ViewInput): ViewModel {
   });
 
   // Neighbouring positions, a little faded, so you can see how they join.
-  const neighbours: FretNote[][] = [];
-  const list = scaleLike ? i.scalePos : i.page === "arpeggios" ? i.arpPos : [];
-  if (i.showPrev && list[i.idx - 1]) neighbours.push(list[i.idx - 1].notes);
-  if (i.showNext && list[i.idx + 1]) neighbours.push(list[i.idx + 1].notes);
-  for (const notes of neighbours) {
+  const neighbours: [FretNote[], "prev" | "next"][] = [];
+  const list = list0;
+  if (!whole && i.showPrev && list[i.idx - 1]) neighbours.push([list[i.idx - 1].notes, "prev"]);
+  if (!whole && i.showNext && list[i.idx + 1]) neighbours.push([list[i.idx + 1].notes, "next"]);
+  for (const [notes, side] of neighbours) {
     for (const [s, f] of notes) {
       const m = marks.find((x) => x.string === s && x.fret === f);
-      if (m && !m.inPosition) m.neighbor = true;
+      if (m && !m.inPosition) {
+        m.neighbor = true;
+        m.side = side;
+      }
     }
   }
 
@@ -259,5 +279,5 @@ export function computeView(i: ViewInput): ViewModel {
   }
   const [wlo, whi] = range(active);
 
-  return { root, tones, marks: kept, voicing, nowLine, plainScale: plainScale && !blendSrc, runNotes, window: [wlo, whi] };
+  return { root, tones, marks: kept, voicing, nowLine, plainScale: plainScale && !blendSrc, runNotes, window: [wlo, whi], nowChord, blendSrc };
 }

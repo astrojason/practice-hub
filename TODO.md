@@ -11,7 +11,6 @@
 
 Source: `/Users/jasonsylvester/Documents/Craft Anything/a-visual-scale-arpeggio-chord` (Rust/egui; `app/src/help.rs` lists every feature). Port the features, **not** the UI: everything must use this app's own styling/components (overlay view like Browse, `btn-*` classes, `ErrorModal`, `ConfirmModal`). Audio is Web Audio in the webview (no new Rust audio engine). Starting any practice item in the trainer (first Play of a routine, a speed-trainer session, a quiz) starts the app's **Open Session** timer with pre-filled notes describing what is being practised (key, scale, position, tempo…). Do the phases in order; remove each when committed.
 
-- [ ] Phase 11 — Gap audit against the Craft app: the degree strip (12-step chromatic strip under the neck: which half steps belong, their degrees, click to hear), plus anything else found by walking the Craft app's screens (`app/src/main.rs`, `help.rs`) feature by feature.
 
 ## Enhancements
 

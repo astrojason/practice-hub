@@ -112,6 +112,8 @@ test("playing lights the current chord and follows it with its scale", async ({ 
   await tab(page, "Progressions");
   await page.locator('select[aria-label="Preset"]').selectOption({ label: "ii – V – I (jazz)" });
   await page.locator('select[aria-label="Follow the chords"]').selectOption("chordscale");
+  // Two seconds a chord, so a busy machine doesn't skip past the first one.
+  await page.locator('input[aria-label="Tempo (bpm)"]').fill("120");
   await playBtn(page).click();
   await expect(cards(page).nth(0)).toHaveClass(/fb-chord-card--playing/);
   await expect(page.locator(".fb-prog-now")).toContainText("Dm7");

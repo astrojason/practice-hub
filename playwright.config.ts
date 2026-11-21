@@ -3,10 +3,12 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   timeout: 30_000,
+  expect: { timeout: 10_000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: "list",
+  // Quiet output: dots, plus a list of failures at the end.
+  reporter: process.env.PW_REPORTER ?? "dot",
   use: {
     baseURL: "http://localhost:1420",
     trace: "on-first-retry",
@@ -14,7 +16,8 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      // The trainer plays real audio; keep the tests silent.
+      use: { ...devices["Desktop Chrome"], launchOptions: { args: ["--mute-audio"] } },
     },
     // Tauri's macOS webview is WebKit, not Chromium — some <video> playback
     // quirks (e.g. currentTime writes before readyState reaches HAVE_METADATA

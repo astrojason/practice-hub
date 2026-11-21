@@ -61,8 +61,8 @@ export interface NeckSettings {
   hiddenStrings: number[];
   showPrev: boolean;
   showNext: boolean;
-  /** Join the position to a neighbour along the chosen strings. */
-  connect: "off" | "next" | "prev";
+  /** Position number (1-based) to join the chosen position to along the chosen strings, or 0 for none. */
+  connect: number;
   connectStrings: number[];
   /** Index into SCALES of a second scale laid over the first, or -1. */
   blendScale: number;
@@ -107,7 +107,7 @@ export const DEFAULT_SETTINGS: FretSettings = {
   hiddenStrings: [],
   showPrev: false,
   showNext: false,
-  connect: "off",
+  connect: 0,
   connectStrings: [],
   blendScale: -1,
   blendRoot: 0,
@@ -119,7 +119,7 @@ const KEY = "ph:fretboard:settings";
 /** Fretboard Trainer settings, saved in local storage. Problems reading or saving are returned in `error`. */
 export function useFretSettings() {
   const [state] = useState(() => readLocalStorageJSON<Partial<FretSettings>>(KEY, {}));
-  const [settings, setSettings] = useState<FretSettings>({ ...DEFAULT_SETTINGS, ...state.value, practice: { ...DEFAULT_PRACTICE, ...state.value.practice }, speed: { ...DEFAULT_SPEED, ...state.value.speed } });
+  const [settings, setSettings] = useState<FretSettings>({ ...DEFAULT_SETTINGS, ...state.value, connect: typeof state.value.connect === "number" ? state.value.connect : 0, practice: { ...DEFAULT_PRACTICE, ...state.value.practice }, speed: { ...DEFAULT_SPEED, ...state.value.speed } });
   const [error, setError] = useState<string | null>(state.error);
 
   useEffect(() => {

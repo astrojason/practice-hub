@@ -40,8 +40,8 @@ test("key buttons and the scale select change the title and the tonality line", 
   await expect(page.locator(".fretboard-title")).toContainText("D Major (Ionian)");
   await page.locator('select[aria-label="Scale"]').selectOption({ label: "Dorian" });
   await expect(page.locator(".fretboard-title")).toContainText("D Dorian");
-  await expect(page.locator(".fretboard-tonality")).toContainText("Minor");
-  await expect(page.locator(".fretboard-tonality")).toContainText("natural 6");
+  await expect(page.locator(".fb-tonality-row")).toContainText("Minor");
+  await expect(page.locator(".fb-tonality-row")).toContainText("natural 6");
 });
 
 test("the position select moves the highlighted notes and spelling follows the key", async ({ page }) => {

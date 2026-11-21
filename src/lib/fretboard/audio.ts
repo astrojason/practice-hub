@@ -571,6 +571,24 @@ class Engine {
     await ctx.setSinkId(id === "default" ? "" : id);
   }
 
+  /** Drop the audio context so the next sound opens a fresh one on the current output (after the output changed). */
+  async reset(): Promise<void> {
+    this.stop(false);
+    for (const d of this.droneNodes) d.osc.stop();
+    this.droneNodes = [];
+    this.lastVoice.clear();
+    const ctx = this.ctx;
+    this.ctx = null;
+    this.sf = null;
+    this.sfPreset = null;
+    this.bufferCache.clear();
+    if (ctx) {
+      // Closing on purpose isn't a problem to report.
+      ctx.onstatechange = null;
+      if (ctx.state !== "closed") await ctx.close();
+    }
+  }
+
   /** A short test strum. */
   test(): void {
     this.strumNow([40, 47, 52, 56, 59, 64].map((midi, string) => ({ midi, string })), 0.05);

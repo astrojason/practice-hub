@@ -5,6 +5,7 @@ import { ErrorModal } from "../ErrorModal";
 import { QuizMain, QuizReport, QuizSide, WeakCard, answerKeyIndex } from "./QuizPanels";
 import { useQuiz } from "./useQuiz";
 import { useVoice } from "./useVoice";
+import { BlendLegend, DegreeCircle, DegreeStrip, StepsLine, TonalityRow, ToneChips } from "./Aids";
 import { spokenAnswer, spokenCommand, spokenDegreeName, spokenNoteName } from "../../lib/fretboard/spoken";
 import { speak } from "../../lib/fretboard/voice";
 import { QUIZ_KINDS } from "../../lib/fretboard/quiz";
@@ -141,8 +142,8 @@ export function FretboardView({ onBack, onHelp }: Props) {
 
   // The choices the Position/Shape select offers on the current page.
   const choices: string[] = useMemo(() => {
-    if (scaleLike) return scalePos.map((p) => p.title);
-    if (page === "arpeggios") return arpPos.map((p) => p.title);
+    if (scaleLike) return [...scalePos.map((p) => p.title), "Whole neck"];
+    if (page === "arpeggios") return [...arpPos.map((p) => p.title), "Whole neck"];
     return voicings.map((v, i) => {
       const fr = voicingNotes(v).map((n) => n[1]);
       return `Shape ${i + 1} — bass on the ${["6th", "5th", "4th"][v.bassString]} string, frets ${Math.min(...fr)}–${Math.max(...fr)}`;
@@ -220,7 +221,8 @@ export function FretboardView({ onBack, onHelp }: Props) {
   const colour = useMemo(() => colourNotes(scale.name, scale.tones), [scale]);
   const info = scaleInfo(scale.name);
   const diff = useMemo(() => differenceFromNatural(scale.tones), [scale]);
-  const keyChords = useMemo(() => diatonicChords(scale.tones, false), [scale]);
+  const [keySevenths, setKeySevenths] = useState(false);
+  const keyChords = useMemo(() => diatonicChords(scale.tones, keySevenths), [scale, keySevenths]);
 
   const title =
     page === "quiz" ? (QUIZ_KINDS.find((k) => k.id === quiz.kind)?.name ?? "Quiz") : planned && practiceStep ? practiceStep.title : scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
@@ -322,7 +324,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
       if (!voicing) throw new Error("There is no chord shape to play.");
       return buildChordSequence({ notes: stepsOf(voicingNotes(voicing)), bpm: curBpm(), notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
     }
-    const notes = page === "scales" ? view.runNotes : page === "arpeggios" ? arpPos[idx]?.notes : scalePos[idx]?.notes;
+    const notes = page === "scales" || page === "arpeggios" ? view.runNotes : scalePos[idx]?.notes;
     if (!notes?.length) throw new Error("There are no notes to play in this position.");
     return buildSequence({ steps: orderSteps(stepsOf(notes), settings.direction), bpm: curBpm(), notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
   }
@@ -678,7 +680,61 @@ export function FretboardView({ onBack, onHelp }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [announceIdx]);
 
-  const changeNotes = diff.changes.map(([t]) => t).join(", ");
+  // The chord sounding now, as half steps above the neck's root; and the note that just played.
+  const chordSemisNow = view.nowChord ? CHORDS[view.nowChord.chord].tones.map((t) => (((view.nowChord!.root + t.semis - view.root) % 12) + 12) % 12) : [];
+  const litSemis = (() => {
+    if (!playingNote) return null;
+    const [s, f] = playingNote.split(":").map(Number);
+    return ((((tuning[s] + f - view.root) % 12) + 12) % 12) as number;
+  })();
+
+  /** Play a note by its half steps above a root, in a comfortable octave. */
+  function hearSemis(root: number, semis: number) {
+    const midi = 48 + (((root + semis) % 12) + 12) % 12 + (semis >= 12 ? 12 : 0);
+    for (let s = 5; s >= 0; s--) {
+      const f = midi - tuning[s];
+      if (f >= 0 && f <= 12) {
+        engine.pluck(midi, s);
+        return;
+      }
+    }
+    throw new Error("That note is outside the range of the neck in this tuning.");
+  }
+
+  // A notice that isn't an error (the sound output changed and was reconnected).
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const md = navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    const onChange = () => {
+      const wasPlaying = engine.playing || speedRunRef.current !== null;
+      if (speedRunRef.current) finishSpeed(false);
+      stopPlayback();
+      void engine
+        .reset()
+        .then(() => {
+          font.reload();
+          setNotice(`The sound output changed, so the trainer reconnected.${wasPlaying ? " Press Play to carry on." : ""}`);
+        })
+        .catch((err) => setError(`The sound output changed but could not be reconnected: ${err instanceof Error ? err.message : String(err)}`));
+    };
+    md.addEventListener("devicechange", onChange);
+    return () => md.removeEventListener("devicechange", onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A SoundFont dropped on the window is added to the list.
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const files = [...e.dataTransfer.files];
+    if (files.length === 0) return;
+    const sf = files.find((f) => /\.sf2$/i.test(f.name));
+    if (!sf) {
+      setError(`Only .sf2 SoundFont files can be added by dropping them on the window (you dropped ${files[0].name}).`);
+      return;
+    }
+    void font.add(sf);
+  }
   const chordNotes = chord.tones.map((t) => ({
     note: spell(key, t.semis, t.label),
     label: t.label,
@@ -686,7 +742,12 @@ export function FretboardView({ onBack, onHelp }: Props) {
   }));
 
   return (
-    <div className="fretboard-view" data-testid="fretboard-view" data-theme={theme}>
+    <div className="fretboard-view" data-testid="fretboard-view" data-theme={theme} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+      {notice && (
+        <p className="fb-notice" role="status">
+          {notice} <button className="btn-ghost" onClick={() => setNotice(null)}>OK</button>
+        </p>
+      )}
       {focus && (
         <div className="fb-focusbar" role="toolbar" aria-label="Focus mode">
           <button className="btn-secondary" onClick={() => setFocus(false)}>Leave focus (Esc)</button>
@@ -781,14 +842,18 @@ export function FretboardView({ onBack, onHelp }: Props) {
               </label>
             )}
             {page !== "quiz" && (<>
-            <label>
-              {page === "chords" ? "Shape" : "Position"}
-              <select aria-label={page === "chords" ? "Shape" : "Position"} value={idx} onChange={(e) => setPosIdx(parseInt(e.target.value))}>
-                {choices.map((c, i) => (
-                  <option key={i} value={i}>{c}</option>
-                ))}
-              </select>
-            </label>
+            <div className="fb-neck-nav">
+              <button className="btn-ghost" onClick={() => stepPosition(-1)} aria-label="Previous position" title="Previous position (Left arrow)">◀</button>
+              <label>
+                {page === "chords" ? "Shape" : "Position"}
+                <select aria-label={page === "chords" ? "Shape" : "Position"} value={idx} onChange={(e) => setPosIdx(parseInt(e.target.value))}>
+                  {choices.map((c, i) => (
+                    <option key={i} value={i}>{c}</option>
+                  ))}
+                </select>
+              </label>
+              <button className="btn-ghost" onClick={() => stepPosition(1)} aria-label="Next position" title="Next position (Right arrow)">▶</button>
+            </div>
             <label>
               Labels
               <select aria-label="Labels" value={labelMode} onChange={(e) => update({ labels: e.target.value as typeof settings.labels })}>
@@ -811,23 +876,23 @@ export function FretboardView({ onBack, onHelp }: Props) {
 
           {!focus && page !== "chords" && (
             <div className="fretboard-controls fb-neck-controls">
-              <label className="fb-playbar__check">
-                <input type="checkbox" checked={settings.showPrev} onChange={(e) => update({ showPrev: e.target.checked })} /> Show previous
-              </label>
-              <label className="fb-playbar__check">
-                <input type="checkbox" checked={settings.showNext} onChange={(e) => update({ showNext: e.target.checked })} /> Show next
-              </label>
+              <span className="fb-settings__label" title="Show the whole position below and/or above this one, a little faded">Also show</span>
+              <button className={`fb-chip fb-chip--prev ${settings.showPrev ? "fb-chip--on" : ""}`} aria-label="Show previous position" aria-pressed={settings.showPrev} onClick={() => update({ showPrev: !settings.showPrev })}>
+                ◀ Previous
+              </button>
+              <button className={`fb-chip fb-chip--next ${settings.showNext ? "fb-chip--on" : ""}`} aria-label="Show next position" aria-pressed={settings.showNext} onClick={() => update({ showNext: !settings.showNext })}>
+                Next ▶
+              </button>
               {page === "scales" && (
                 <>
                   <label>
                     Connect to
-                    <select aria-label="Connect to" value={settings.connect} onChange={(e) => update({ connect: e.target.value as typeof settings.connect })}>
-                      <option value="off">Nothing</option>
-                      <option value="next">Next position</option>
-                      <option value="prev">Previous position</option>
+                    <select aria-label="Connect to" value={settings.connect === idx + 1 ? 0 : settings.connect} onChange={(e) => update({ connect: parseInt(e.target.value) })}>
+                      <option value={0}>Nothing</option>
+                      {scalePos.map((_, i) => (i === idx ? null : <option key={i} value={i + 1}>Position {i + 1}</option>))}
                     </select>
                   </label>
-                  {settings.connect !== "off" && (
+                  {settings.connect > 0 && settings.connect !== idx + 1 && (
                     <div className="fb-chip-row" role="group" aria-label="Connect along">
                       {tuning.map((open, s) => {
                         const on = settings.connectStrings.includes(s);
@@ -927,19 +992,13 @@ export function FretboardView({ onBack, onHelp }: Props) {
             )}
           </h2>
           {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} voice={voice} voiceOn={settings.voice} />}
-          <p className="fretboard-tonality" hidden={page === "quiz"}>
-            {scaleLike ? (
-              <>
-                {tonality(scale.tones)} —{" "}
-                {diff.changes.length === 0 ? `the ${diff.parent.toLowerCase()} scale itself` : `compared with ${diff.parent}: ${changeNotes}`}
-              </>
-            ) : (
-              <>
-                {KEYS[key]}
-                {chord.symbol} — {chord.group}
-              </>
-            )}
-          </p>
+          {page !== "quiz" && scaleLike && <TonalityRow tonality={tonality(scale.tones)} parent={diff.parent} changes={diff.changes} />}
+          {page !== "quiz" && !scaleLike && (
+            <p className="fretboard-tonality">
+              {KEYS[key]}
+              {chord.symbol} — {chord.group}
+            </p>
+          )}
           <p className="fb-prog-now">{view.nowLine ?? ""}</p>
           {page === "practice" && settings.practice.callouts !== "off" && <p className="fb-callout" aria-live="polite">{callout}</p>}
           {page === "practice" && settings.practice.routine === "circle" && playing && (
@@ -959,6 +1018,19 @@ export function FretboardView({ onBack, onHelp }: Props) {
             dimOpacity={settings.dim}
             onNote={(m) => hear(() => engine.pluck(m.midi, m.string))}
           />
+
+          {!focus && page !== "quiz" && view.tones.length > 0 && (
+            <DegreeStrip
+              tones={view.tones}
+              root={view.root}
+              scheme={settings.scheme}
+              changes={scaleLike && view.plainScale ? diff.changes : []}
+              chordSemis={chordSemisNow}
+              litSemis={litSemis}
+              blendSrc={view.blendSrc}
+              onHear={(i) => hear(() => hearSemis(view.root, i))}
+            />
+          )}
 
           {focus && page === "progressions" && (
             <div className="fb-chord-cards" aria-label="Progression">
@@ -991,10 +1063,50 @@ export function FretboardView({ onBack, onHelp }: Props) {
               }}
             />
           )}
-          {page === "chords" && voicing && (
+          {page !== "quiz" && view.nowChord && (
+            <section className="fb-now-panel">
+              <span className="fb-now-panel__label">NOW</span>
+              <div className="fb-now-panel__name">
+                <strong>{view.nowChord.name}</strong>
+                <span className="fb-now-panel__roman">{view.nowChord.roman}</span>
+              </div>
+              <p className="fb-dim">Chord tones (coloured by their role in the chord):</p>
+              <ToneChips tones={CHORDS[view.nowChord.chord].tones} root={view.nowChord.root} scheme={settings.scheme} onHear={(semis) => hear(() => hearSemis(view.nowChord!.root, semis))} />
+              {view.nowChord.voicing && (
+                <ChordBox
+                  voicing={view.nowChord.voicing}
+                  tones={CHORDS[view.nowChord.chord].tones}
+                  root={view.nowChord.root}
+                  tuning={tuning}
+                  scheme={settings.scheme}
+                  onClick={() => hear(() => strumVoicing(view.nowChord!.voicing as Voicing))}
+                />
+              )}
+              <p><strong>Over the scale: {`${KEYS[key]} ${scale.name}`}</strong></p>
+            </section>
+          )}
+          {page !== "quiz" && !view.nowChord && view.tones.length > 0 && (
+            <section className="fb-tones-panel">
+              <ToneChips tones={view.tones} root={view.root} scheme={settings.scheme} onHear={(semis) => hear(() => hearSemis(view.root, semis))} />
+              {scaleLike && view.plainScale && <StepsLine tones={view.tones} />}
+              {view.blendSrc && <BlendLegend a={scale.name} b={SCALES[settings.blendScale]?.name ?? ""} />}
+            </section>
+          )}
+          {page !== "quiz" && view.tones.length > 0 && (
+            <DegreeCircle tones={view.tones} root={view.root} scheme={settings.scheme} chordSemis={chordSemisNow} litSemis={litSemis} blendSrc={view.blendSrc} />
+          )}
+          {page === "chords" && voicing && !view.nowChord && (
             <section className="fretboard-about">
               <h3>Chord shape</h3>
-              <ChordBox voicing={voicing} names={tuning.map((_, s) => (voicing.frets[s] === null ? "" : plainName(tuning[s] + (voicing.frets[s] ?? 0))))} />
+              <ChordBox
+                voicing={voicing}
+                names={tuning.map((_, s) => (voicing.frets[s] === null ? "" : plainName(tuning[s] + (voicing.frets[s] ?? 0))))}
+                tones={chord.tones}
+                root={key}
+                tuning={tuning}
+                scheme={settings.scheme}
+                onClick={() => hear(() => strumVoicing(voicing))}
+              />
               <p className="fb-dim">Lowest fret {voicingMinFret(voicing)}</p>
             </section>
           )}
@@ -1034,6 +1146,9 @@ export function FretboardView({ onBack, onHelp }: Props) {
           {page === "scales" && keyChords.length > 0 && (
             <section className="fretboard-chords">
               <h3>Chords in this key</h3>
+              <label className="fb-playbar__check">
+                <input type="checkbox" checked={keySevenths} onChange={(e) => setKeySevenths(e.target.checked)} /> 7ths
+              </label>
               <div className="fb-chord-chips">
                 {keyChords.map(([d, c]) => {
                   const cd = CHORDS[c];

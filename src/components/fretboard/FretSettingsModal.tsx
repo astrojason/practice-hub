@@ -298,6 +298,9 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
             ) : (
               <span className="fb-dim">Uses the system's sound output (change it in System Settings).</span>
             )}
+            {engine.canChooseOutput && (
+              <button className="btn-ghost" onClick={() => engine.outputDevices().then(setOutputs).catch(fail)}>Look for outputs again</button>
+            )}
             <button
               className="btn-secondary"
               onClick={() => {

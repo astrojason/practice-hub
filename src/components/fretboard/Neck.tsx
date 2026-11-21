@@ -9,6 +9,7 @@ export interface NeckMark extends Mark {
   big?: boolean;
   /** A note of the previous or next position, shown faded. */
   neighbor?: boolean;
+  side?: "prev" | "next";
   /** A note on the path joining two positions. */
   link?: boolean;
   /** When two scales are blended: 0 in both, 1 only in the first, 2 only in the second. */
@@ -105,6 +106,7 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
             colourLabels.includes(m.label) ? "fb-note--colour" : "",
             faded ? "fb-note--dim" : "",
             m.neighbor ? "fb-note--neighbor" : "",
+            m.side ? `fb-note--${m.side}` : "",
             m.link ? "fb-note--link" : "",
             m.source === 1 ? "fb-note--only-first" : "",
             m.source === 2 ? "fb-note--only-second" : "",
