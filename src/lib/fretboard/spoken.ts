@@ -13,6 +13,7 @@ export function spokenVocabulary(kind: QuizKind): string[] {
   switch (kind) {
     case "note":
       for (const l of ["C", "D", "E", "F", "G", "A", "B"]) v.push(l, `${l} sharp`, `${l} flat`);
+      v.push("ay", "alpha", "alpha flat", "alpha sharp", "bravo", "charlie", "delta", "echo", "foxtrot", "golf");
       break;
     case "degree":
       v.push("root", "flat two", "two", "flat three", "three", "four", "sharp four", "flat five", "five", "sharp five", "flat six", "six", "flat seven", "seven");
@@ -56,13 +57,14 @@ export function spokenWords(text: string): string[] {
 }
 
 const LETTERS: Record<string, number> = {
-  c: 0, see: 0, sea: 0, si: 0,
-  d: 2, dee: 2,
-  e: 4, ee: 4,
-  f: 5, eff: 5, ef: 5,
-  g: 7, gee: 7, jee: 7,
-  a: 9, ay: 9, eh: 9, hey: 9,
-  b: 11, be: 11, bee: 11,
+  // The letters, how they sound, and the radio alphabet ("alpha flat") for when a letter is misheard.
+  c: 0, see: 0, sea: 0, si: 0, charlie: 0,
+  d: 2, dee: 2, delta: 2,
+  e: 4, ee: 4, echo: 4,
+  f: 5, eff: 5, ef: 5, foxtrot: 5,
+  g: 7, gee: 7, jee: 7, golf: 7,
+  a: 9, ay: 9, eh: 9, hey: 9, alpha: 9, alfa: 9,
+  b: 11, be: 11, bee: 11, bravo: 11,
 };
 const ACCIDENTALS: Record<string, number> = { sharp: 1, sharps: 1, shop: 1, sharpe: 1, flat: -1, flats: -1, flap: -1 };
 const NUMBERS: Record<string, number> = {
@@ -200,11 +202,19 @@ function answerOne(kind: QuizKind, choices: string[], words: string[]): number |
 
 /** Which answer a spoken phrase picks, trying each of the recogniser's guesses in turn. */
 export function spokenAnswer(kind: QuizKind, choices: string[], guesses: string[]): number | null {
+  // The recogniser's alternatives often include the right one when its first guess is wrong
+  // ("B flat" for "A flat"), so the answer most guesses agree on wins; ties go to the best guess.
+  const votes = new Map<number, number>();
+  const order: number[] = [];
   for (const g of guesses) {
     const r = answerOne(kind, choices, spokenWords(g));
-    if (r !== null) return r;
+    if (r === null) continue;
+    if (!votes.has(r)) order.push(r);
+    votes.set(r, (votes.get(r) ?? 0) + 1);
   }
-  return null;
+  let best: number | null = null;
+  for (const r of order) if (best === null || (votes.get(r) ?? 0) > (votes.get(best) ?? 0)) best = r;
+  return best;
 }
 
 /** "next" moves on, "again" / "hear it" plays the question again, "stop" ends the session. */

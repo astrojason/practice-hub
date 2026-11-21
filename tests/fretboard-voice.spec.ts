@@ -99,6 +99,9 @@ test("spoken answers are understood (same cases as the Craft app)", async ({ pag
     eq("G", spokenAnswer("note", notes, g("G")), 7);
     eq("hmm", spokenAnswer("note", notes, g("hmm")), null);
     eq("later guess", spokenAnswer("note", notes, ["um", "F sharp"]), 6);
+    eq("radio alphabet", spokenAnswer("note", notes, g("alpha flat")), 8);
+    eq("majority of the alternatives wins", spokenAnswer("note", notes, ["B flat", "A flat", "A flat"]), 8);
+    eq("a tie goes to the best guess", spokenAnswer("note", notes, ["B flat", "A flat"]), 10);
     const degrees = ["1  (C)", "2  (D)", "b3  (Eb)", "4  (F)", "5  (G)", "b6  (Ab)", "b7  (Bb)"];
     eq("flat three", spokenAnswer("degree", degrees, g("flat three")), 2);
     eq("b7", spokenAnswer("degree", degrees, g("b7")), 6);
