@@ -32,6 +32,7 @@ import {
   instrumentType,
   arpeggioPositions,
   chordVoicings,
+  chordPlayable,
   diatonicChords,
   differenceFromNatural,
   intervalName,
@@ -277,7 +278,17 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   const info = scaleInfo(scale.name);
   const diff = useMemo(() => differenceFromNatural(scale.tones), [scale]);
   const [keySevenths, setKeySevenths] = useState(false);
-  const keyChords = useMemo(() => diatonicChords(scale.tones, keySevenths), [scale, keySevenths]);
+  const keyChords = useMemo(
+    () => diatonicChords(scale.tones, keySevenths).filter(([d, c]) => chordPlayable(tuning, key + scale.tones[d].semis, c)),
+    [scale, keySevenths, tuning, key],
+  );
+  // On the Chords page the chord list leaves out chords with no playable shape on this instrument.
+  useEffect(() => {
+    if (page === "chords" && !chordPlayable(tuning, key, chordIdx)) {
+      const first = CHORDS.findIndex((_, i) => chordPlayable(tuning, key, i));
+      if (first >= 0) setChordIdx(first);
+    }
+  }, [page, tuning, key, chordIdx]);
 
   const title =
     page === "quiz" ? (QUIZ_KINDS.find((k) => k.id === quiz.kind)?.name ?? "Quiz") : planned && practiceStep ? practiceStep.title : scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
@@ -926,13 +937,16 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
               <label>
                 Chord type
                 <select aria-label="Chord type" value={chordIdx} onChange={(e) => { setChordIdx(parseInt(e.target.value)); setPosIdx(0); }}>
-                  {CHORD_GROUPS.map(([group, list]) => (
-                    <optgroup key={group} label={group}>
-                      {list.map((c) => (
-                        <option key={c.name} value={CHORDS.indexOf(c)}>{c.name}</option>
-                      ))}
-                    </optgroup>
-                  ))}
+                  {CHORD_GROUPS.map(([group, list]) => {
+                    const shown = list.filter((c) => page !== "chords" || CHORDS.indexOf(c) === chordIdx || chordPlayable(tuning, key, CHORDS.indexOf(c)));
+                    return shown.length === 0 ? null : (
+                      <optgroup key={group} label={group}>
+                        {shown.map((c) => (
+                          <option key={c.name} value={CHORDS.indexOf(c)}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
                 </select>
               </label>
             )}
@@ -1069,6 +1083,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
 
           {!focus && page === "progressions" && (
             <ProgressionPanel
+              tuning={tuning}
               prog={prog}
               keyIdx={key}
               scaleIdx={scaleIdx}

@@ -543,6 +543,19 @@ export function chordVoicings(tuning: number[], root: number, ts: Tone[]): Voici
 }
 
 /** Triad (or seventh) built on each degree of a 7-note scale: [degree index, chord index]. */
+const playableCache = new Map<string, boolean>();
+
+/** Whether a chord has at least one playable shape on this instrument (so lists can leave out what can't be played). */
+export function chordPlayable(tuning: number[], root: number, chordIdx: number): boolean {
+  const key = `${tuning.join(",")}:${mod(root, 12)}:${chordIdx}`;
+  let hit = playableCache.get(key);
+  if (hit === undefined) {
+    hit = chordVoicings(tuning, mod(root, 12), CHORDS[chordIdx].tones).length > 0;
+    playableCache.set(key, hit);
+  }
+  return hit;
+}
+
 export function diatonicChords(ts: Tone[], sevenths: boolean): [number, number][] {
   if (ts.length !== 7) return [];
   const out: [number, number][] = [];

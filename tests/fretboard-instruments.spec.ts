@@ -116,3 +116,32 @@ test("chord shapes are drawn with the instrument's strings", async ({ page }) =>
   await pick(page, "7-string guitar");
   await expect(page.locator(".chord-box .chord-box__string")).toHaveCount(7);
 });
+
+test("chords with no playable shape on the instrument are left out of the lists", async ({ page }) => {
+  await page.locator(".fb-tab", { hasText: "Chords" }).click();
+  const options = () => page.locator('select[aria-label="Chord type"] option');
+  expect(await options().count()).toBe(37);
+  await pick(page, "4-string bass");
+  const n = await options().count();
+  expect(n).toBeLessThan(37);
+  expect(n).toBeGreaterThan(5);
+  // Everything still offered can be played: each has a shape.
+  const values = await options().evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
+  for (const v of values) {
+    await page.locator('select[aria-label="Chord type"]').selectOption(v);
+    await expect(page.locator(".chord-box").first()).toBeVisible();
+  }
+  // The key's chords and the Progressions add lists drop them too.
+  await page.locator(".fb-tab", { hasText: "Progressions" }).click();
+  await expect(page.locator(".error-modal")).toHaveCount(0);
+  const anyCount = await page.locator('.fb-add-any select[aria-label="Chord type"] option').count();
+  expect(anyCount).toBeLessThan(37);
+});
+
+test("when the instrument changes and the chosen chord can't be played, another is chosen", async ({ page }) => {
+  await page.locator(".fb-tab", { hasText: "Chords" }).click();
+  await page.locator('select[aria-label="Chord type"]').selectOption({ label: "Dominant 13" });
+  await pick(page, "4-string bass");
+  await expect(page.locator(".chord-box").first()).toBeVisible();
+  await expect(page.locator('select[aria-label="Chord type"] option:checked')).not.toHaveText("Dominant 13");
+});

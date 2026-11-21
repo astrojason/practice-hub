@@ -11,12 +11,14 @@ import {
   type ProgChord,
 } from "../../lib/fretboard/progression";
 import type { FretSettings } from "../../lib/fretboard/settings";
-import { CHORDS, KEYS, PROGRESSIONS, SCALES, diatonicChords, plainName, romanFor } from "../../lib/fretboard/theory";
+import { CHORDS, KEYS, PROGRESSIONS, SCALES, chordPlayable, diatonicChords, plainName, romanFor } from "../../lib/fretboard/theory";
 import type { useProgression } from "../../lib/fretboard/useProgression";
 
 type Prog = ReturnType<typeof useProgression>;
 
 interface Props {
+  /** The instrument's strings: chords with no playable shape on it are left out of the lists. */
+  tuning: number[];
   prog: Prog;
   keyIdx: number;
   scaleIdx: number;
@@ -41,7 +43,7 @@ const CHORD_GROUPS = (() => {
   return [...map.entries()];
 })();
 
-export function ProgressionPanel({ prog, keyIdx, scaleIdx, onScale, settings, update, selected, onSelect, playingIndex, onHear }: Props) {
+export function ProgressionPanel({ tuning, prog, keyIdx, scaleIdx, onScale, settings, update, selected, onSelect, playingIndex, onHear }: Props) {
   const { chords, setChords } = prog;
   const [pending, setPending] = useState<Pending | null>(null);
   const [savedPick, setSavedPick] = useState("");
@@ -105,7 +107,7 @@ export function ProgressionPanel({ prog, keyIdx, scaleIdx, onScale, settings, up
     } else saveNow(p.name);
   }
 
-  const keyChords = diatonicChords(scale.tones, sevenths);
+  const keyChords = diatonicChords(scale.tones, sevenths).filter(([d, ci]) => chordPlayable(tuning, keyIdx + scale.tones[d].semis, ci));
 
   return (
     <div className="fb-prog">
@@ -194,7 +196,7 @@ export function ProgressionPanel({ prog, keyIdx, scaleIdx, onScale, settings, up
             <select aria-label="Chord type" value={sel.chord} onChange={(e) => patch(selected, { chord: parseInt(e.target.value) })}>
               {CHORD_GROUPS.map(([g, list]) => (
                 <optgroup key={g} label={g}>
-                  {list.map((ci) => (
+                  {list.filter((ci) => ci === sel.chord || chordPlayable(tuning, chordRoot(keyIdx, sel), ci)).map((ci) => (
                     <option key={ci} value={ci}>{CHORDS[ci].name}</option>
                   ))}
                 </optgroup>
@@ -245,7 +247,7 @@ export function ProgressionPanel({ prog, keyIdx, scaleIdx, onScale, settings, up
           <select aria-label="Chord type" value={anyChord} onChange={(e) => setAnyChord(parseInt(e.target.value))}>
             {CHORD_GROUPS.map(([g, list]) => (
               <optgroup key={g} label={g}>
-                {list.map((ci) => (
+                {list.filter((ci) => ci === anyChord || chordPlayable(tuning, anyRoot, ci)).map((ci) => (
                   <option key={ci} value={ci}>{CHORDS[ci].name}</option>
                 ))}
               </optgroup>
