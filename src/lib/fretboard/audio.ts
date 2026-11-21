@@ -188,7 +188,9 @@ class Engine {
     if (!ctx) return;
     const s = this.settings;
     const t = ctx.currentTime;
-    this.master.gain.setTargetAtTime(s.volume, t, 0.02);
+    // Tests set this so they run without making a sound (WebKit has no mute switch).
+    const muted = (window as unknown as { __fretboardMute?: boolean }).__fretboardMute === true;
+    this.master.gain.setTargetAtTime(muted ? 0 : s.volume, t, 0.02);
     this.tone.frequency.setTargetAtTime(900 * Math.pow(18, s.brightness), t, 0.02);
     this.wet.gain.setTargetAtTime(s.reverb * 1.2, t, 0.02);
     this.dry.gain.setTargetAtTime(1 - s.reverb * 0.3, t, 0.02);

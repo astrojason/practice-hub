@@ -6,7 +6,7 @@ import { QuizMain, QuizReport, QuizSide, WeakCard, answerKeyIndex } from "./Quiz
 import { useQuiz } from "./useQuiz";
 import { useVoice } from "./useVoice";
 import { BlendLegend, DegreeCircle, DegreeStrip, StepsLine, TonalityRow, ToneChips } from "./Aids";
-import { spokenAnswer, spokenCommand, spokenDegreeName, spokenNoteName } from "../../lib/fretboard/spoken";
+import { spokenAnswerFor, spokenCommand, spokenDegreeName, spokenNoteName } from "../../lib/fretboard/spoken";
 import { speak } from "../../lib/fretboard/voice";
 import { QUIZ_KINDS } from "../../lib/fretboard/quiz";
 import { ChordBox } from "./ChordBox";
@@ -130,7 +130,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
         if (quiz.picked !== null) quiz.next();
       } else if (cmd === "again") quiz.hear();
       else if (quiz.question && quiz.picked === null) {
-        const i = spokenAnswer(quiz.kind, quiz.question.choices, guesses);
+        const i = spokenAnswerFor(quiz.kind, quiz.question.choices, guesses, quiz.question.answer);
         if (i !== null) quiz.answer(i, onsetAt);
       }
     },

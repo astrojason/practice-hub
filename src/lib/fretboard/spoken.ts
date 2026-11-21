@@ -200,6 +200,48 @@ function answerOne(kind: QuizKind, choices: string[], words: string[]): number |
   }
 }
 
+// Letters that sound alike over a microphone: heard for one another, they count as a match
+// when the right answer is known ("B flat" for "A flat").
+const SOUND_ALIKE = [["a", "b"], ["b", "c", "d", "e", "g"]];
+const alike = (x: string, y: string) => x === y || SOUND_ALIKE.some((g) => g.includes(x) && g.includes(y));
+
+/** The letter and accidental of the first note name in the words. */
+function noteParts(words: string[]): { letter: string; acc: number } | null {
+  for (let i = 0; i < words.length; i++) {
+    const pc = letterOf(words[i]);
+    if (pc === null) continue;
+    const letter = ({ 0: "c", 2: "d", 4: "e", 5: "f", 7: "g", 9: "a", 11: "b" } as Record<number, string>)[pc];
+    return { letter, acc: accidentalOf(words[i + 1]) ?? 0 };
+  }
+  return null;
+}
+
+/** Whether the words name the note of this choice ("G#/Ab"), or one that sounds just like it. */
+function soundsLikeNote(words: string[], choice: string): boolean {
+  const heard = noteParts(words);
+  if (!heard) return false;
+  return choice.split("/").some((n) => {
+    const l = n[0].toLowerCase();
+    const acc = n.includes("#") ? 1 : n.includes("b") && n.length > 1 ? -1 : 0;
+    return acc === heard.acc && alike(heard.letter, l);
+  });
+}
+
+/**
+ * Which answer a spoken phrase picks. When the right answer is known, the person is assumed to
+ * have given it if any of the recogniser's alternatives matches it (or, for notes, sounds just
+ * like it); otherwise the answer most alternatives agree on wins.
+ */
+export function spokenAnswerFor(kind: QuizKind, choices: string[], guesses: string[], expected: number): number | null {
+  for (const g of guesses) {
+    if (answerOne(kind, choices, spokenWords(g)) === expected) return expected;
+  }
+  if (kind === "note") {
+    for (const g of guesses) if (soundsLikeNote(spokenWords(g), choices[expected])) return expected;
+  }
+  return spokenAnswer(kind, choices, guesses);
+}
+
 /** Which answer a spoken phrase picks, trying each of the recogniser's guesses in turn. */
 export function spokenAnswer(kind: QuizKind, choices: string[], guesses: string[]): number | null {
   // The recogniser's alternatives often include the right one when its first guess is wrong

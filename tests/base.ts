@@ -8,6 +8,10 @@ export * from "@playwright/test";
 // which takes priority.
 export const test = base.extend({
   page: async ({ page }, use) => {
+    // The trainer plays real audio; tests must stay silent in every browser.
+    await page.addInitScript(() => {
+      (window as unknown as { __fretboardMute: boolean }).__fretboardMute = true;
+    });
     await page.route("**/user-streak-token", (route) => {
       if (route.request().method() !== "GET") return route.fallback();
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ uses: [] }) });

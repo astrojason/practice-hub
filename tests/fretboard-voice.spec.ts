@@ -82,7 +82,7 @@ async function litPitchClass(page: P) {
 
 test("spoken answers are understood (same cases as the Craft app)", async ({ page }) => {
   const failures = await page.evaluate(async () => {
-    const { spokenAnswer, spokenCommand } = await import("/src/lib/fretboard/spoken.ts");
+    const { spokenAnswer, spokenAnswerFor, spokenCommand } = await import("/src/lib/fretboard/spoken.ts");
     const { BOTH_NAMES, CHORDS, chordIndex } = await import("/src/lib/fretboard/theory.ts");
     const { INTERVALS } = await import("/src/lib/fretboard/quiz.ts");
     const bad: string[] = [];
@@ -101,6 +101,11 @@ test("spoken answers are understood (same cases as the Craft app)", async ({ pag
     eq("later guess", spokenAnswer("note", notes, ["um", "F sharp"]), 6);
     eq("radio alphabet", spokenAnswer("note", notes, g("alpha flat")), 8);
     eq("majority of the alternatives wins", spokenAnswer("note", notes, ["B flat", "A flat", "A flat"]), 8);
+    eq("known answer: sounds-alike letter", spokenAnswerFor("note", notes, ["B flat"], 8), 8);
+    eq("known answer: an alternative matches", spokenAnswerFor("note", notes, ["B flat", "A flat"], 8), 8);
+    eq("known answer: really different note stays wrong", spokenAnswerFor("note", notes, ["F sharp"], 8), 6);
+    eq("known answer: different accidental stays wrong", spokenAnswerFor("note", notes, ["B"], 8), 11);
+    eq("known answer: exact heard", spokenAnswerFor("note", notes, ["B flat"], 10), 10);
     eq("a tie goes to the best guess", spokenAnswer("note", notes, ["B flat", "A flat"]), 10);
     const degrees = ["1  (C)", "2  (D)", "b3  (Eb)", "4  (F)", "5  (G)", "b6  (Ab)", "b7  (Bb)"];
     eq("flat three", spokenAnswer("degree", degrees, g("flat three")), 2);
