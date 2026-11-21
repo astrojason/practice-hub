@@ -32,21 +32,17 @@ const seconds = (t: string | undefined) => {
   return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
 };
 
-test("the Open Session the trainer started pauses when nobody is doing anything, and resumes when the trainer is used", async ({ page }) => {
+test("the Open Session the trainer started stops when nobody is doing anything, and asks to save", async ({ page }) => {
   await page.locator('.fb-note[data-in-position="true"]').first().click();
   await expect(page.locator(".btn-open-session-active")).toBeAttached();
-  // Idle: no input and nothing playing.
-  await page.waitForTimeout(7000);
-  const paused = seconds(await timer(page));
-  await page.waitForTimeout(3000);
-  expect(seconds(await timer(page))).toBe(paused);
-  // The idle time was not counted.
-  expect(paused).toBeLessThanOrEqual(3);
-  // Using the trainer again carries on.
-  await page.locator('.fb-note[data-in-position="true"]').nth(1).click();
-  // (Before it has been idle long enough to pause again.)
-  await page.waitForTimeout(1800);
-  expect(seconds(await timer(page))).toBeGreaterThan(paused);
+  // Idle: no input and nothing playing. The trainer closes and the save form opens.
+  await expect(page.locator(".fretboard-view")).toHaveCount(0, { timeout: 15000 });
+  const form = page.locator(".modal-card");
+  await expect(form).toContainText("Open Session");
+  await expect(form.getByRole("button", { name: "Log Session" })).toBeVisible();
+  await expect(form.locator("textarea")).toHaveValue(/Fretboard Trainer/);
+  // The idle time wasn't counted.
+  expect(parseInt(await form.locator('input[type="number"]').inputValue())).toBeLessThanOrEqual(3);
 });
 
 test("it keeps running while the trainer is playing on its own", async ({ page }) => {

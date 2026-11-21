@@ -52,7 +52,7 @@ import { QuickAddPanel } from "./session/QuickAddPanel";
 import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
 import { requestSessionModal } from "../lib/sessionModalRequest";
-import { clearTrainerActivity, idleMs, isTrainerBusy, useSaveRequests, useTrainerActivity, useTrainerTouches } from "../lib/trainerSession";
+import { clearTrainerActivity, idleMs, isTrainerBusy, requestSaveSession, useSaveRequests, useTrainerActivity } from "../lib/trainerSession";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
@@ -487,12 +487,10 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   }, [trainerActivity]);
 
   // A timer the trainer started doesn't keep running while nobody is doing anything: after a
-  // couple of minutes with no input and nothing playing it pauses (without the idle time),
-  // and it carries on when the trainer is used again.
+  // couple of minutes with no input and nothing playing it stops (without the idle time) and
+  // asks whether to save the session.
   const trainerOwnsTimer = useRef(false);
-  const idlePaused = useRef(false);
   const lastInput = useRef(Date.now());
-  const trainerTouches = useTrainerTouches();
   const pauseTrimmed = useRef(pauseTimerTrimmed);
   pauseTrimmed.current = pauseTimerTrimmed;
   useEffect(() => {
@@ -502,11 +500,11 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     const events = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
     events.forEach((e) => window.addEventListener(e, mark, { passive: true }));
     const id = window.setInterval(() => {
-      if (!trainerOwnsTimer.current || idlePaused.current || !activeTimers.has(OPEN_SESSION_KEY)) return;
+      if (!trainerOwnsTimer.current || !activeTimers.has(OPEN_SESSION_KEY)) return;
       if (isTrainerBusy()) return;
       if (Date.now() - lastInput.current > idleMs()) {
         pauseTrimmed.current(OPEN_SESSION_KEY, Math.round(idleMs() / 1000));
-        idlePaused.current = true;
+        requestSaveSession();
       }
     }, 500);
     return () => {
@@ -515,14 +513,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTimers]);
-  useEffect(() => {
-    lastInput.current = Date.now();
-    if (trainerOwnsTimer.current && idlePaused.current && !activeTimers.has(OPEN_SESSION_KEY)) {
-      idlePaused.current = false;
-      startTimer(OPEN_SESSION_KEY);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trainerTouches]);
+
 
   // ── User-added items (Quick Add) ─────────────────────────────────────────────
   const [additionalSongs, setAdditionalSongs] = useState<Song[]>([]);
@@ -1379,7 +1370,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             cancelSession(OPEN_SESSION_KEY);
             clearTrainerActivity();
             trainerOwnsTimer.current = false;
-            idlePaused.current = false;
             setOpenSessionModalOpen(false);
             setOpenSessionSaveFirst(false);
           }}
@@ -1388,7 +1378,6 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             cancelSession(OPEN_SESSION_KEY);
             clearTrainerActivity();
             trainerOwnsTimer.current = false;
-            idlePaused.current = false;
             setOpenSessionModalOpen(false);
             setOpenSessionSaveFirst(false);
           }}

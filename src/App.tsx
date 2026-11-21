@@ -6,7 +6,7 @@ import { SessionView } from "./components/SessionView";
 import { GpLibraryView } from "./components/GpLibraryView";
 import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { BrowseView } from "./components/BrowseView";
-import { requestSaveSession } from "./lib/trainerSession";
+import { requestSaveSession, useSaveRequests } from "./lib/trainerSession";
 import { FretboardView } from "./components/fretboard/FretboardView";
 import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
@@ -46,6 +46,14 @@ export function App() {
   const [gpOpenError, setGpOpenError] = useState<string | null>(null);
   const [tabPlayer, setTabPlayer] = useState<{ path: string; resources: Resource[] } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  // A request to save what the trainer logged (from it, or after it sat idle) shows the session view.
+  const saveRequests = useSaveRequests();
+  const lastSaveRequest = useRef(saveRequests);
+  useEffect(() => {
+    if (saveRequests === lastSaveRequest.current) return;
+    lastSaveRequest.current = saveRequests;
+    setView("session");
+  }, [saveRequests]);
   const [helpTopic, setHelpTopic] = useState<string | undefined>(undefined);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
   const [albumBadges, setAlbumBadges] = useState<AlbumBadgesResponse | null>(null);
@@ -120,10 +128,7 @@ export function App() {
   } else if (view === "fretboard") {
     overlay = <FretboardView
         onBack={() => setView("session")}
-        onSaveSession={() => {
-          setView("session");
-          requestSaveSession();
-        }}
+        onSaveSession={requestSaveSession}
         onHelp={() => {
           setHelpTopic("fretboard-trainer");
           setHelpOpen(true);

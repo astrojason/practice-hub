@@ -1,6 +1,6 @@
 # Fretboard Trainer
 
-The Fretboard Trainer shows scales, arpeggios and chords on a guitar neck, plays them, and gives you exercises and quizzes to learn them. Open it with **Fretboard** in the session header. Anything you play or practise in it starts the **Open Session** timer, and what you worked on (key, scale, position, tempo, quiz kind and the quiz results…) is written into the Open Session's notes. The timer doesn't run while you're idle: after two minutes with no clicks or keys and nothing playing, it pauses (without counting those two minutes) and carries on as soon as you use the trainer again. While the trainer is playing on its own (a loop you play along to, a speed session, a quiz) it keeps running.
+The Fretboard Trainer shows scales, arpeggios and chords on a guitar neck, plays them, and gives you exercises and quizzes to learn them. Open it with **Fretboard** in the session header. Anything you play or practise in it starts the **Open Session** timer, and what you worked on (key, scale, position, tempo, quiz kind and the quiz results…) is written into the Open Session's notes. The timer doesn't run while you're idle: after two minutes with no clicks or keys and nothing playing, it stops (without counting those two minutes) and the Open Session form opens so you can log what you did. While the trainer is playing on its own (a loop you play along to, a speed session, a quiz) it keeps running.
 
 ## Getting started
 
