@@ -121,3 +121,56 @@ test("loop sequence with a time limit longer than a lap runs more than one lap",
   await expect(page.locator("#sequenceStatus")).toBeVisible(); // still in lap 2
   await expect(page.locator("#playSequenceBtn")).toContainText("Play Sequence", { timeout: 10000 });
 });
+
+test("the time limit takes seconds: minutes:seconds and seconds both work, and what isn't a time is marked", async ({ page }) => {
+  await openVideo(page);
+  const field = page.locator("#loopMaxMinutes");
+  await field.fill("0:02");
+  await expect(field).toHaveValue("0:02");
+  await field.fill("90s");
+  await field.blur();
+  await expect(field).toHaveValue("90s");
+  await expect(field).not.toHaveClass(/is-invalid/);
+  await field.fill("soon");
+  await field.blur();
+  await expect(field).toHaveClass(/is-invalid/);
+  await expect(field).toHaveValue("soon");
+  await field.fill("1.5");
+  await expect(field).not.toHaveClass(/is-invalid/);
+});
+
+test("a limit typed as seconds stops the loop like the same limit in minutes", async ({ page }) => {
+  await openVideo(page);
+  await page.fill("#loopStart", "0:01");
+  await page.fill("#loopEnd", "0:02");
+  // 2s: passes of 1s end at 1s (<2, go again) and 2s (>=2, stop).
+  await page.fill("#loopMaxMinutes", "2s");
+  await page.evaluate(() => { void document.querySelector("video")!.play(); });
+  await expect(page.locator("video")).toHaveJSProperty("paused", true, { timeout: 8000 });
+});
+
+test("a limit set while it's already looping counts the time already spent, not from the moment it was typed", async ({ page }) => {
+  await openVideo(page);
+  await page.fill("#loopStart", "0:01");
+  await page.fill("#loopEnd", "0:02");
+  await page.evaluate(() => { void document.querySelector("video")!.play(); });
+  await page.waitForTimeout(2600);
+  await page.fill("#loopMaxMinutes", "3s");
+  // About 2.6s in, the pass ending at 3s reaches the limit. Counting from the typing it would run 3s more.
+  await expect(page.locator("video")).toHaveJSProperty("paused", true, { timeout: 2200 });
+});
+
+test("time paused to practise counts toward the limit, like the timer does", async ({ page }) => {
+  await openVideo(page);
+  await page.fill("#loopStart", "0:01");
+  await page.fill("#loopEnd", "0:02");
+  await page.evaluate(() => { void document.querySelector("video")!.play(); });
+  await page.waitForTimeout(300);
+  await page.fill("#loopMaxMinutes", "3s");
+  await page.evaluate(() => document.querySelector("video")!.pause());
+  await page.waitForTimeout(3500);
+  // Only ~0.3s of passes were played, but 3.8s have gone by: the next pass end finishes the run.
+  await page.evaluate(() => { void document.querySelector("video")!.play(); });
+  // The first pass end (about 1.7s on) stops it; counting only the passes played it would take about 3.7s.
+  await expect(page.locator("video")).toHaveJSProperty("paused", true, { timeout: 3000 });
+});

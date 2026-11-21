@@ -215,9 +215,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   const [loopMaxMinutes, setLoopMaxMinutesLocal] = useState<number | null>(null);
   const loopMaxMinutesRef = useRef<number | null>(null);
   const videoLoopElapsedRef = useRef(0);
+  /** performance.now() when the video loop run first played; the time limit counts from here, pauses included. */
+  const videoLoopStartRef = useRef<number | null>(null);
   const [sequenceLoopMaxMinutes, setSequenceLoopMaxMinutesLocal] = useState<number | null>(null);
   const sequenceLoopMaxMinutesRef = useRef<number | null>(null);
-  const sequenceElapsedRef = useRef(0);
+  /** performance.now() when the sequence started; its time limit counts from here, pauses included. */
+  const sequenceStartMsRef = useRef(0);
   const [loopMaxUseParent, setLoopMaxUseParentLocal] = useState(false);
   const loopMaxUseParentRef = useRef(false);
   const [sequenceLoopMaxUseParent, setSequenceLoopMaxUseParentLocal] = useState(false);
@@ -677,6 +680,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       videoLoopCountRef.current = 0;
       videoPassCountRef.current = 0;
       videoLoopElapsedRef.current = 0;
+      videoLoopStartRef.current = null;
       videoBreakCountRef.current = 0;
       // Restore playback speed from preset
       vid.preservesPitch = true;
@@ -781,11 +785,12 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       const countDone = max !== null && videoPassCountRef.current >= max;
       const elapsed = loopMaxUseParentRef.current && parentElapsedRef.current !== null
         ? parentElapsedRef.current
-        : videoLoopElapsedRef.current;
+        : videoLoopStartRef.current === null ? videoLoopElapsedRef.current : (performance.now() - videoLoopStartRef.current) / 1000;
       const timeDone = maxMin !== null && elapsed >= maxMin * 60;
       if (!countDone && !timeDone) return false;
       videoPassCountRef.current = 0;
       videoLoopElapsedRef.current = 0;
+      videoLoopStartRef.current = null;
       videoLoopCountRef.current = 0;
       videoBreakCountRef.current = 0;
       v.pause();
@@ -793,6 +798,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       return true;
     };
     const onTime = () => {
+      if (!vid.paused && videoLoopStartRef.current === null) videoLoopStartRef.current = performance.now();
       setVideoCurrentTime(vid.currentTime);
       const le = parseTimeInput(loopEndInput, vid.duration);
       const ls = parseTimeInput(loopStartInput, vid.duration) ?? 0;
@@ -831,7 +837,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       }
     };
     const onMeta = () => setVideoDuration(vid.duration);
-    const onPlay = () => setVideoPlaying(true);
+    const onPlay = () => {
+      if (videoLoopStartRef.current === null) videoLoopStartRef.current = performance.now();
+      setVideoPlaying(true);
+    };
     const onPause = () => setVideoPlaying(false);
     const onEnded = () => {
       if (effectiveLoop) {
@@ -1545,7 +1554,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     sequenceOrderRef.current = order;
     setSequenceIndex(0);
     sequenceLapRef.current = 1;
-    sequenceElapsedRef.current = 0;
+    sequenceStartMsRef.current = performance.now();
     setSequenceActive(true);
     // A count-in step starts playback itself once the count finishes.
     if (!applySequenceStep(order[0])) {
@@ -1573,12 +1582,10 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   const advanceSequence = (): boolean => {
     const order = sequenceOrderRef.current;
     const nextIndex = sequenceIndexRef.current + 1;
-    const finished = order[sequenceIndexRef.current];
-    if (finished) sequenceElapsedRef.current += Math.max(0, finished.end - finished.start) / (speedRef.current || 1);
     const sequenceMaxMin = sequenceLoopMaxMinutesRef.current;
     const sequenceElapsed = sequenceLoopMaxUseParentRef.current && parentElapsedRef.current !== null
       ? parentElapsedRef.current
-      : sequenceElapsedRef.current;
+      : (performance.now() - sequenceStartMsRef.current) / 1000;
     const timeLeft = sequenceMaxMin === null || sequenceElapsed < sequenceMaxMin * 60;
     if (nextIndex < order.length) {
       setSequenceIndex(nextIndex);
@@ -2202,12 +2209,11 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   className="media-player__loop-num-input"
                   value={loopMaxMinutes}
                   placeholder="∞"
-                  title="Minutes of looping before stopping — stops when the next pass would start at or after this (blank = no time limit)"
+                  title="Time of looping before stopping, as minutes (6), minutes:seconds (6:30) or seconds (90s) — stops when the next pass would start at or after this (blank = no time limit)"
                   onCommit={v => {
                     setLoopMaxMinutesLocal(v);
                     loopMaxMinutesRef.current = v;
                     audioActions.setLoopMaxSeconds(v === null ? null : v * 60);
-                    videoLoopElapsedRef.current = 0;
                     schedulePresetSave();
                   }}
                 />
@@ -2370,7 +2376,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     value={sequenceLoopMaxMinutes}
                     placeholder="∞"
                     disabled={sequenceActive}
-                    title="Minutes before stopping — stops when the next lap would start at or after this (blank = no time limit)"
+                    title="Time before stopping, as minutes (6), minutes:seconds (6:30) or seconds (90s) — stops when the next lap would start at or after this (blank = no time limit)"
                     onCommit={v => {
                       setSequenceLoopMaxMinutesLocal(v);
                       sequenceLoopMaxMinutesRef.current = v;

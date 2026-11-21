@@ -1540,7 +1540,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 }
 
 .media-player__loop-num-input {
-  width: 44px;
+  width: 52px;
   padding: 2px 5px;
   font-size: 12px;
   background: var(--surface-2);
@@ -3479,3 +3479,5 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .mp-bar__fill--busy { animation: mp-bar-slide 1.2s ease-in-out infinite alternate; }
 @keyframes mp-bar-slide { from { margin-left: 0; } to { margin-left: 65%; } }
 .ai-challenges-generate { margin-bottom: 8px; }
+
+.media-player__loop-num-input.is-invalid { border-color: var(--red, #e5484d); outline: 1px solid var(--red, #e5484d); }
