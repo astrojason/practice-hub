@@ -33,7 +33,10 @@ export function useSoundFont(settings: FretSettings, update: (p: Partial<FretSet
         const has = font.presets.some((p) => p.bank === settings.preset[0] && p.program === settings.preset[1]);
         if (!has) {
           const first = font.presets.find((p) => p.guitar) ?? font.presets[0];
-          update({ preset: [first.bank, first.program] });
+          update({ preset: [first.bank, first.program], presetName: first.name });
+        } else {
+          const name = font.presets.find((p) => p.bank === settings.preset[0] && p.program === settings.preset[1])?.name ?? "";
+          if (name && name !== settings.presetName) update({ presetName: name });
         }
       })
       .catch((err) => {

@@ -109,3 +109,33 @@ test("a SoundFont can be chosen: guitar instruments are listed and playing makes
   await expect(page.locator(".fb-note--playing").first()).toBeVisible();
   await expect(page.locator(".error-modal")).toHaveCount(0);
 });
+
+test("the chosen SoundFont instrument is remembered after reopening", async ({ page, browserName }) => {
+  test.setTimeout(90_000);
+  test.skip(browserName === "webkit", "SoundFont playback is checked in Chromium");
+  await page.locator('button[aria-label="Fretboard settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await dlg.locator('select[aria-label="Guitar sound"]').selectOption("sf");
+  const presets = dlg.locator('select[aria-label="SoundFont instrument"]');
+  await expect(presets.locator("optgroup[label=Guitars] option").first()).toBeAttached({ timeout: 60_000 });
+  const second = await presets.locator("optgroup[label=Guitars] option").nth(1).getAttribute("value");
+  await presets.selectOption(second as string);
+  await dlg.locator("button", { hasText: "Done" }).click();
+  await page.reload();
+  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator('button[aria-label="Fretboard settings"]').click();
+  const again = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await expect(again.locator('select[aria-label="Guitar sound"]')).toHaveValue("sf");
+  await expect(again.locator('select[aria-label="SoundFont instrument"]')).toHaveValue(second as string, { timeout: 60_000 });
+});
+
+test("the SoundFont instrument's name shows straight away on reopening", async ({ page, browserName }) => {
+  test.skip(browserName === "webkit", "SoundFont playback is checked in Chromium");
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("ph:fretboard:settings") ?? "{}");
+    localStorage.setItem("ph:fretboard:settings", JSON.stringify({ ...s, instrument: "sf", preset: [0, 24], presetName: "Nylon Guitar" }));
+  });
+  await page.reload();
+  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await expect(page.locator(".fb-playbar__sound")).toContainText("Guitar");
+});

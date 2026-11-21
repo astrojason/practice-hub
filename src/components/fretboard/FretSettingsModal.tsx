@@ -206,7 +206,7 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
                   disabled={fontLoading || presets.length === 0}
                   onChange={(e) => {
                     const [bank, program] = e.target.value.split(":").map(Number);
-                    update({ preset: [bank, program] });
+                    update({ preset: [bank, program], presetName: presets.find((p) => p.bank === bank && p.program === program)?.name ?? "" });
                   }}
                 >
                   {guitarPresets.length > 0 && (

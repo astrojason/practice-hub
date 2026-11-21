@@ -1178,7 +1178,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
         settings={settings}
         update={update}
         playing={playing}
-        soundName={font.presets.find((p) => p.bank === settings.preset[0] && p.program === settings.preset[1])?.name ?? "SoundFont"}
+        soundName={font.presets.find((p) => p.bank === settings.preset[0] && p.program === settings.preset[1])?.name ?? (settings.presetName || "SoundFont")}
         onToggle={togglePlayback}
         onSettings={() => setSettingsOpen(true)}
       />

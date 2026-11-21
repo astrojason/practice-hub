@@ -41,6 +41,8 @@ export interface SoundSettings {
   /** SoundFont id ("bundled" or an added file's name) and the preset's [bank, program]. */
   soundFont: string;
   preset: [number, number];
+  /** The chosen SoundFont instrument's name, kept so it can be shown before the SoundFont has loaded. */
+  presetName: string;
   volume: number;
   reverb: number;
   /** 0 warm and dark, 1 bright. */
@@ -54,6 +56,7 @@ export const DEFAULT_SOUND: SoundSettings = {
   instrument: "steel",
   soundFont: "bundled",
   preset: [0, 25],
+  presetName: "",
   volume: 0.8,
   reverb: 0.2,
   brightness: 0.55,
