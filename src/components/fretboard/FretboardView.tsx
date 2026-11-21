@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftIcon } from "@heroicons/react/16/solid";
+import { ConfirmModal } from "../ConfirmModal";
 import { ErrorModal } from "../ErrorModal";
+import { QuizMain, QuizReport, QuizSide, WeakCard, answerKeyIndex } from "./QuizPanels";
+import { useQuiz } from "./useQuiz";
+import { QUIZ_KINDS } from "../../lib/fretboard/quiz";
 import { ChordBox } from "./ChordBox";
 import { FretSettingsModal } from "./FretSettingsModal";
 import { Neck } from "./Neck";
@@ -47,6 +51,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: "progressions", label: "Progressions" },
   { id: "practice", label: "Practice" },
   { id: "speed", label: "Speed" },
+  { id: "quiz", label: "Quiz" },
 ];
 
 function groupBy<T extends { group: string }>(list: T[]): [string, T[]][] {
@@ -84,6 +89,8 @@ export function FretboardView({ onBack }: Props) {
   const [announceIdx, setAnnounceIdx] = useState<number | null>(null);
   const [burstPass, setBurstPass] = useState(false);
   const markerBase = useRef(0);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [speedRun, setSpeedRun] = useState<SpeedRun | null>(null);
   const [speedNow, setSpeedNow] = useState(() => Date.now());
   const [speedLogs, setSpeedLogs] = useState<SpeedLog[]>(() => loadSpeedLog().logs);
@@ -101,6 +108,9 @@ export function FretboardView({ onBack }: Props) {
   const labelMode = settings.labels;
   const scale = SCALES[scaleIdx];
   const chord = CHORDS[chordIdx];
+  const quiz = useQuiz({
+    tuning, key, scaleIdx, pace: settings.pace, scaleName: scale.name, keyName: KEYS[key], onError: showError, onHighlight: setPlayingNote,
+  });
   const scaleLike = page === "scales" || page === "progressions" || page === "practice" || page === "speed";
 
   const scalePos = useMemo(() => scalePositions(tuning, key, scale.tones), [tuning, key, scale]);
@@ -160,6 +170,18 @@ export function FretboardView({ onBack }: Props) {
   const curIdx = progMode ? (playing ? markerIdx : page === "progressions" ? selectedChord : null) : null;
   const chordNow = curIdx !== null ? activeProg[curIdx] : undefined;
 
+  // The quiz question on the neck: the question's notes, with ? until answered (ear questions stay hidden).
+  const quizQ = quiz.question;
+  const quizByEar = quizQ ? QUIZ_KINDS.find((k) => k.id === quizQ.kind)?.byEar : false;
+  const quizNotes = useMemo(() => {
+    if (page !== "quiz" || !quizQ || !quiz.running) return undefined;
+    if (quiz.picked !== null) return { notes: quizQ.notes, text: quizQ.reveal };
+    if (quizByEar) return undefined;
+    const pre = quizQ.kind === "interval" ? ["R", "?"] : quizQ.notes.map(() => "?");
+    return { notes: quizQ.notes, text: pre };
+  }, [page, quizQ, quiz.running, quiz.picked, quizByEar]);
+  const weakMarks = settings.showWeak && page !== "quiz" && quiz.history.length > 0 ? quiz.weak : null;
+
   const view = useMemo(
     () =>
       computeView({
@@ -167,9 +189,9 @@ export function FretboardView({ onBack }: Props) {
         overlay: overlay && playing, follow: settings.follow, focus: settings.focus,
         hiddenDegrees: settings.hiddenDegrees, hiddenStrings: settings.hiddenStrings, ghosts: settings.ghosts,
         showPrev: settings.showPrev, showNext: settings.showNext, connect: settings.connect, connectStrings: settings.connectStrings,
-        blendScale: settings.blendScale, blendRoot: settings.blendRoot, practiceStep,
+        blendScale: settings.blendScale, blendRoot: settings.blendRoot, practiceStep, quizNotes, weak: weakMarks,
       }),
-    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus, settings.hiddenDegrees, settings.hiddenStrings, settings.ghosts, settings.showPrev, settings.showNext, settings.connect, settings.connectStrings, settings.blendScale, settings.blendRoot, practiceStep],
+    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus, settings.hiddenDegrees, settings.hiddenStrings, settings.ghosts, settings.showPrev, settings.showNext, settings.connect, settings.connectStrings, settings.blendScale, settings.blendRoot, practiceStep, quizNotes, weakMarks],
   );
   const voicing: Voicing | undefined = view.voicing;
 
@@ -179,7 +201,7 @@ export function FretboardView({ onBack }: Props) {
   const keyChords = useMemo(() => diatonicChords(scale.tones, false), [scale]);
 
   const title =
-    planned && practiceStep ? practiceStep.title : scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
+    page === "quiz" ? (QUIZ_KINDS.find((k) => k.id === quiz.kind)?.name ?? "Quiz") : planned && practiceStep ? practiceStep.title : scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
   const posShort = (choices[idx] ?? "").split(" — ")[0];
   const pageLabel = PAGES.find((p) => p.id === page)?.label;
 
@@ -235,6 +257,7 @@ export function FretboardView({ onBack }: Props) {
 
   function goPage(p: Page) {
     if (speedRunRef.current) finishSpeed(false);
+    if (quiz.running) quiz.stop();
     if (playing) stopPlayback();
     setPage(p);
     setPosIdx(0);
@@ -545,6 +568,21 @@ export function FretboardView({ onBack }: Props) {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
       if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (page === "quiz") {
+        if (e.type !== "keydown" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (quiz.running && quiz.question) {
+          if (quiz.picked !== null) {
+            if (e.key === "Enter" || e.code === "Space") {
+              e.preventDefault();
+              quiz.next();
+            }
+          } else {
+            const n = answerKeyIndex(e.key);
+            if (n >= 0 && n < quiz.question.choices.length) quiz.answer(n);
+          }
+        }
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         if (e.type === "keydown" && !e.repeat) togglePlayback();
@@ -658,7 +696,7 @@ export function FretboardView({ onBack }: Props) {
 
           {!focus && (
           <div className="fretboard-controls">
-            {scaleLike ? (
+            {scaleLike || page === "quiz" ? (
               <label>
                 Scale
                 <select aria-label="Scale" value={scaleIdx} onChange={(e) => { setScaleIdx(parseInt(e.target.value)); setPosIdx(0); }}>
@@ -685,6 +723,7 @@ export function FretboardView({ onBack }: Props) {
                 </select>
               </label>
             )}
+            {page !== "quiz" && (<>
             <label>
               {page === "chords" ? "Shape" : "Position"}
               <select aria-label={page === "chords" ? "Shape" : "Position"} value={idx} onChange={(e) => setPosIdx(parseInt(e.target.value))}>
@@ -703,6 +742,7 @@ export function FretboardView({ onBack }: Props) {
                 <option value="none">None</option>
               </select>
             </label>
+            </>)}
             {page === "chords" && voicing && (
               <div className="fretboard-actions">
                 <button className="btn-secondary" onClick={() => hear(() => strumVoicing(voicing))}>Strum</button>
@@ -829,7 +869,8 @@ export function FretboardView({ onBack }: Props) {
               <span className={`fb-pass-badge ${burstPass ? "fb-pass-badge--burst" : ""}`}>{burstPass ? "SPEED BURSTS" : "Normal speed"}</span>
             )}
           </h2>
-          <p className="fretboard-tonality">
+          {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} />}
+          <p className="fretboard-tonality" hidden={page === "quiz"}>
             {scaleLike ? (
               <>
                 {tonality(scale.tones)} —{" "}
@@ -875,6 +916,24 @@ export function FretboardView({ onBack }: Props) {
 
         {!focus && (
         <aside className="fretboard-side">
+          {page === "quiz" && (
+            <QuizSide quiz={quiz} pace={settings.pace} onReport={() => setReportOpen(true)} onConfirmReset={() => setConfirmReset(true)} scaleLabel={`${KEYS[key]} ${scale.name}`} />
+          )}
+          {page !== "quiz" && settings.showWeak && (
+            <WeakCard
+              quiz={quiz}
+              keyIdx={key}
+              scaleLabel={`${KEYS[key]} ${scale.name}`}
+              pace={settings.pace}
+              onQuiz={(degree) => {
+                if (speedRunRef.current) finishSpeed(false);
+                if (playing) stopPlayback();
+                setPage("quiz");
+                quiz.setFocusWeak(true);
+                quiz.start(degree ? "degree" : "note");
+              }}
+            />
+          )}
           {page === "chords" && voicing && (
             <section className="fretboard-about">
               <h3>Chord shape</h3>
@@ -961,10 +1020,24 @@ export function FretboardView({ onBack }: Props) {
           userFonts={font.userFonts}
           onAddFont={font.add}
           onRemoveFont={font.remove}
+          weak={quiz.weak}
           onClose={() => setSettingsOpen(false)}
         />
       )}
       {settingsError && <ErrorModal error={settingsError} onDismiss={clearError} />}
+      {reportOpen && <QuizReport history={quiz.history} onClear={quiz.clear} onClose={() => setReportOpen(false)} />}
+      {confirmReset && (
+        <ConfirmModal
+          title="Reset the score?"
+          message="Set this session's score, streak and best streak back to zero? Your saved answer history is not touched."
+          confirmLabel="Reset"
+          onConfirm={() => {
+            setConfirmReset(false);
+            quiz.resetScore();
+          }}
+          onCancel={() => setConfirmReset(false)}
+        />
+      )}
       {prog.error && <ErrorModal error={prog.error} onDismiss={prog.clearError} />}
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
     </div>

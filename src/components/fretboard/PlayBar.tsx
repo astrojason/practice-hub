@@ -15,8 +15,11 @@ interface Props {
 
 /** The bar at the bottom: playback and sound controls shared by every page. */
 export function PlayBar({ page, settings, update, playing, soundName, onToggle, onSettings }: Props) {
+  const quiz = page === "quiz";
   return (
     <div className="fb-playbar" role="group" aria-label="Playback">
+      {!quiz && (
+      <>
       <button data-testid="fb-play" className={playing ? "btn-secondary" : "btn-primary"} onClick={onToggle} title="Play or stop (space bar)">
         {playing ? <StopIcon className="icon-sm" /> : <PlayIcon className="icon-sm" />} {playing ? "Stop" : "Play"}
       </button>
@@ -77,6 +80,9 @@ export function PlayBar({ page, settings, update, playing, soundName, onToggle, 
       <label className="fb-playbar__check" title="Hold the scale's root chord under scale runs">
         <input type="checkbox" checked={settings.drone} onChange={(e) => update({ drone: e.target.checked })} /> Drone
       </label>
+
+      </>
+      )}
 
       <label className="fb-playbar__field">
         Volume

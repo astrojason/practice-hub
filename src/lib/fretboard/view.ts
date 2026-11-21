@@ -2,6 +2,7 @@
 // playing) the current chord, work out the notes to draw and how to mark them.
 
 import type { NeckMark } from "../../components/fretboard/Neck";
+import type { Weakness } from "./weakness";
 import { followTones, chordRoot, type ChordFocus, type Follow, type ProgChord } from "./progression";
 import {
   CHORDS,
@@ -23,7 +24,7 @@ import {
   type Voicing,
 } from "./theory";
 
-export type Page = "scales" | "arpeggios" | "chords" | "progressions" | "practice" | "speed";
+export type Page = "scales" | "arpeggios" | "chords" | "progressions" | "practice" | "speed" | "quiz";
 
 export interface ViewInput {
   page: Page;
@@ -52,6 +53,10 @@ export interface ViewInput {
   blendRoot: number;
   /** On the Practice page, the step being shown (selected or playing). */
   practiceStep?: { root: number; tones: Tone[]; show: FretNote[] };
+  /** The quiz question's notes, with the text to show in each (empty until revealed). */
+  quizNotes?: { notes: FretNote[]; text: string[] };
+  /** The quiz history's weak spots, to mark on the neck. */
+  weak?: Weakness | null;
 }
 
 export interface ViewModel {
@@ -75,6 +80,13 @@ const range = (notes: FretNote[]): [number, number] =>
   notes.length ? [Math.min(...notes.map((n) => n[1])), Math.max(...notes.map((n) => n[1]))] : [0, 4];
 
 export function computeView(i: ViewInput): ViewModel {
+  if (i.page === "quiz") {
+    const marks: NeckMark[] = (i.quizNotes?.notes ?? []).map(([s, f], k) => {
+      const midi = i.tuning[s] + f;
+      return { string: s, fret: f, midi, label: "1", semis: 0, inPosition: true, quiz: true, text: i.quizNotes?.text[k] ?? "" };
+    });
+    return { root: i.key, tones: [], marks, voicing: undefined, nowLine: null, plainScale: false, runNotes: [], window: [0, 0] };
+  }
   const scale = SCALES[i.scaleIdx];
   const scaleLike = i.page === "scales" || i.page === "progressions" || i.page === "practice" || i.page === "speed";
   const baseNotes: FretNote[] = scaleLike ? (i.scalePos[i.idx]?.notes ?? []) : i.page === "arpeggios" ? (i.arpPos[i.idx]?.notes ?? []) : [];
@@ -237,6 +249,14 @@ export function computeView(i: ViewInput): ViewModel {
     if (!i.ghosts && !m.inPosition && !m.neighbor) return false;
     return true;
   });
+  // Weak spots from the quiz history.
+  if (i.weak) {
+    for (const m of kept) {
+      if (!m.inPosition) continue;
+      const why = i.weak.reasons(i.key, m.label, m.midi % 12, [m.string, m.fret]);
+      if (why.length) m.weak = why.join("\n");
+    }
+  }
   const [wlo, whi] = range(active);
 
   return { root, tones, marks: kept, voicing, nowLine, plainScale: plainScale && !blendSrc, runNotes, window: [wlo, whi] };

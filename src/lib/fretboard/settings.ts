@@ -3,6 +3,7 @@ import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLoca
 import { DEFAULT_SOUND, engine, type SoundSettings } from "./audio";
 import { DEFAULT_PRACTICE, type PracticeSettings } from "./practice";
 import { DEFAULT_SPEED, type SpeedSetup } from "./speed";
+import type { Pace } from "./weakness";
 import type { ChordFocus, Comp, DrumStyle, Follow } from "./progression";
 
 export type Direction = "up" | "down" | "updown";
@@ -30,6 +31,8 @@ export interface PlaybackSettings {
   suitScale: boolean;
   practice: PracticeSettings;
   speed: SpeedSetup;
+  /** What counts as your usual pace for clearing weak spots. */
+  pace: Pace;
 }
 
 export type LabelMode = "degree" | "note" | "both" | "interval" | "none";
@@ -85,6 +88,7 @@ export const DEFAULT_SETTINGS: FretSettings = {
   suitScale: true,
   practice: DEFAULT_PRACTICE,
   speed: DEFAULT_SPEED,
+  pace: { type: "average" },
   theme: "dark",
   scheme: 0,
   labels: "degree",

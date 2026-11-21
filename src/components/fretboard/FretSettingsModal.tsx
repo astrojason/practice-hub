@@ -6,6 +6,8 @@ import { INSTRUMENTS, engine, type SoundFontPreset } from "../../lib/fretboard/a
 import { SCHEMES } from "../../lib/fretboard/schemes";
 import type { FretSettings, LabelMode } from "../../lib/fretboard/settings";
 import { TUNINGS, plainName } from "../../lib/fretboard/theory";
+import { QUIZ_KINDS } from "../../lib/fretboard/quiz";
+import type { Weakness } from "../../lib/fretboard/weakness";
 import { degreeColour } from "../../lib/fretboard/schemes";
 
 interface Props {
@@ -16,10 +18,11 @@ interface Props {
   userFonts: string[];
   onAddFont: (file: File) => void;
   onRemoveFont: (name: string) => void;
+  weak: Weakness;
   onClose: () => void;
 }
 
-export function FretSettingsModal({ settings, update, presets, fontLoading, userFonts, onAddFont, onRemoveFont, onClose }: Props) {
+export function FretSettingsModal({ settings, update, presets, fontLoading, userFonts, onAddFont, onRemoveFont, weak, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<{ id: string; label: string }[]>([]);
@@ -288,6 +291,44 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
               Test
             </button>
           </div>
+        </section>
+
+        <section className="fb-settings__section">
+          <h4>Quiz and weak spots</h4>
+          <label className="fb-settings__check" title="A weak spot clears after 3 right answers in a row at this pace or faster">
+            <input type="radio" name="pace" checked={settings.pace.type === "average"} onChange={() => update({ pace: { type: "average" } })} />
+            My typical time for each kind of question over my last 5 sessions, plus 30% (speed isn't judged until I've answered 10 of that kind)
+          </label>
+          <div className="fb-settings__row">
+            <label className="fb-settings__check">
+              <input type="radio" name="pace" checked={settings.pace.type === "fixed"} onChange={() => update({ pace: { type: "fixed", ms: 2500 } })} />
+              A fixed time:
+            </label>
+            <input
+              type="number"
+              aria-label="Fixed pace (seconds)"
+              min={0.5}
+              max={15}
+              step={0.1}
+              disabled={settings.pace.type !== "fixed"}
+              value={settings.pace.type === "fixed" ? settings.pace.ms / 1000 : 2.5}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v) && v >= 0.5 && v <= 15) update({ pace: { type: "fixed", ms: Math.round(v * 1000) } });
+              }}
+            />
+            s
+          </div>
+          {settings.pace.type === "average" &&
+            ["naming notes", "degrees", "intervals", "ear intervals", "ear chords"].map((name, k) => {
+              const src = weak.paceSource(k);
+              return (
+                <span key={name} className="fb-dim">
+                  {src.ms !== null ? `${name}: ${(src.ms / 1000).toFixed(1)} s (your pace)` : `${name}: speed not judged yet — ${src.need} more answer${src.need === 1 ? "" : "s"} first`}
+                </span>
+              );
+            })}
+          <span className="fb-dim">{QUIZ_KINDS.length} kinds of question are tracked.</span>
         </section>
 
         <section className="fb-settings__section">

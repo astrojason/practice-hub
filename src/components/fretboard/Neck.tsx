@@ -15,6 +15,10 @@ export interface NeckMark extends Mark {
   source?: 0 | 1 | 2;
   /** A weak spot from the quiz, marked with a ! badge. */
   weak?: string;
+  /** The note a quiz question is about. */
+  quiz?: boolean;
+  /** Text to show in the note instead of its degree label (quiz answers). */
+  text?: string;
 }
 
 // Neck geometry (SVG units).
@@ -107,7 +111,7 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
             playing === `${m.string}:${m.fret}` ? "fb-note--playing" : "",
             m.chordtone ? "fb-note--chordtone" : "",
           ].join(" ");
-          const text = labelFor(m);
+          const text = m.text !== undefined ? m.text : labelFor(m);
           const cx = noteX(m.fret);
           const cy = stringY(m.string);
           const r = m.big ? 15 : m.inPosition ? 12 : 8;
@@ -117,6 +121,7 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
               key={`${m.string}:${m.fret}`}
               className={classes}
               style={{ opacity }}
+              data-quiz={m.quiz ?? false}
               data-in-position={m.inPosition}
               data-neighbor={m.neighbor ?? false}
               data-link={m.link ?? false}
@@ -127,9 +132,9 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
               onClick={() => onNote(m)}
             >
               {m.source === 2 ? (
-                <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} transform={`rotate(45 ${cx} ${cy})`} className="fb-note__dot" style={{ fill: colour.fill }} />
+                <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} transform={`rotate(45 ${cx} ${cy})`} className="fb-note__dot" style={{ fill: m.quiz ? "var(--accent)" : colour.fill }} />
               ) : (
-                <circle cx={cx} cy={cy} r={r} className="fb-note__dot" style={{ fill: colour.fill }} />
+                <circle cx={cx} cy={cy} r={r} className="fb-note__dot" style={{ fill: m.quiz ? "var(--accent)" : colour.fill }} />
               )}
               {m.badge && (
                 <g className="fb-note__badge">
@@ -145,7 +150,7 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
                 </g>
               )}
               {text && m.inPosition && (
-                <text x={cx} y={cy + 4} textAnchor="middle" className="fb-note__label" style={{ fill: colour.text }}>{text}</text>
+                <text x={cx} y={cy + 4} textAnchor="middle" className="fb-note__label" style={{ fill: m.quiz ? "#fff" : colour.text }}>{text}</text>
               )}
             </g>
           );
