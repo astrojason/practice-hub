@@ -56,6 +56,8 @@ export interface ViewInput {
   practiceStep?: { root: number; tones: Tone[]; show: FretNote[] };
   /** The quiz question's notes, with the text to show in each (empty until revealed). */
   quizNotes?: { notes: FretNote[]; text: string[] };
+  /** "Find the note": the neck is clickable, and after the answer the right spots are shown. */
+  quizFind?: { maxFret: number; targetPc: number; pick: FretNote | null };
   /** The quiz history's weak spots, to mark on the neck. */
   weak?: Weakness | null;
 }
@@ -85,6 +87,30 @@ const range = (notes: FretNote[]): [number, number] =>
   notes.length ? [Math.min(...notes.map((n) => n[1])), Math.max(...notes.map((n) => n[1]))] : [0, 4];
 
 export function computeView(i: ViewInput): ViewModel {
+  if (i.page === "quiz" && i.quizFind) {
+    const f = i.quizFind;
+    const marks: NeckMark[] = [];
+    i.tuning.forEach((open, s) => {
+      for (let fret = 0; fret <= f.maxFret; fret++) {
+        const midi = open + fret;
+        const isTarget = midi % 12 === f.targetPc;
+        const isPick = f.pick !== null && f.pick[0] === s && f.pick[1] === fret;
+        const mark: NeckMark = { string: s, fret, midi, label: "1", semis: 0, inPosition: false, quiz: true };
+        if (f.pick === null) mark.pickable = true;
+        else if (isPick) {
+          mark.inPosition = true;
+          mark.result = isTarget ? "right" : "wrong";
+          mark.text = plainName(midi);
+        } else if (isTarget) {
+          mark.inPosition = true;
+          mark.result = "answer";
+          mark.text = plainName(midi);
+        } else continue;
+        marks.push(mark);
+      }
+    });
+    return { root: i.key, tones: [], marks, voicing: undefined, nowLine: null, plainScale: false, runNotes: [], window: [0, 0], blendSrc: null };
+  }
   if (i.page === "quiz") {
     const marks: NeckMark[] = (i.quizNotes?.notes ?? []).map(([s, f], k) => {
       const midi = i.tuning[s] + f;

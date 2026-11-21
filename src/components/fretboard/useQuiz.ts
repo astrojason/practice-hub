@@ -26,6 +26,8 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
   const [running, setRunning] = useState(false);
   const [question, setQuestion] = useState<Question | null>(null);
   const [picked, setPicked] = useState<number | null>(null);
+  /** "Find the note": where on the neck the answer was clicked. */
+  const [pickSpot, setPickSpot] = useState<[number, number] | null>(null);
   const [score, setScore] = useState(0);
   const [total, setTotal] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -127,6 +129,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
       }
       setQuestion(q);
       setPicked(null);
+      setPickSpot(null);
       setShownAt(Date.now());
       setNow(Date.now());
       if (QUIZ_KINDS[kindIndex(k)].byEar) hear(q, false);
@@ -159,7 +162,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
   }, [session]);
 
   const answer = useCallback(
-    (choice: number, atMs?: number | null) => {
+    (choice: number, atMs?: number | null, spot?: [number, number]) => {
       if (!question || picked !== null) return;
       const correct = choice === question.answer;
       // A spoken answer is timed to when speaking began.
@@ -172,7 +175,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
         correct,
         ms,
         key,
-        spot: QUIZ_KINDS[kindIndex(question.kind)].byEar ? null : (question.notes[0] ?? null),
+        spot: spot ?? (QUIZ_KINDS[kindIndex(question.kind)].byEar ? null : (question.notes[0] ?? null)),
       };
       try {
         setHistory(appendRecord(history, rec));
@@ -182,6 +185,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
       }
       setSession((s) => [...s, rec]);
       setPicked(choice);
+      if (spot) setPickSpot(spot);
       setTotal((t) => t + 1);
       if (correct) {
         setScore((s) => s + 1);
@@ -190,9 +194,16 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
           return s + 1;
         });
       } else setStreak(0);
-      hear(question, true);
+      if (spot) {
+        // Let them hear what they picked.
+        try {
+          engine.pluck(tuning[spot[0]] + spot[1], spot[0]);
+        } catch (err) {
+          onError(err instanceof Error ? err.message : String(err));
+        }
+      } else hear(question, true);
     },
-    [question, picked, shownAt, key, history, onError, hear],
+    [question, picked, shownAt, key, history, onError, hear, tuning],
   );
 
   const setKind = useCallback(
@@ -230,6 +241,10 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
   }, [onError]);
 
   return {
+    pickSpot, pickNote: (s: number, f: number) => {
+      if (!question || question.kind !== "findnote" || picked !== null) return;
+      answer((tuning[s] + f) % 12, null, [s, f]);
+    },
     kind, setKind, maxFret, setMaxFret, focusWeak, setFocusWeak, running, question, picked, score, total, streak, best,
     session, lastSession, history, weak, secs: running ? (picked !== null ? (session[session.length - 1]?.ms ?? 0) / 1000 : (now - shownAt) / 1000) : 0,
     start, stop, answer, next: () => next(), hear: () => question && hear(question, picked !== null), resetScore, clear,

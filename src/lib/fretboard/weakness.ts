@@ -82,7 +82,11 @@ export class Weakness {
         }
         return st;
       };
-      if (r.kind === 0) {
+      if (r.kind === 5) {
+        // "Find the note": how well each note name is found counts as naming it.
+        const pc = KEYS.indexOf(r.item as (typeof KEYS)[number]);
+        if (pc >= 0) add(get(this.note, pc), r);
+      } else if (r.kind === 0) {
         const pc = KEYS.indexOf(r.item as (typeof KEYS)[number]);
         if (pc >= 0) add(get(this.note, pc), r);
         if (spotKey) add(get(this.spot, spotKey), r);

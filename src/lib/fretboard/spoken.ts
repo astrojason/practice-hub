@@ -22,6 +22,8 @@ export function spokenVocabulary(kind: QuizKind): string[] {
     case "earinterval":
       v.push(...INTERVALS);
       break;
+    case "findnote":
+      break;
     case "earchord":
       v.push("major", "minor", "diminished", "augmented", "dominant seven", "major seven", "minor seven");
       break;
@@ -184,6 +186,9 @@ function answerOne(kind: QuizKind, choices: string[], words: string[]): number |
       if (semis === null) return null;
       return found(choices.indexOf(INTERVALS[semis - 1]));
     }
+    case "findnote":
+      // The answer is clicked on the neck.
+      return null;
     case "earchord": {
       const seventh = words.some((w) => numberOf(w) === 7);
       const minor = has(words, ["minor", "miner", "mina"]);

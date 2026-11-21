@@ -18,6 +18,10 @@ export interface NeckMark extends Mark {
   weak?: string;
   /** The note a quiz question is about. */
   quiz?: boolean;
+  /** "Find the note": a spot that can be clicked as the answer. */
+  pickable?: boolean;
+  /** "Find the note" after answering: the spot picked (right or wrong), or a right spot to show. */
+  result?: "right" | "wrong" | "answer";
   /** Text to show in the note instead of its degree label (quiz answers). */
   text?: string;
 }
@@ -112,18 +116,21 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
             m.source === 2 ? "fb-note--only-second" : "",
             playing === `${m.string}:${m.fret}` ? "fb-note--playing" : "",
             m.chordtone ? "fb-note--chordtone" : "",
+            m.pickable ? "fb-note--pickable" : "",
+            m.result ? `fb-note--${m.result}` : "",
           ].join(" ");
           const text = m.text !== undefined ? m.text : labelFor(m);
           const cx = noteX(m.fret);
           const cy = stringY(m.string);
-          const r = m.big ? 15 : m.inPosition ? 12 : 8;
-          const opacity = m.neighbor ? 0.55 : faded ? 1 - dimOpacity : 1;
+          const r = m.big ? 15 : m.pickable ? 8 : m.inPosition ? 12 : 8;
+          const opacity = m.pickable ? 0.35 : m.neighbor ? 0.55 : faded ? 1 - dimOpacity : 1;
           return (
             <g
               key={`${m.string}:${m.fret}`}
               className={classes}
               style={{ opacity }}
               data-quiz={m.quiz ?? false}
+              data-pickable={m.pickable ?? false}
               data-in-position={m.inPosition}
               data-neighbor={m.neighbor ?? false}
               data-link={m.link ?? false}

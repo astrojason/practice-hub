@@ -65,6 +65,19 @@ export function summarize(records: QuizRecord[]): { answered: number; right: num
   return { answered, right, avgMs, fastestMs: rightTimes.length ? Math.min(...rightTimes) : 0 };
 }
 
+/** "Find the note" (kind 5): how often each string was picked, and how often that pick was right. */
+export function stringPicks(records: QuizRecord[]): { string: number; picks: number; right: number }[] {
+  const out = Array.from({ length: 6 }, (_, s) => ({ string: s, picks: 0, right: 0 }));
+  for (const r of records) {
+    if (r.kind !== 5 || !r.spot) continue;
+    const e = out[r.spot[0]];
+    if (!e) continue;
+    e.picks++;
+    if (r.correct) e.right++;
+  }
+  return out;
+}
+
 /** Per answer item: tries, misses and average time, slowest first. */
 export function byItem(records: QuizRecord[]): { item: string; tries: number; misses: number; avgMs: number }[] {
   const map = new Map<string, { tries: number; misses: number; total: number }>();

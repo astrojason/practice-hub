@@ -212,18 +212,22 @@ export function FretboardView({ onBack, onHelp }: Props) {
     const pre = quizQ.kind === "interval" ? ["R", "?"] : quizQ.notes.map(() => "?");
     return { notes: quizQ.notes, text: pre };
   }, [page, quizQ, quiz.running, quiz.picked, quizByEar]);
+  const quizFind = useMemo(
+    () => (page === "quiz" && quizQ?.kind === "findnote" && quiz.running && quizQ.targetPc !== undefined ? { maxFret: quiz.maxFret, targetPc: quizQ.targetPc, pick: quiz.pickSpot } : undefined),
+    [page, quizQ, quiz.running, quiz.maxFret, quiz.pickSpot],
+  );
   const weakMarks = settings.showWeak && page !== "quiz" && quiz.history.length > 0 ? quiz.weak : null;
 
   const view = useMemo(
     () =>
       computeView({
         page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow,
-        overlay: overlay && playing, follow: settings.follow, focus: settings.focus,
+        overlay: overlay && playing, follow: settings.follow, focus: settings.focus, quizFind,
         hiddenDegrees: settings.hiddenDegrees, hiddenStrings: settings.hiddenStrings, ghosts: settings.ghosts,
         showPrev: settings.showPrev, showNext: settings.showNext, connect: settings.connect, connectStrings: settings.connectStrings,
         blendScale: settings.blendScale, blendRoot: settings.blendRoot, practiceStep, quizNotes, weak: weakMarks,
       }),
-    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus, settings.hiddenDegrees, settings.hiddenStrings, settings.ghosts, settings.showPrev, settings.showNext, settings.connect, settings.connectStrings, settings.blendScale, settings.blendRoot, practiceStep, quizNotes, weakMarks],
+    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus, settings.hiddenDegrees, settings.hiddenStrings, settings.ghosts, settings.showPrev, settings.showNext, settings.connect, settings.connectStrings, settings.blendScale, settings.blendRoot, practiceStep, quizNotes, quizFind, weakMarks],
   );
   const voicing: Voicing | undefined = view.voicing;
 
@@ -616,7 +620,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
             }
           } else {
             const n = answerKeyIndex(e.key);
-            if (n >= 0 && n < quiz.question.choices.length) quiz.answer(n);
+            if (quiz.question.kind !== "findnote" && n >= 0 && n < quiz.question.choices.length) quiz.answer(n);
           }
         }
         return;
@@ -1000,7 +1004,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
               <span className={`fb-pass-badge ${burstPass ? "fb-pass-badge--burst" : ""}`}>{burstPass ? "SPEED BURSTS" : "Normal speed"}</span>
             )}
           </h2>
-          {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} voice={voice} voiceOn={settings.voice} />}
+          {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} voice={voice} voiceOn={settings.voice} tuning={tuning} />}
           {page !== "quiz" && scaleLike && <TonalityRow tonality={tonality(scale.tones)} parent={diff.parent} changes={diff.changes} />}
           {page !== "quiz" && !scaleLike && (
             <p className="fretboard-tonality">
@@ -1025,7 +1029,13 @@ export function FretboardView({ onBack, onHelp }: Props) {
             highOnTop={settings.highOnTop}
             zoomWindow={settings.zoom ? view.window : null}
             dimOpacity={settings.dim}
-            onNote={(m) => hear(() => engine.pluck(m.midi, m.string))}
+            onNote={(m) => {
+              if (page === "quiz") {
+                if (m.pickable) quiz.pickNote(m.string, m.fret);
+                return;
+              }
+              hear(() => engine.pluck(m.midi, m.string));
+            }}
           />
 
           {!focus && page !== "quiz" && view.tones.length > 0 && (
@@ -1055,7 +1065,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
         {!focus && (
         <aside className="fretboard-side">
           {page === "quiz" && (
-            <QuizSide quiz={quiz} voiceOn={settings.voice} onVoice={(on) => update({ voice: on })} pace={settings.pace} onReport={() => setReportOpen(true)} onConfirmReset={() => setConfirmReset(true)} scaleLabel={`${KEYS[key]} ${scale.name}`} />
+            <QuizSide quiz={quiz} tuning={tuning} voiceOn={settings.voice} onVoice={(on) => update({ voice: on })} pace={settings.pace} onReport={() => setReportOpen(true)} onConfirmReset={() => setConfirmReset(true)} scaleLabel={`${KEYS[key]} ${scale.name}`} />
           )}
           {page !== "quiz" && settings.showWeak && (
             <WeakCard
@@ -1206,7 +1216,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
         />
       )}
       {settingsError && <ErrorModal error={settingsError} onDismiss={clearError} />}
-      {reportOpen && <QuizReport history={quiz.history} onClear={quiz.clear} onClose={() => setReportOpen(false)} />}
+      {reportOpen && <QuizReport history={quiz.history} tuning={tuning} onClear={quiz.clear} onClose={() => setReportOpen(false)} />}
       {confirmReset && (
         <ConfirmModal
           title="Reset the score?"

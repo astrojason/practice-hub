@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConfirmModal } from "../ConfirmModal";
-import { byItem, summarize, type QuizRecord } from "../../lib/fretboard/history";
+import { byItem, stringPicks, summarize, type QuizRecord } from "../../lib/fretboard/history";
 import { QUIZ_KINDS, type QuizKind } from "../../lib/fretboard/quiz";
-import { KEYS, bothNames } from "../../lib/fretboard/theory";
+import { BOTH_NAMES, KEYS, bothNames, plainName } from "../../lib/fretboard/theory";
 import { RECENT, TO_CLEAR, statInfo } from "../../lib/fretboard/weakness";
 import type { Pace } from "../../lib/fretboard/weakness";
 import type { Quiz } from "./useQuiz";
@@ -16,7 +16,7 @@ export const answerKeyIndex = (key: string) => ANSWER_KEYS.indexOf(key.toLowerCa
 const s1 = (ms: number) => (ms / 1000).toFixed(1);
 
 /** The prompt bar and the answer buttons. */
-export function QuizMain({ quiz, scaleLabel, voice, voiceOn }: { quiz: Quiz; scaleLabel: string; voice: Voice; voiceOn: boolean }) {
+export function QuizMain({ quiz, scaleLabel, voice, voiceOn, tuning }: { quiz: Quiz; scaleLabel: string; voice: Voice; voiceOn: boolean; tuning: number[] }) {
   const info = QUIZ_KINDS.find((k) => k.id === quiz.kind)!;
   const q = quiz.question;
   const last = quiz.lastSession;
@@ -58,7 +58,26 @@ export function QuizMain({ quiz, scaleLabel, voice, voiceOn }: { quiz: Quiz; sca
         </div>
       )}
 
-      {quiz.running && q && (
+      {quiz.running && q && q.kind === "findnote" && q.targetPc !== undefined && (
+        <div className="fb-find">
+          <p className="fb-find-prompt" data-pc={q.targetPc}>
+            Find <strong>{BOTH_NAMES[q.targetPc]}</strong> on the fretboard
+          </p>
+          {quiz.picked !== null && quiz.pickSpot && (
+            <div className="fb-quiz-feedback" role="status">
+              <strong className={quiz.picked === q.answer ? "fb-good" : "fb-bad"}>{quiz.picked === q.answer ? "Correct!" : "Not quite."}</strong>
+              <span>
+                {quiz.picked === q.answer
+                  ? `String ${6 - quiz.pickSpot[0]}, fret ${quiz.pickSpot[1]} is ${bothNames(q.targetPc)}.`
+                  : `That was string ${6 - quiz.pickSpot[0]}, fret ${quiz.pickSpot[1]}: ${bothNames((tuning[quiz.pickSpot[0]] + quiz.pickSpot[1]) % 12)}. ${bothNames(q.targetPc)} is shown on the neck.`}
+              </span>
+              <button className="btn-primary" onClick={quiz.next} title="Enter or Space">Next question ▶</button>
+            </div>
+          )}
+          {quiz.picked === null && <span className="fb-dim">Click the fret where you think it is.</span>}
+        </div>
+      )}
+      {quiz.running && q && q.kind !== "findnote" && (
         <>
           <div className="fb-quiz-controls">
             <button className="btn-secondary" onClick={quiz.hear}>🔊 Hear it</button>
@@ -118,6 +137,7 @@ interface SideProps {
   quiz: Quiz;
   voiceOn: boolean;
   onVoice: (on: boolean) => void;
+  tuning: number[];
   pace: Pace;
   onReport: () => void;
   onConfirmReset: () => void;
@@ -125,7 +145,7 @@ interface SideProps {
 }
 
 /** The side panel: kinds, frets, options, score, and what is saved. */
-export function QuizSide({ quiz, voiceOn, onVoice, onReport, onConfirmReset, scaleLabel }: SideProps) {
+export function QuizSide({ quiz, voiceOn, onVoice, tuning, onReport, onConfirmReset, scaleLabel }: SideProps) {
   const sessions = new Set(quiz.history.map((r) => r.session)).size;
   const sum = summarize(quiz.session);
   const pct = quiz.total ? quiz.score / quiz.total : 0;
@@ -155,6 +175,18 @@ export function QuizSide({ quiz, voiceOn, onVoice, onReport, onConfirmReset, sca
       <label className="fb-playbar__check" title="Ask more about the notes, degrees and intervals your history says you find hard">
         <input type="checkbox" checked={quiz.focusWeak} onChange={(e) => quiz.setFocusWeak(e.target.checked)} /> Focus on my weak spots
       </label>
+      {quiz.kind === "findnote" && (
+        <div className="fb-pick-strings" aria-label="Strings picked this session">
+          <strong>Strings you picked</strong>
+          {stringPicks(quiz.session).map((e) => (
+            <div key={e.string} className="fb-pick-string" data-picks={e.picks}>
+              <span className="fb-pick-string__name">{plainName(tuning[e.string])} · string {6 - e.string}</span>
+              <span className="fb-pick-string__bar"><span style={{ width: `${Math.min(100, e.picks * 20)}%` }} /></span>
+              <span className="fb-pick-string__count">{e.picks}{e.picks > 0 ? ` (${Math.round((e.right * 100) / e.picks)}% right)` : ""}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <label className="fb-playbar__check" title="Say your answers instead of clicking: “C sharp”, “flat three”, “minor third”, “minor seven”. Say “next” to move on, “hear it” to hear it again and “stop” to finish; the next question follows three seconds after each answer. Uses macOS speech recognition; macOS asks for permission the first time.">
         <input type="checkbox" checked={voiceOn} onChange={(e) => onVoice(e.target.checked)} /> Answer out loud (microphone)
       </label>
@@ -193,7 +225,7 @@ export function QuizSide({ quiz, voiceOn, onVoice, onReport, onConfirmReset, sca
 }
 
 /** The quiz report: totals, sessions over time, and what takes longest or is missed most. */
-export function QuizReport({ history, onClear, onClose }: { history: QuizRecord[]; onClear: () => void; onClose: () => void }) {
+export function QuizReport({ history, tuning, onClear, onClose }: { history: QuizRecord[]; tuning: number[]; onClear: () => void; onClose: () => void }) {
   const [kind, setKind] = useState<number | null>(null);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => {
@@ -288,6 +320,23 @@ export function QuizReport({ history, onClear, onClose }: { history: QuizRecord[
                 </table>
               </div>
             </div>
+            {recs.some((r) => r.kind === 5) && (
+              <div className="fb-report__strings">
+                <strong>Strings you pick (Find the note)</strong>
+                <table className="fb-speed-log">
+                  <thead><tr><th>String</th><th>Picks</th><th>Right</th></tr></thead>
+                  <tbody>
+                    {stringPicks(recs).map((e) => (
+                      <tr key={e.string}>
+                        <td>{plainName(tuning[e.string])} (string {6 - e.string})</td>
+                        <td>{e.picks}</td>
+                        <td>{e.picks ? `${Math.round((e.right * 100) / e.picks)}%` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {kind === null && (
               <div>
                 <strong>By quiz</strong>

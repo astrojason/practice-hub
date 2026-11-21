@@ -3455,3 +3455,15 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .fb-chip--prev.fb-chip--on { border-color: #60a5fa; }
 .fb-chip--next.fb-chip--on { border-color: #fb923c; }
 .fb-neck-nav { display: flex; align-items: flex-end; gap: 6px; }
+.fb-find { display: flex; flex-direction: column; gap: 8px; }
+.fb-find-prompt { margin: 0; font-size: 22px; }
+.fb-find-prompt strong { font-size: 36px; color: var(--accent-light); }
+.fb-note--pickable { cursor: crosshair; }
+.fb-note--pickable:hover { opacity: 1 !important; }
+.fb-note--right .fb-note__dot { fill: var(--green) !important; stroke: #fff; stroke-width: 3; }
+.fb-note--wrong .fb-note__dot { fill: var(--red) !important; stroke: #fff; stroke-width: 3; }
+.fb-note--answer .fb-note__dot { fill: var(--green) !important; opacity: 0.8; }
+.fb-pick-strings { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.fb-pick-string { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: center; }
+.fb-pick-string__bar { height: 8px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+.fb-pick-string__bar span { display: block; height: 100%; background: var(--accent); }

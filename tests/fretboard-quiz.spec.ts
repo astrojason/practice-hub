@@ -41,9 +41,9 @@ async function litPitchClass(page: P) {
   return (STD[s] + f) % 12;
 }
 
-test("the quiz offers five kinds and waits for Start", async ({ page }) => {
+test("the quiz offers six kinds and waits for Start", async ({ page }) => {
   await quiz(page);
-  await expect(page.locator(".fb-quiz-kind")).toHaveCount(5);
+  await expect(page.locator(".fb-quiz-kind")).toHaveCount(6);
   await expect(page.locator(".fb-quiz-intro")).toContainText("Press Start");
   await expect(choices(page)).toHaveCount(0);
 });

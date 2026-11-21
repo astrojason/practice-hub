@@ -19,7 +19,7 @@ import {
   type FretNote,
 } from "./theory";
 
-export type QuizKind = "note" | "degree" | "interval" | "earinterval" | "earchord";
+export type QuizKind = "note" | "degree" | "interval" | "earinterval" | "earchord" | "findnote";
 
 export const QUIZ_KINDS: { id: QuizKind; name: string; help: string; byEar: boolean }[] = [
   { id: "note", name: "Name the note", help: "A note lights up on the neck. Which note is it?", byEar: false },
@@ -27,6 +27,7 @@ export const QUIZ_KINDS: { id: QuizKind; name: string; help: string; byEar: bool
   { id: "interval", name: "Name the interval", help: "Two notes light up; R is the lower one. What is the distance between them?", byEar: false },
   { id: "earinterval", name: "Ear: hear the interval", help: "Listen to two notes, low then high. What interval did you hear?", byEar: true },
   { id: "earchord", name: "Ear: chord quality", help: "Listen to the chord. What kind of chord is it?", byEar: true },
+  { id: "findnote", name: "Find the note", help: "A note is named. Click it anywhere on the fretboard.", byEar: false },
 ];
 
 /** Index of a kind in QUIZ_KINDS: what is saved in the history. */
@@ -47,6 +48,8 @@ export interface Question {
   explain: string;
   /** Strum the notes together (chords) instead of one after another. */
   together: boolean;
+  /** For "Find the note": the pitch class to find (the answer is chosen on the neck, not from a list). */
+  targetPc?: number;
 }
 
 /** A small seeded random generator (xorshift), so questions can be repeated in tests. */
@@ -142,6 +145,20 @@ export function makeQuestion(kind: QuizKind, rng: Rng, tun: number[], key: numbe
         };
       }
       return makeQuestion("note", rng, tun, key, scaleIdx, maxFret);
+    }
+    case "findnote": {
+      const pc = rng.below(12);
+      return {
+        kind,
+        notes: [],
+        reveal: [],
+        // Not shown: the answer is picked on the neck. Kept so the history saves the note's name.
+        choices: [...BOTH_NAMES],
+        answer: pc,
+        explain: "",
+        together: false,
+        targetPc: pc,
+      };
     }
     case "earchord": {
       const q = rng.below(EAR_CHORDS.length);
