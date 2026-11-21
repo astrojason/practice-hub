@@ -59,12 +59,12 @@ export function PlayBar({ page, settings, update, playing, soundName, onToggle, 
       <label className="fb-playbar__check">
         <input type="checkbox" checked={settings.loop} onChange={(e) => update({ loop: e.target.checked })} /> Loop
       </label>
-      {page !== "practice" && (
+      {page !== "practice" && page !== "speed" && (
       <label className="fb-playbar__check">
         <input type="checkbox" checked={settings.click} onChange={(e) => update({ click: e.target.checked })} /> Click
       </label>
       )}
-      {page !== "progressions" && page !== "practice" && (
+      {page !== "progressions" && page !== "practice" && page !== "speed" && (
         <label className="fb-playbar__check" title="Play a progression with drums behind this page">
           <input type="checkbox" checked={settings.playOver} onChange={(e) => update({ playOver: e.target.checked })} /> Play over a progression
         </label>

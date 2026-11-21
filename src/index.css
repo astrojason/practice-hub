@@ -3350,3 +3350,25 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .fb-announce { margin: 0 0 6px; font-size: 14px; color: var(--accent-light); min-height: 20px; font-weight: 600; }
 .fb-pass-badge { display: inline-block; margin-left: 8px; padding: 2px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; border-radius: 999px; background: var(--surface-3); color: var(--text-dim); vertical-align: middle; }
 .fb-pass-badge--burst { background: var(--orange-dim); color: var(--orange); border: 1px solid var(--orange-border); }
+.fb-speed { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.fb-notice { margin: 0; padding: 8px 12px; background: var(--green-dim); border: 1px solid var(--green); border-radius: var(--r-sm); color: var(--green); font-size: 13px; }
+.fb-speed-run { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+.fb-speed-run__head { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.fb-speed-run__round { font-size: 20px; font-weight: 700; }
+.fb-speed-run__bpm { font-size: 28px; font-weight: 700; color: var(--accent-light); }
+.fb-speed-run__rest { font-size: 28px; font-weight: 700; color: var(--green); }
+.fb-speed-run__done { margin-left: auto; }
+.fb-danger { color: var(--red); border: 1px solid var(--red-border); }
+.fb-speed-strip { display: flex; align-items: flex-end; gap: 2px; height: 34px; }
+.fb-speed-seg { background: var(--surface-3); border-radius: 3px; min-width: 2px; }
+.fb-speed-seg--done { background: var(--accent); opacity: 0.55; }
+.fb-speed-seg--now { background: var(--accent); }
+.fb-speed-seg--rest { background: var(--green); opacity: 0.6; }
+.fb-speed-start { align-items: center; }
+.fb-speed-progress { display: flex; flex-direction: column; gap: 8px; }
+.fb-speed-progress__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.fb-speed-chart { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 8px; }
+.fb-speed-log { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fb-speed-log th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; }
+.fb-speed-log td { padding: 4px 8px; border-top: 1px solid var(--border-dim); }
+@media (max-width: 900px) { .fb-speed-progress__grid { grid-template-columns: minmax(0, 1fr); } }

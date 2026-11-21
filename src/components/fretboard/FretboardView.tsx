@@ -6,11 +6,13 @@ import { FretSettingsModal } from "./FretSettingsModal";
 import { Neck } from "./Neck";
 import { PlayBar } from "./PlayBar";
 import { PracticePanel } from "./PracticePanel";
+import { SpeedPanel, type SpeedRun } from "./SpeedPanel";
 import { ProgressionPanel } from "./ProgressionPanel";
 import { useSoundFont } from "./useSoundFont";
 import { engine } from "../../lib/fretboard/audio";
 import { buildChordSequence, buildSequence, orderSteps, type Step } from "../../lib/fretboard/playback";
-import { buildPlan, practiceEvents, type Plan } from "../../lib/fretboard/practice";
+import { buildPlan, practiceEvents, singleRun, type Plan } from "../../lib/fretboard/practice";
+import { EXERCISES, appendSpeedLog, loadSpeedLog, mmss, phases as speedPhases, totalSecs, type SpeedLog } from "../../lib/fretboard/speed";
 import { buildProgression, chordRoot, progVoicings, suitedProgression, type ProgChord } from "../../lib/fretboard/progression";
 import { colourNotes, scaleInfo } from "../../lib/fretboard/scaleInfo";
 import { useFretSettings } from "../../lib/fretboard/settings";
@@ -44,6 +46,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: "chords", label: "Chords" },
   { id: "progressions", label: "Progressions" },
   { id: "practice", label: "Practice" },
+  { id: "speed", label: "Speed" },
 ];
 
 function groupBy<T extends { group: string }>(list: T[]): [string, T[]][] {
@@ -81,6 +84,12 @@ export function FretboardView({ onBack }: Props) {
   const [announceIdx, setAnnounceIdx] = useState<number | null>(null);
   const [burstPass, setBurstPass] = useState(false);
   const markerBase = useRef(0);
+  const [speedRun, setSpeedRun] = useState<SpeedRun | null>(null);
+  const [speedNow, setSpeedNow] = useState(() => Date.now());
+  const [speedLogs, setSpeedLogs] = useState<SpeedLog[]>(() => loadSpeedLog().logs);
+  const [speedNotice, setSpeedNotice] = useState<string | null>(null);
+  const speedRunRef = useRef<SpeedRun | null>(null);
+  const bpmOverride = useRef<number | null>(null);
   const loopsSinceRaise = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { settings, update, error: settingsError, clearError } = useFretSettings();
@@ -92,7 +101,7 @@ export function FretboardView({ onBack }: Props) {
   const labelMode = settings.labels;
   const scale = SCALES[scaleIdx];
   const chord = CHORDS[chordIdx];
-  const scaleLike = page === "scales" || page === "progressions" || page === "practice";
+  const scaleLike = page === "scales" || page === "progressions" || page === "practice" || page === "speed";
 
   const scalePos = useMemo(() => scalePositions(tuning, key, scale.tones), [tuning, key, scale]);
   const arpPos = useMemo(() => arpeggioPositions(tuning, key, chord.tones), [tuning, key, chord]);
@@ -111,7 +120,7 @@ export function FretboardView({ onBack }: Props) {
 
   // The progression under this page: the one on the Progressions page, or on the
   // Scales page one that suits the scale.
-  const overlay = page !== "progressions" && page !== "practice" && settings.playOver;
+  const overlay = page !== "progressions" && page !== "practice" && page !== "speed" && settings.playOver;
   const progMode = page === "progressions" || overlay;
   const suited = useMemo(() => suitedProgression(scaleIdx), [scaleIdx]);
   const activeProg: ProgChord[] = page === "scales" && overlay && settings.suitScale ? suited : prog.chords;
@@ -127,14 +136,25 @@ export function FretboardView({ onBack }: Props) {
       voicing: voicingNotes(voicingsNow[i] ?? { frets: [], bassString: 0, score: 0 }),
     }));
   }, [tuning, key, prog.chords, settings.beatsPerChord]);
-  const plan: Plan = useMemo(
-    () =>
-      page === "practice"
-        ? buildPlan(settings.practice, settings.notesPerBeat, tuning, settings.tuning === 0, key, scale, idx, progItems.map((p) => ({ ...p, voicing: p.voicing.length ? p.voicing : null })))
-        : { steps: [], message: null },
-    [page, settings.practice, settings.notesPerBeat, tuning, settings.tuning, key, scale, idx, progItems],
-  );
-  const stepIdx = page === "practice" ? (playing ? practiceMarker : selectedStep) : null;
+  const items = useMemo(() => progItems.map((p) => ({ ...p, voicing: p.voicing.length ? p.voicing : null })), [progItems]);
+  const plan: Plan = useMemo(() => {
+    if (page === "practice") return buildPlan(settings.practice, settings.notesPerBeat, tuning, settings.tuning === 0, key, scale, idx, items);
+    if (page !== "speed") return { steps: [], message: null };
+    // The speed trainer's run: the chosen position, arpeggio, sequence or the progression's arpeggios.
+    const pb = settings.notesPerBeat;
+    const ex = settings.speed.exercise;
+    if (ex === "scale") {
+      return singleRun(tuning, `${KEYS[key]} ${scale.name} · position ${idx + 1}`, key, scale.tones, scalePos[idx]?.notes ?? [], pb);
+    }
+    if (ex === "arpeggio") {
+      const ai = Math.min(idx, Math.max(arpPos.length - 1, 0));
+      return singleRun(tuning, `${KEYS[key]}${chord.symbol} arpeggio · position ${ai + 1}`, key, chord.tones, arpPos[ai]?.notes ?? [], pb);
+    }
+    const routine = ex === "sequence" ? "sequences" : "changes";
+    return buildPlan({ ...settings.practice, routine, changesScale: false, backing: true }, pb, tuning, settings.tuning === 0, key, scale, idx, items);
+  }, [page, settings.practice, settings.speed.exercise, settings.notesPerBeat, tuning, settings.tuning, key, scale, idx, items, scalePos, arpPos, chord]);
+  const planned = page === "practice" || page === "speed";
+  const stepIdx = planned ? (playing ? practiceMarker : page === "practice" ? selectedStep : null) : null;
   const practiceStep = stepIdx !== null ? plan.steps[stepIdx] : undefined;
 
   const curIdx = progMode ? (playing ? markerIdx : page === "progressions" ? selectedChord : null) : null;
@@ -159,7 +179,7 @@ export function FretboardView({ onBack }: Props) {
   const keyChords = useMemo(() => diatonicChords(scale.tones, false), [scale]);
 
   const title =
-    page === "practice" && practiceStep ? practiceStep.title : scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
+    planned && practiceStep ? practiceStep.title : scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
   const posShort = (choices[idx] ?? "").split(" — ")[0];
   const pageLabel = PAGES.find((p) => p.id === page)?.label;
 
@@ -214,6 +234,7 @@ export function FretboardView({ onBack }: Props) {
   }
 
   function goPage(p: Page) {
+    if (speedRunRef.current) finishSpeed(false);
     if (playing) stopPlayback();
     setPage(p);
     setPosIdx(0);
@@ -230,6 +251,9 @@ export function FretboardView({ onBack }: Props) {
     return notes?.length ? Math.min(...notes.map((n) => n[1])) : 3;
   }
 
+  // The tempo to play at: a speed-trainer round sets its own.
+  const curBpm = () => bpmOverride.current ?? settings.bpm;
+
   // What Play should sound for the current page and selection.
   function buildCurrent(countInBars: number) {
     if (progMode) {
@@ -237,28 +261,30 @@ export function FretboardView({ onBack }: Props) {
       const voicingsNow = progVoicings({ tuning, key, chords: activeProg, nearFret: anchorFret() });
       return buildProgression(
         {
-          tuning, key, chords: activeProg, defaultBeats: settings.beatsPerChord, bpm: settings.bpm, notesPerBeat: settings.notesPerBeat,
+          tuning, key, chords: activeProg, defaultBeats: settings.beatsPerChord, bpm: curBpm(), notesPerBeat: settings.notesPerBeat,
           comp: settings.comp, drums: settings.drums, click: settings.click, countInBars,
         },
         voicingsNow,
       );
     }
-    if (page === "practice") {
+    if (planned) {
       if (plan.steps.length === 0) throw new Error(plan.message ?? "Nothing to practise with these settings.");
-      return withCountIn(practiceEvents(plan, settings.practice, settings.notesPerBeat, tuning, 60 / settings.bpm), countInBars);
+      // A speed round always clicks every beat.
+      const pset = page === "speed" ? { ...settings.practice, clicks: "all" as const, routine: settings.speed.exercise === "sequence" ? ("sequences" as const) : settings.speed.exercise === "changes" ? ("changes" as const) : ("ladder" as const) } : settings.practice;
+      return withCountIn(practiceEvents(plan, pset, settings.notesPerBeat, tuning, 60 / curBpm()), countInBars);
     }
     if (page === "chords") {
       if (!voicing) throw new Error("There is no chord shape to play.");
-      return buildChordSequence({ notes: stepsOf(voicingNotes(voicing)), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
+      return buildChordSequence({ notes: stepsOf(voicingNotes(voicing)), bpm: curBpm(), notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
     }
     const notes = page === "scales" ? view.runNotes : page === "arpeggios" ? arpPos[idx]?.notes : scalePos[idx]?.notes;
     if (!notes?.length) throw new Error("There are no notes to play in this position.");
-    return buildSequence({ steps: orderSteps(stepsOf(notes), settings.direction), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
+    return buildSequence({ steps: orderSteps(stepsOf(notes), settings.direction), bpm: curBpm(), notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
   }
 
   // Put count-in clicks in front of a built sequence; the count-in plays once, then playback loops from after it.
   function withCountIn(built: { events: import("../../lib/fretboard/audio").SeqEvent[]; length: number }, bars: number) {
-    const beat = 60 / settings.bpm;
+    const beat = 60 / curBpm();
     const lead = bars * 4 * beat;
     const events = [
       ...Array.from({ length: bars * 4 }, (_, i) => ({ time: i * beat, kind: { type: "click" as const, accent: i % 4 === 0 } })),
@@ -269,7 +295,10 @@ export function FretboardView({ onBack }: Props) {
 
   // The scale's root chord held softly under scale runs: root, 5th and the scale's own 3rd.
   function droneNotes(): number[] | null {
-    const droneOk = page === "scales" || (page === "practice" && ["ladder", "sequences"].includes(settings.practice.routine));
+    const droneOk =
+      page === "scales" ||
+      (page === "practice" && ["ladder", "sequences"].includes(settings.practice.routine)) ||
+      (page === "speed" && settings.speed.exercise === "scale");
     if (!droneOk || !settings.drone || progMode) return null;
     const root = 36 + key;
     const third = scale.tones.find((t) => t.label === "3" || t.label === "b3");
@@ -299,7 +328,7 @@ export function FretboardView({ onBack }: Props) {
         events: built.events,
         length: built.length,
         loopFrom: built.loopFrom,
-        loop: settings.loop,
+        loop: settings.loop || page === "speed",
         onHighlight: setPlayingNote,
         onMarker: (code) => {
           if (code.startsWith("p:")) {
@@ -342,9 +371,116 @@ export function FretboardView({ onBack }: Props) {
   }
 
   function togglePlayback() {
+    if (page === "speed") {
+      if (speedRunRef.current) finishSpeed(false);
+      else startSpeed();
+      return;
+    }
     if (engine.playing) stopPlayback();
     else startPlayback(settings.countIn);
   }
+
+  // ── Speed trainer sessions ──
+  function speedDetail(): string {
+    const ex = settings.speed.exercise;
+    if (ex === "scale") return `${KEYS[key]} ${scale.name} · position ${idx + 1}`;
+    if (ex === "arpeggio") return `${KEYS[key]}${chord.symbol} arpeggio · position ${idx + 1}`;
+    if (ex === "sequence") return `${KEYS[key]} ${scale.name} ${settings.practice.pattern} · position ${idx + 1}`;
+    return `${prog.name || "your progression"} in ${KEYS[key]}`;
+  }
+
+  function startSpeed() {
+    if (plan.steps.length === 0) {
+      setError(plan.message ?? "Nothing to play with these settings.");
+      return;
+    }
+    const setup = settings.speed;
+    const detail = settings.practice.burst > 0 ? `${speedDetail()} · bursts of ${settings.practice.burst}` : speedDetail();
+    const run: SpeedRun = {
+      phases: speedPhases(setup),
+      startedAt: Date.now(),
+      phase: -1,
+      topBpm: setup.startBpm,
+      startBpm: setup.startBpm,
+      exercise: setup.exercise,
+      detail,
+      when: Math.floor(Date.now() / 1000),
+    };
+    speedRunRef.current = run;
+    setSpeedRun(run);
+    setSpeedNotice(null);
+    setSpeedNow(run.startedAt);
+    const name = EXERCISES.find((e) => e.id === setup.exercise)?.name;
+    logTrainerActivity(`Fretboard Trainer — Speed trainer: ${name}, ${detail}, ${setup.startBpm} to ${setup.targetBpm} bpm over ${setup.minutes} min`);
+    tickSpeed();
+  }
+
+  // Move the session along: start each round at its tempo, rest between rounds, finish at the end.
+  function tickSpeed() {
+    const run = speedRunRef.current;
+    if (!run) return;
+    const now = Date.now();
+    setSpeedNow(now);
+    const elapsed = (now - run.startedAt) / 1000;
+    if (elapsed >= totalSecs(run.phases)) {
+      finishSpeed(true);
+      return;
+    }
+    let t = 0;
+    let idx = 0;
+    for (let i = 0; i < run.phases.length; i++) {
+      if (elapsed < t + run.phases[i].secs) {
+        idx = i;
+        break;
+      }
+      t += run.phases[i].secs;
+    }
+    if (idx === run.phase) return;
+    const first = run.phase === -1;
+    run.phase = idx;
+    const ph = run.phases[idx];
+    if (ph.kind === "work") {
+      run.topBpm = Math.max(run.topBpm, ph.bpm);
+      bpmOverride.current = ph.bpm;
+      update({ bpm: ph.bpm });
+      startPlayback(first ? settings.countIn : Math.min(settings.countIn, 1), false);
+    } else {
+      stopPlayback();
+    }
+    setSpeedRun({ ...run });
+  }
+
+  // End the session (finished or stopped early) and log it.
+  function finishSpeed(finished: boolean) {
+    const run = speedRunRef.current;
+    if (!run) return;
+    speedRunRef.current = null;
+    bpmOverride.current = null;
+    setSpeedRun(null);
+    stopPlayback();
+    const total = totalSecs(run.phases);
+    const secs = Math.round(Math.min(total, Math.max(0, (Date.now() - run.startedAt) / 1000)));
+    const name = EXERCISES.find((e) => e.id === run.exercise)?.name ?? "";
+    const log: SpeedLog = { when: run.when, exercise: name, detail: run.detail, startBpm: Math.round(run.startBpm), topBpm: Math.round(run.topBpm), secs, finished };
+    try {
+      setSpeedLogs(appendSpeedLog(log));
+    } catch (err) {
+      setError(`This speed session couldn't be saved: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setSpeedNotice(`Session saved: ${name} — ${log.startBpm} to ${log.topBpm} bpm in ${mmss(secs)}`);
+    logTrainerActivity(`Fretboard Trainer — Speed session saved: ${name}, ${log.startBpm} to ${log.topBpm} bpm in ${mmss(secs)}${finished ? "" : " (stopped early)"}`);
+  }
+  const finishSpeedRef = useRef(finishSpeed);
+  finishSpeedRef.current = finishSpeed;
+  const tickSpeedRef = useRef(tickSpeed);
+  tickSpeedRef.current = tickSpeed;
+  const running = speedRun !== null;
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => tickSpeedRef.current(), 200);
+    return () => window.clearInterval(id);
+  }, [running]);
+  useEffect(() => () => finishSpeedRef.current(false), []);
 
   // Click a step: show it and play it once.
   function previewStep(i: number) {
@@ -391,7 +527,7 @@ export function FretboardView({ onBack }: Props) {
   useEffect(() => {
     if (lastKey.current === restartKey) return;
     lastKey.current = restartKey;
-    if (playingRef.current) startPlayback(0, false);
+    if (playingRef.current && !speedRunRef.current) startPlayback(0, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restartKey]);
 
@@ -640,6 +776,26 @@ export function FretboardView({ onBack }: Props) {
             </div>
           )}
 
+          {!focus && page === "speed" && (
+            <SpeedPanel
+              setup={settings.speed}
+              onSetup={(patch) => update({ speed: { ...settings.speed, ...patch } })}
+              burst={settings.practice.burst}
+              onBurst={(n) => update({ practice: { ...settings.practice, burst: n } })}
+              chordIdx={chordIdx}
+              onChord={setChordIdx}
+              pattern={settings.practice.pattern}
+              onPattern={(p) => update({ practice: { ...settings.practice, pattern: p } })}
+              detail={speedDetail()}
+              run={speedRun}
+              nowMs={speedNow}
+              logs={speedLogs}
+              onStart={startSpeed}
+              onStop={() => finishSpeed(false)}
+              notice={speedNotice}
+            />
+          )}
+
           {!focus && page === "practice" && (
             <PracticePanel
               set={settings.practice}
@@ -669,7 +825,7 @@ export function FretboardView({ onBack }: Props) {
 
           <h2 className="fretboard-title">
             {title}
-            {page === "practice" && playing && settings.practice.burst > 1 && (
+            {planned && playing && settings.practice.burst > 1 && (
               <span className={`fb-pass-badge ${burstPass ? "fb-pass-badge--burst" : ""}`}>{burstPass ? "SPEED BURSTS" : "Normal speed"}</span>
             )}
           </h2>

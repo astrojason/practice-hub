@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { DEFAULT_SOUND, engine, type SoundSettings } from "./audio";
 import { DEFAULT_PRACTICE, type PracticeSettings } from "./practice";
+import { DEFAULT_SPEED, type SpeedSetup } from "./speed";
 import type { ChordFocus, Comp, DrumStyle, Follow } from "./progression";
 
 export type Direction = "up" | "down" | "updown";
@@ -28,6 +29,7 @@ export interface PlaybackSettings {
   /** On the Scales page, choose the progression that suits the scale. */
   suitScale: boolean;
   practice: PracticeSettings;
+  speed: SpeedSetup;
 }
 
 export type LabelMode = "degree" | "note" | "both" | "interval" | "none";
@@ -82,6 +84,7 @@ export const DEFAULT_SETTINGS: FretSettings = {
   playOver: false,
   suitScale: true,
   practice: DEFAULT_PRACTICE,
+  speed: DEFAULT_SPEED,
   theme: "dark",
   scheme: 0,
   labels: "degree",
@@ -106,7 +109,7 @@ const KEY = "ph:fretboard:settings";
 /** Fretboard Trainer settings, saved in local storage. Problems reading or saving are returned in `error`. */
 export function useFretSettings() {
   const [state] = useState(() => readLocalStorageJSON<Partial<FretSettings>>(KEY, {}));
-  const [settings, setSettings] = useState<FretSettings>({ ...DEFAULT_SETTINGS, ...state.value, practice: { ...DEFAULT_PRACTICE, ...state.value.practice } });
+  const [settings, setSettings] = useState<FretSettings>({ ...DEFAULT_SETTINGS, ...state.value, practice: { ...DEFAULT_PRACTICE, ...state.value.practice }, speed: { ...DEFAULT_SPEED, ...state.value.speed } });
   const [error, setError] = useState<string | null>(state.error);
 
   useEffect(() => {
