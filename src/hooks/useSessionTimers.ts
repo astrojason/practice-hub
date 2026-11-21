@@ -31,6 +31,17 @@ export function useSessionTimers(now: number) {
     setPausedElapsed((prev) => new Map(prev).set(itemKey, total));
   }
 
+  /** Pause, taking off the last `trimSeconds` (time that turned out to be idle). */
+  function pauseTimerTrimmed(itemKey: string, trimSeconds: number) {
+    const total = Math.max(0, getElapsed(itemKey) - trimSeconds);
+    setActiveTimers((prev) => {
+      const next = new Map(prev);
+      next.delete(itemKey);
+      return next;
+    });
+    setPausedElapsed((prev) => new Map(prev).set(itemKey, total));
+  }
+
   function clearTimer(itemKey: string) {
     setActiveTimers((prev) => {
       const next = new Map(prev);
@@ -44,5 +55,5 @@ export function useSessionTimers(now: number) {
     });
   }
 
-  return { activeTimers, pausedElapsed, getElapsed, startTimer, pauseTimer, clearTimer };
+  return { activeTimers, pausedElapsed, getElapsed, startTimer, pauseTimer, pauseTimerTrimmed, clearTimer };
 }

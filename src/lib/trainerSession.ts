@@ -28,6 +28,35 @@ export function clearTrainerActivity() {
   emit();
 }
 
+/** How long with no input (and nothing playing) before the trainer's Open Session timer pauses. */
+export const idleMs = () => (window as unknown as { __trainerIdleMs?: number }).__trainerIdleMs ?? 120_000;
+
+let busy = false;
+let touchVersion = 0;
+const touchListeners = new Set<() => void>();
+
+/** The trainer is doing something on its own (playing, a quiz or speed session running). */
+export function setTrainerBusy(b: boolean) {
+  busy = b;
+}
+export const isTrainerBusy = () => busy;
+
+/** Someone used the trainer (a click or key press in it). */
+export function touchTrainer() {
+  touchVersion += 1;
+  touchListeners.forEach((l) => l());
+}
+
+export function useTrainerTouches(): number {
+  return useSyncExternalStore(
+    (cb) => {
+      touchListeners.add(cb);
+      return () => touchListeners.delete(cb);
+    },
+    () => touchVersion,
+  );
+}
+
 let saveRequests = 0;
 const saveListeners = new Set<() => void>();
 

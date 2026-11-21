@@ -326,3 +326,28 @@ test("stopping a quiz with no answers does not ask", async ({ page }) => {
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(page.locator(".confirm-modal")).toHaveCount(0);
 });
+
+test("the quiz results go into the Open Session notes", async ({ page }) => {
+  await quiz(page);
+  await start(page);
+  for (let i = 0; i < 2; i++) {
+    await page.keyboard.press("1");
+    await page.keyboard.press("Enter");
+  }
+  await page.keyboard.press("1");
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.locator(".confirm-modal button", { hasText: "Save session" }).click();
+  const notes = page.locator(".modal-card textarea");
+  await expect(notes).toHaveValue(/Quiz result: Name the note: \d of 3 right \(\d+%\), average \d+\.\d s, fastest right \d+\.\d s/);
+  await expect(notes).toHaveValue(/slowest: /);
+});
+
+test("the Find the note results include the strings picked", async ({ page }) => {
+  await quiz(page);
+  await page.locator(".fb-quiz-kind", { hasText: "Find the note" }).click();
+  await start(page);
+  await page.locator('.fb-note[data-pickable="true"][data-string="1"]').first().click({ force: true });
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.locator(".confirm-modal button", { hasText: "Save session" }).click();
+  await expect(page.locator(".modal-card textarea")).toHaveValue(/Quiz result: Find the note: \d of 1 right.*strings picked: A 1/);
+});

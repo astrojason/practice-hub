@@ -46,7 +46,8 @@ import {
 } from "../../lib/fretboard/theory";
 import { useProgression } from "../../lib/fretboard/useProgression";
 import { computeView, type Page } from "../../lib/fretboard/view";
-import { logTrainerActivity } from "../../lib/trainerSession";
+import { logTrainerActivity, setTrainerBusy, touchTrainer } from "../../lib/trainerSession";
+import { byItem, stringPicks, summarize } from "../../lib/fretboard/history";
 
 const PAGES: { id: Page; label: string }[] = [
   { id: "scales", label: "Scales" },
@@ -143,9 +144,35 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   // Stopping a quiz that had answers offers to log it to the practice tracker.
   function stopQuiz() {
     const answered = quiz.session.length > 0;
+    if (answered) {
+      // The results go into the Open Session's notes.
+      const sum = summarize(quiz.session);
+      const kindName = QUIZ_KINDS.find((k) => k.id === quiz.kind)?.name ?? "Quiz";
+      const slow = byItem(quiz.session)[0];
+      const strings = quiz.kind === "findnote" ? stringPicks(quiz.session).filter((e) => e.picks > 0) : [];
+      logTrainerActivity(
+        `Fretboard Trainer — Quiz result: ${kindName}: ${sum.right} of ${sum.answered} right (${Math.round((sum.right * 100) / sum.answered)}%), average ${(sum.avgMs / 1000).toFixed(1)} s, fastest right ${(sum.fastestMs / 1000).toFixed(1)} s` +
+          (slow ? `; slowest: ${slow.item} (${(slow.avgMs / 1000).toFixed(1)} s)` : "") +
+          (strings.length ? `; strings picked: ${strings.map((e) => `${plainName(tuning[e.string])} ${e.picks}`).join(", ")}` : ""),
+      );
+    }
     quiz.stop();
     if (answered) setSavePrompt(true);
   }
+  // Tell the session view when the trainer is busy on its own, or being used, so its timer knows.
+  useEffect(() => {
+    setTrainerBusy(playing || quiz.running || speedRun !== null);
+  }, [playing, quiz.running, speedRun]);
+  useEffect(() => {
+    const touch = () => touchTrainer();
+    window.addEventListener("pointerdown", touch, { capture: true });
+    window.addEventListener("keydown", touch, { capture: true });
+    return () => {
+      window.removeEventListener("pointerdown", touch, { capture: true });
+      window.removeEventListener("keydown", touch, { capture: true });
+      setTrainerBusy(false);
+    };
+  }, []);
   const stopQuizRef = useRef(stopQuiz);
   stopQuizRef.current = stopQuiz;
   // When answering out loud, the next question follows three seconds after each answer, until "stop" is heard.
