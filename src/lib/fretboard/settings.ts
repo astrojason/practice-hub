@@ -33,6 +33,10 @@ export interface PlaybackSettings {
   speed: SpeedSetup;
   /** What counts as your usual pace for clearing weak spots. */
   pace: Pace;
+  /** Answer the quiz out loud, through the microphone. */
+  voice: boolean;
+  /** How fast the voice talks, in words per minute. */
+  voiceRate: number;
 }
 
 export type LabelMode = "degree" | "note" | "both" | "interval" | "none";
@@ -89,6 +93,8 @@ export const DEFAULT_SETTINGS: FretSettings = {
   practice: DEFAULT_PRACTICE,
   speed: DEFAULT_SPEED,
   pace: { type: "average" },
+  voice: false,
+  voiceRate: 175,
   theme: "dark",
   scheme: 0,
   labels: "degree",

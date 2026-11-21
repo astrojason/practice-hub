@@ -4,6 +4,9 @@ import { ConfirmModal } from "../ConfirmModal";
 import { ErrorModal } from "../ErrorModal";
 import { QuizMain, QuizReport, QuizSide, WeakCard, answerKeyIndex } from "./QuizPanels";
 import { useQuiz } from "./useQuiz";
+import { useVoice } from "./useVoice";
+import { spokenAnswer, spokenCommand, spokenDegreeName, spokenNoteName } from "../../lib/fretboard/spoken";
+import { speak } from "../../lib/fretboard/voice";
 import { QUIZ_KINDS } from "../../lib/fretboard/quiz";
 import { ChordBox } from "./ChordBox";
 import { FretSettingsModal } from "./FretSettingsModal";
@@ -108,9 +111,27 @@ export function FretboardView({ onBack }: Props) {
   const labelMode = settings.labels;
   const scale = SCALES[scaleIdx];
   const chord = CHORDS[chordIdx];
+  const pauseVoice = useRef<(ms: number) => void>(() => {});
   const quiz = useQuiz({
     tuning, key, scaleIdx, pace: settings.pace, scaleName: scale.name, keyName: KEYS[key], onError: showError, onHighlight: setPlayingNote,
+    onSound: (ms) => pauseVoice.current(ms),
   });
+  // Spoken quiz answers: "next" and "again" are commands; anything else is matched to the answers.
+  const voice = useVoice({
+    want: settings.voice && page === "quiz" && quiz.running,
+    kind: quiz.kind,
+    onHeard: (guesses, onsetAt) => {
+      const cmd = spokenCommand(guesses);
+      if (cmd === "next") {
+        if (quiz.picked !== null) quiz.next();
+      } else if (cmd === "again") quiz.hear();
+      else if (quiz.question && quiz.picked === null) {
+        const i = spokenAnswer(quiz.kind, quiz.question.choices, guesses);
+        if (i !== null) quiz.answer(i, onsetAt);
+      }
+    },
+  });
+  pauseVoice.current = voice.pauseFor;
   const scaleLike = page === "scales" || page === "progressions" || page === "practice" || page === "speed";
 
   const scalePos = useMemo(() => scalePositions(tuning, key, scale.tones), [tuning, key, scale]);
@@ -624,6 +645,33 @@ export function FretboardView({ onBack }: Props) {
   }, [page, settings.practice.callouts, playing, playingNote, view.marks, view.root]);
   const announceKey = announceIdx !== null ? plan.steps[announceIdx] : undefined;
 
+  // Say the call-outs and the next key aloud when asked to.
+  const speakOn = page === "practice" && settings.practice.speak;
+  const sayIt = useCallback(
+    (text: string) => {
+      try {
+        speak(text, settingsRef.current.voiceRate);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        update({ practice: { ...settingsRef.current.practice, speak: false } });
+      }
+    },
+    [update],
+  );
+  useEffect(() => {
+    if (!speakOn || !callout || !playingNote) return;
+    const m = view.marks.find((x) => `${x.string}:${x.fret}` === playingNote);
+    if (!m) return;
+    const mode = settings.practice.callouts;
+    sayIt(mode === "note" ? spokenNoteName(spell(view.root, m.semis, m.label)) : mode === "interval" ? callout : spokenDegreeName(m.label));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playingNote]);
+  useEffect(() => {
+    if (!speakOn || !announceKey || settings.practice.routine !== "circle") return;
+    sayIt(`${spokenNoteName(KEYS[announceKey.root])} ${tonality(scale.tones) === "Minor" ? "minor" : "major"}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [announceIdx]);
+
   const changeNotes = diff.changes.map(([t]) => t).join(", ");
   const chordNotes = chord.tones.map((t) => ({
     note: spell(key, t.semis, t.label),
@@ -869,7 +917,7 @@ export function FretboardView({ onBack }: Props) {
               <span className={`fb-pass-badge ${burstPass ? "fb-pass-badge--burst" : ""}`}>{burstPass ? "SPEED BURSTS" : "Normal speed"}</span>
             )}
           </h2>
-          {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} />}
+          {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} voice={voice} voiceOn={settings.voice} />}
           <p className="fretboard-tonality" hidden={page === "quiz"}>
             {scaleLike ? (
               <>
@@ -917,7 +965,7 @@ export function FretboardView({ onBack }: Props) {
         {!focus && (
         <aside className="fretboard-side">
           {page === "quiz" && (
-            <QuizSide quiz={quiz} pace={settings.pace} onReport={() => setReportOpen(true)} onConfirmReset={() => setConfirmReset(true)} scaleLabel={`${KEYS[key]} ${scale.name}`} />
+            <QuizSide quiz={quiz} voiceOn={settings.voice} onVoice={(on) => update({ voice: on })} pace={settings.pace} onReport={() => setReportOpen(true)} onConfirmReset={() => setConfirmReset(true)} scaleLabel={`${KEYS[key]} ${scale.name}`} />
           )}
           {page !== "quiz" && settings.showWeak && (
             <WeakCard

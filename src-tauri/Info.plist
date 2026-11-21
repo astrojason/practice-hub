@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Practice Hub listens while "Answer out loud" is on in the Fretboard Trainer quiz, so you can say your answers.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Practice Hub turns the answers you say in the Fretboard Trainer quiz into text, on this Mac when it can.</string>
+</dict>
+</plist>

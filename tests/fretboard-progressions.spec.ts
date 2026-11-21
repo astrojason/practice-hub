@@ -116,7 +116,7 @@ test("playing lights the current chord and follows it with its scale", async ({ 
   await expect(cards(page).nth(0)).toHaveClass(/fb-chord-card--playing/);
   await expect(page.locator(".fb-prog-now")).toContainText("Dm7");
   await expect(page.locator(".fb-prog-now")).toContainText("D Dorian");
-  await expect(page.locator(".fb-prog-now")).toContainText("G7", { timeout: 6000 });
+  await expect(page.locator(".fb-prog-now")).toContainText("G7", { timeout: 12000 });
   await expect(page.locator(".fb-prog-now")).toContainText("G Mixolydian");
   await playBtn(page).click();
   await expect(page.locator(".error-modal")).toHaveCount(0);

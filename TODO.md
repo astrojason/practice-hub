@@ -1,5 +1,6 @@
 ## Bugs
 
+- [ ] Fretboard Trainer "Answer out loud": the macOS microphone + speech-recognition path (`src-tauri/src/voice.rs`) compiles and its parsing is tested, but it has not been exercised on a real Mac with the permission prompts. Run `npm run tauri dev`, turn on Answer out loud in the Quiz, allow the prompts, say an answer, and fix anything that goes wrong (the Craft app's own author had not heard it recognise an answer yet either).
 - [ ] Check a tab saved by the tab editor (`<name> (edited).gp`) opens correctly in the real Guitar Pro 7/8 app. The writer (`src-tauri/src/tab/gpwrite.rs`) only round-trips through this app's own reader; it has not been opened in Guitar Pro itself.
 
 ## Features
@@ -10,7 +11,6 @@
 
 Source: `/Users/jasonsylvester/Documents/Craft Anything/a-visual-scale-arpeggio-chord` (Rust/egui; `app/src/help.rs` lists every feature). Port the features, **not** the UI: everything must use this app's own styling/components (overlay view like Browse, `btn-*` classes, `ErrorModal`, `ConfirmModal`). Audio is Web Audio in the webview (no new Rust audio engine). Starting any practice item in the trainer (first Play of a routine, a speed-trainer session, a quiz) starts the app's **Open Session** timer with pre-filled notes describing what is being practised (key, scale, position, tempo…). Do the phases in order; remove each when committed.
 
-- [ ] Phase 9 — Voice: spoken call-outs (speechSynthesis) and answering quizzes out loud (needs speech recognition working in the Tauri webview; may need a Rust helper).
 - [ ] Phase 10 — Fretboard Trainer help topics in the in-app help.
 - [ ] Phase 11 — Gap audit against the Craft app: the degree strip (12-step chromatic strip under the neck: which half steps belong, their degrees, click to hear), plus anything else found by walking the Craft app's screens (`app/src/main.rs`, `help.rs`) feature by feature.
 

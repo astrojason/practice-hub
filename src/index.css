@@ -3408,3 +3408,8 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .fb-report__totals div { display: flex; flex-direction: column; }
 .fb-report__totals strong { font-size: 22px; }
 .fb-report__tables { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fb-voice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 13px; }
+.fb-voice-meter { display: inline-block; width: 120px; height: 8px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+.fb-voice-meter__bar { display: block; height: 100%; background: var(--green); transition: width 0.05s linear; }
+.fb-voice-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px; background: var(--red-dim); border: 1px solid var(--red-border); border-radius: var(--r); color: var(--red); user-select: text; }
+.fb-voice-error p { margin: 0; max-width: 70ch; }

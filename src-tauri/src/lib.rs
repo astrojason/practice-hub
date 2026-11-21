@@ -874,8 +874,11 @@ fn get_changelog() -> Result<Vec<ChangelogEntry>, String> {
 // ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+mod voice;
+
 pub fn run() {
     tauri::Builder::default()
+        .manage(voice::VoiceState::default())
         .setup(|_app| {
             spawn_file_server();
             Ok(())
@@ -884,6 +887,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
+            voice::voice_start,
+            voice::voice_stop,
+            voice::voice_pause,
             start_auth,
             analyze_gp_file,
             write_song_difficulty,

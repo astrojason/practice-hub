@@ -8,6 +8,7 @@ import { KEYS, bothNames } from "../../lib/fretboard/theory";
 import { RECENT, TO_CLEAR, statInfo } from "../../lib/fretboard/weakness";
 import type { Pace } from "../../lib/fretboard/weakness";
 import type { Quiz } from "./useQuiz";
+import type { Voice } from "./useVoice";
 
 const ANSWER_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "q", "w"];
 export const answerKeyIndex = (key: string) => ANSWER_KEYS.indexOf(key.toLowerCase());
@@ -15,7 +16,7 @@ export const answerKeyIndex = (key: string) => ANSWER_KEYS.indexOf(key.toLowerCa
 const s1 = (ms: number) => (ms / 1000).toFixed(1);
 
 /** The prompt bar and the answer buttons. */
-export function QuizMain({ quiz, scaleLabel }: { quiz: Quiz; scaleLabel: string }) {
+export function QuizMain({ quiz, scaleLabel, voice, voiceOn }: { quiz: Quiz; scaleLabel: string; voice: Voice; voiceOn: boolean }) {
   const info = QUIZ_KINDS.find((k) => k.id === quiz.kind)!;
   const q = quiz.question;
   const last = quiz.lastSession;
@@ -38,6 +39,8 @@ export function QuizMain({ quiz, scaleLabel }: { quiz: Quiz; scaleLabel: string 
           </span>
         )}
       </div>
+
+      {voiceOn && quiz.running && <VoiceRow voice={voice} />}
 
       {!quiz.running && (
         <div className="fb-quiz-intro-wrap">
@@ -87,8 +90,34 @@ export function QuizMain({ quiz, scaleLabel }: { quiz: Quiz; scaleLabel: string 
   );
 }
 
+/** What the microphone is doing: listening, what it heard, or why it stopped. */
+function VoiceRow({ voice }: { voice: Voice }) {
+  if (voice.error) {
+    return (
+      <div className="fb-voice-error" role="alert">
+        <p>{voice.error}</p>
+        <button className="btn-secondary" onClick={voice.retry}>Try again</button>
+      </div>
+    );
+  }
+  return (
+    <div className="fb-voice-row">
+      <span className="fb-voice-status" title={voice.onDevice === null ? "" : voice.onDevice ? "Recognised on this Mac" : "Recognised through Apple's service"}>
+        {voice.status === "listening" ? "🎤 Listening — say your answer, “next” or “again”" : "🎤 Starting the microphone…"}
+        {voice.dropouts > 0 && ` · ${voice.dropouts} audio dropout${voice.dropouts === 1 ? "" : "s"}${voice.dropouts >= 5 ? " (if this keeps happening, close other apps that use the microphone)" : ""}`}
+      </span>
+      <span className="fb-voice-meter" aria-hidden="true">
+        <span className="fb-voice-meter__bar" style={{ width: `${Math.min(100, voice.level * 400)}%` }} />
+      </span>
+      {voice.heard !== null && <span className="fb-voice-heard fb-dim">Heard: “{voice.heard}”</span>}
+    </div>
+  );
+}
+
 interface SideProps {
   quiz: Quiz;
+  voiceOn: boolean;
+  onVoice: (on: boolean) => void;
   pace: Pace;
   onReport: () => void;
   onConfirmReset: () => void;
@@ -96,7 +125,7 @@ interface SideProps {
 }
 
 /** The side panel: kinds, frets, options, score, and what is saved. */
-export function QuizSide({ quiz, onReport, onConfirmReset, scaleLabel }: SideProps) {
+export function QuizSide({ quiz, voiceOn, onVoice, onReport, onConfirmReset, scaleLabel }: SideProps) {
   const sessions = new Set(quiz.history.map((r) => r.session)).size;
   const sum = summarize(quiz.session);
   const pct = quiz.total ? quiz.score / quiz.total : 0;
@@ -125,6 +154,9 @@ export function QuizSide({ quiz, onReport, onConfirmReset, scaleLabel }: SidePro
       </div>
       <label className="fb-playbar__check" title="Ask more about the notes, degrees and intervals your history says you find hard">
         <input type="checkbox" checked={quiz.focusWeak} onChange={(e) => quiz.setFocusWeak(e.target.checked)} /> Focus on my weak spots
+      </label>
+      <label className="fb-playbar__check" title="Say your answers instead of clicking: “C sharp”, “flat three”, “minor third”, “minor seven”. Say “next” to move on and “again” to hear it again. Uses macOS speech recognition; macOS asks for permission the first time.">
+        <input type="checkbox" checked={voiceOn} onChange={(e) => onVoice(e.target.checked)} /> Answer out loud (microphone)
       </label>
       {quiz.kind === "degree" && <p className="fb-dim">Degrees are asked in {scaleLabel} — change the key and scale at the top.</p>}
 

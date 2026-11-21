@@ -88,6 +88,8 @@ export interface PracticeSettings {
   relayBroken: boolean;
   /** What each note is called as it plays. */
   callouts: "off" | "note" | "interval" | "degree";
+  /** Say the call-outs, and the next key in the circle of fifths, out loud. */
+  speak: boolean;
   /** Raise the tempo every few loops. */
   speedUp: boolean;
   speedStep: number;
@@ -113,6 +115,7 @@ export const DEFAULT_PRACTICE: PracticeSettings = {
   relayBeats: 2,
   relayBroken: false,
   callouts: "off",
+  speak: false,
   speedUp: false,
   speedStep: 5,
   speedEvery: 2,

@@ -1,0 +1,71 @@
+// Talking to the Fretboard Trainer: speaking aloud (call-outs, key names) with the
+// webview's speech synthesis, and listening for spoken quiz answers through the
+// desktop app's microphone and macOS speech recogniser (see src-tauri/src/voice.rs).
+
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+
+export type VoiceEvent =
+  | { type: "ready"; onDevice: boolean }
+  | { type: "onset"; agoMs: number }
+  | { type: "heard"; guesses: string[] }
+  | { type: "nothing" }
+  | { type: "dropout" }
+  | { type: "level"; value: number }
+  | { type: "error"; message: string };
+
+/** Where spoken answers come from. The desktop app supplies one; tests can put their own on `window`. */
+export interface VoiceBackend {
+  /** Start listening for the given words. Returns a function that stops listening. */
+  start(vocabulary: string[], onEvent: (e: VoiceEvent) => void): Promise<() => void>;
+  /** Ignore the microphone while the app itself is making sound. */
+  pause(paused: boolean): Promise<void>;
+}
+
+declare global {
+  interface Window {
+    __fretboardVoice?: VoiceBackend;
+  }
+}
+
+const tauriBackend: VoiceBackend = {
+  async start(vocabulary, onEvent) {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      throw new Error("Answering out loud needs the Practice Hub desktop app: this window has no microphone access.");
+    }
+    const unlisten = await listen<VoiceEvent>("fret-voice", (e) => onEvent(e.payload));
+    try {
+      await invoke("voice_start", { vocabulary });
+    } catch (err) {
+      unlisten();
+      throw new Error(typeof err === "string" ? err : err instanceof Error ? err.message : String(err));
+    }
+    return () => {
+      unlisten();
+      invoke("voice_stop").catch((err) => onEvent({ type: "error", message: `Could not stop listening: ${err instanceof Error ? err.message : String(err)}` }));
+    };
+  },
+  async pause(paused) {
+    await invoke("voice_pause", { paused });
+  },
+};
+
+export const voiceBackend = (): VoiceBackend => window.__fretboardVoice ?? tauriBackend;
+
+// ── Speaking ──
+
+/** Words per minute for the speech voice, as a speech-synthesis rate (175 wpm is normal speed). */
+export const rateFor = (wpm: number) => Math.max(0.5, Math.min(2, wpm / 175));
+
+/** Say something aloud. Throws if this webview cannot speak. */
+export function speak(text: string, wpm: number): void {
+  const synth = window.speechSynthesis;
+  if (!synth || typeof SpeechSynthesisUtterance === "undefined") {
+    throw new Error("This webview cannot speak aloud (no speech synthesis).");
+  }
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = rateFor(wpm);
+  u.lang = "en-US";
+  synth.speak(u);
+}

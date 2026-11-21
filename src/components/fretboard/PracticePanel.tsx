@@ -172,6 +172,9 @@ export function PracticePanel({ set, onChange, plan, selected, playingStep, onSt
             <option value="degree">Degrees</option>
           </select>
         </label>
+        <label className="fb-playbar__check" title="Say the call-outs, and the next key of the circle of fifths, out loud">
+          <input type="checkbox" checked={set.speak} onChange={(e) => onChange({ speak: e.target.checked })} /> Speak call-outs
+        </label>
       </div>
 
       <p className="fb-routine-help fb-dim">{help}</p>

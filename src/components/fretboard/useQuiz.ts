@@ -14,10 +14,12 @@ interface Options {
   keyName: string;
   onError: (message: string) => void;
   onHighlight: (code: string | null) => void;
+  /** The app is about to make sound for this many milliseconds (so the microphone can pause). */
+  onSound?: (ms: number) => void;
 }
 
 /** Everything a running quiz needs: the question, answers, timing, history and weak spots. */
-export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onError, onHighlight }: Options) {
+export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onError, onHighlight, onSound }: Options) {
   const [kind, setKindState] = useState<QuizKind>("note");
   const [maxFret, setMaxFretState] = useState(22);
   const [focusWeak, setFocusWeak] = useState(false);
@@ -86,6 +88,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
     (q: Question, revealed: boolean) => {
       try {
         const gap = q.together ? 0.03 : 0.55;
+        onSound?.((q.notes.length * gap + 2.5) * 1000);
         engine.play({
           events: q.notes.map(([s, f], i) => ({
             time: i * gap,
@@ -99,7 +102,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
         onError(err instanceof Error ? err.message : String(err));
       }
     },
-    [tuning, onHighlight, onError],
+    [tuning, onHighlight, onError, onSound],
   );
 
   const next = useCallback(
@@ -156,10 +159,11 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
   }, [session]);
 
   const answer = useCallback(
-    (choice: number) => {
+    (choice: number, atMs?: number | null) => {
       if (!question || picked !== null) return;
       const correct = choice === question.answer;
-      const ms = Math.max(0, Math.round(Date.now() - shownAt));
+      // A spoken answer is timed to when speaking began.
+      const ms = Math.max(0, Math.round((atMs ?? Date.now()) - shownAt));
       const rec: QuizRecord = {
         when: Math.floor(Date.now() / 1000),
         session: sessionId.current,
