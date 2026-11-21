@@ -15,7 +15,7 @@ const mockDashboard = {
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("ph:refreshToken", "fake-refresh-token");
-    (window as unknown as { __trainerIdleMs: number }).__trainerIdleMs = 1500;
+    (window as unknown as { __trainerIdleMs: number }).__trainerIdleMs = 3000;
   });
   await page.route("**/securetoken.googleapis.com/**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id_token: "fake-id-token", refresh_token: "fake-refresh-token" }) })
@@ -36,16 +36,16 @@ test("the Open Session the trainer started pauses when nobody is doing anything,
   await page.locator('.fb-note[data-in-position="true"]').first().click();
   await expect(page.locator(".btn-open-session-active")).toBeAttached();
   // Idle: no input and nothing playing.
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(7000);
   const paused = seconds(await timer(page));
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(3000);
   expect(seconds(await timer(page))).toBe(paused);
   // The idle time was not counted.
-  expect(paused).toBeLessThanOrEqual(2);
+  expect(paused).toBeLessThanOrEqual(3);
   // Using the trainer again carries on.
   await page.locator('.fb-note[data-in-position="true"]').nth(1).click();
   // (Before it has been idle long enough to pause again.)
-  await page.waitForTimeout(1300);
+  await page.waitForTimeout(1800);
   expect(seconds(await timer(page))).toBeGreaterThan(paused);
 });
 
