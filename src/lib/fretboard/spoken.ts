@@ -202,7 +202,7 @@ function answerOne(kind: QuizKind, choices: string[], words: string[]): number |
 
 // Letters that sound alike over a microphone: heard for one another, they count as a match
 // when the right answer is known ("B flat" for "A flat").
-const SOUND_ALIKE = [["a", "b"], ["b", "c", "d", "e", "g"]];
+const SOUND_ALIKE = [["a", "b"]];
 const alike = (x: string, y: string) => x === y || SOUND_ALIKE.some((g) => g.includes(x) && g.includes(y));
 
 /** The letter and accidental of the first note name in the words. */

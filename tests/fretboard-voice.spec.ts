@@ -104,6 +104,8 @@ test("spoken answers are understood (same cases as the Craft app)", async ({ pag
     eq("known answer: sounds-alike letter", spokenAnswerFor("note", notes, ["B flat"], 8), 8);
     eq("known answer: an alternative matches", spokenAnswerFor("note", notes, ["B flat", "A flat"], 8), 8);
     eq("known answer: really different note stays wrong", spokenAnswerFor("note", notes, ["F sharp"], 8), 6);
+    eq("known answer: B for D stays wrong", spokenAnswerFor("note", notes, ["B"], 2), 11);
+    eq("known answer: D for B stays wrong", spokenAnswerFor("note", notes, ["D"], 11), 2);
     eq("known answer: different accidental stays wrong", spokenAnswerFor("note", notes, ["B"], 8), 11);
     eq("known answer: exact heard", spokenAnswerFor("note", notes, ["B flat"], 10), 10);
     eq("a tie goes to the best guess", spokenAnswer("note", notes, ["B flat", "A flat"]), 10);
