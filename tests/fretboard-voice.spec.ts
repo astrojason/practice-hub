@@ -37,7 +37,11 @@ async function stubVoice(page: P) {
     // Record what is spoken instead of making noise.
     const spoken: { text: string; rate: number }[] = [];
     w.__spoken = spoken;
-    window.speechSynthesis.speak = (u: SpeechSynthesisUtterance) => void spoken.push({ text: u.text, rate: u.rate });
+    Object.defineProperty(SpeechSynthesis.prototype, "speak", {
+      configurable: true,
+      writable: true,
+      value: (u: SpeechSynthesisUtterance) => void spoken.push({ text: u.text, rate: u.rate }),
+    });
   });
 }
 
