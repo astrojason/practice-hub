@@ -3,6 +3,7 @@ import gpLibrary from "../../docs/tutorials/gp-library.md?raw";
 import browse from "../../docs/tutorials/browse.md?raw";
 import sessionsTimer from "../../docs/tutorials/sessions-timer.md?raw";
 import metronome from "../../docs/tutorials/metronome.md?raw";
+import fretboardTrainer from "../../docs/tutorials/fretboard-trainer.md?raw";
 
 export interface Tutorial {
   id: string;
@@ -35,5 +36,10 @@ export const TUTORIALS: Tutorial[] = [
     id: "metronome",
     title: "Metronome",
     content: metronome,
+  },
+  {
+    id: "fretboard-trainer",
+    title: "Fretboard Trainer",
+    content: fretboardTrainer,
   },
 ];

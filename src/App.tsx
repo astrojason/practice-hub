@@ -45,6 +45,7 @@ export function App() {
   const [gpOpenError, setGpOpenError] = useState<string | null>(null);
   const [tabPlayer, setTabPlayer] = useState<{ path: string; resources: Resource[] } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [helpTopic, setHelpTopic] = useState<string | undefined>(undefined);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
   const [albumBadges, setAlbumBadges] = useState<AlbumBadgesResponse | null>(null);
   const [badgeError, setBadgeError] = useState<string | null>(null);
@@ -116,7 +117,13 @@ export function App() {
   } else if (view === "browse") {
     overlay = <BrowseView token={token} onBack={() => setView("session")} />;
   } else if (view === "fretboard") {
-    overlay = <FretboardView onBack={() => setView("session")} />;
+    overlay = <FretboardView
+        onBack={() => setView("session")}
+        onHelp={() => {
+          setHelpTopic("fretboard-trainer");
+          setHelpOpen(true);
+        }}
+      />;
   } else if (view === "changelog") {
     overlay = <Changelog onBack={() => setView("session")} />;
   } else if (view === "settings") {
@@ -150,7 +157,7 @@ export function App() {
       </div>
       {overlay}
       {metronomeOpen && <Metronome onClose={() => setMetronomeOpen(false)} />}
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <HelpModal initialId={helpTopic} onClose={() => setHelpOpen(false)} />}
       {badgeError && <ErrorModal error={badgeError} onDismiss={() => setBadgeError(null)} />}
       {unlocked.length > 0 && <BadgeUnlockModal badges={unlocked} onDismiss={() => setUnlocked([])} />}
       {gpOpenError && <ErrorModal error={gpOpenError} onDismiss={() => setGpOpenError(null)} />}
@@ -164,7 +171,10 @@ export function App() {
       )}
       <AppFooter
         version={APP_VERSION}
-        onHelp={() => setHelpOpen(true)}
+        onHelp={() => {
+          setHelpTopic(undefined);
+          setHelpOpen(true);
+        }}
         onMetronome={() => setMetronomeOpen((v) => !v)}
         onChangelog={() => setView("changelog")}
       />

@@ -72,9 +72,10 @@ const CHORD_GROUPS = groupBy(CHORDS);
 
 interface Props {
   onBack: () => void;
+  onHelp: () => void;
 }
 
-export function FretboardView({ onBack }: Props) {
+export function FretboardView({ onBack, onHelp }: Props) {
   const [page, setPage] = useState<Page>("scales");
   const [key, setKey] = useState(0);
   const [scaleIdx, setScaleIdx] = useState(0);
@@ -589,6 +590,11 @@ export function FretboardView({ onBack }: Props) {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
       if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (e.type === "keydown" && e.key === "F1") {
+        e.preventDefault();
+        onHelp();
+        return;
+      }
       if (page === "quiz") {
         if (e.type !== "keydown" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
         if (quiz.running && quiz.question) {
@@ -714,6 +720,9 @@ export function FretboardView({ onBack }: Props) {
           <ArrowLeftIcon className="icon-sm" /> Back
         </button>
         <h1 className="browse-title">Fretboard Trainer</h1>
+        <button className="btn-ghost" onClick={onHelp} title="Every feature and how to use it (F1)">
+          Help
+        </button>
         <button className="btn-secondary fb-focus-btn" onClick={() => setFocus(true)} title="Hide everything but the neck and play controls (F)">
           Focus
         </button>

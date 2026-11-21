@@ -5,10 +5,12 @@ import { TUTORIALS } from "../help/tutorials";
 
 interface Props {
   onClose: () => void;
+  /** The tutorial to show first (defaults to the first). */
+  initialId?: string;
 }
 
-export function HelpModal({ onClose }: Props) {
-  const [selectedId, setSelectedId] = useState(TUTORIALS[0]?.id ?? null);
+export function HelpModal({ onClose, initialId }: Props) {
+  const [selectedId, setSelectedId] = useState(initialId ?? TUTORIALS[0]?.id ?? null);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
