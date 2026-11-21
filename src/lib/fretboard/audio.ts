@@ -94,6 +94,8 @@ export interface SeqOptions {
   loopFrom?: number;
   onHighlight?: (code: string | null) => void;
   onMarker?: (code: string) => void;
+  /** Called each time the sequence wraps round to loop again. */
+  onLoop?: () => void;
   onEnd?: () => void;
 }
 
@@ -481,6 +483,7 @@ class Engine {
       if (this.cursor.index >= events.length) {
         if (loop && length > loopFrom) {
           this.cursor.base += length - loopFrom;
+          seq.onLoop?.();
           this.cursor.index = events.findIndex((e) => e.time >= loopFrom);
           if (this.cursor.index < 0) this.cursor.index = events.length;
           // If a whole pass is already due, the loop continues next tick.

@@ -23,7 +23,7 @@ import {
   type Voicing,
 } from "./theory";
 
-export type Page = "scales" | "arpeggios" | "chords" | "progressions";
+export type Page = "scales" | "arpeggios" | "chords" | "progressions" | "practice";
 
 export interface ViewInput {
   page: Page;
@@ -50,6 +50,8 @@ export interface ViewInput {
   connectStrings: number[];
   blendScale: number;
   blendRoot: number;
+  /** On the Practice page, the step being shown (selected or playing). */
+  practiceStep?: { root: number; tones: Tone[]; show: FretNote[] };
 }
 
 export interface ViewModel {
@@ -74,7 +76,7 @@ const range = (notes: FretNote[]): [number, number] =>
 
 export function computeView(i: ViewInput): ViewModel {
   const scale = SCALES[i.scaleIdx];
-  const scaleLike = i.page === "scales" || i.page === "progressions";
+  const scaleLike = i.page === "scales" || i.page === "progressions" || i.page === "practice";
   const baseNotes: FretNote[] = scaleLike ? (i.scalePos[i.idx]?.notes ?? []) : i.page === "arpeggios" ? (i.arpPos[i.idx]?.notes ?? []) : [];
   const baseVoicing = i.page === "chords" ? i.voicings[i.idx] : undefined;
   const [lo, hi] = baseVoicing ? range(voicingNotes(baseVoicing)) : range(baseNotes);
@@ -86,7 +88,14 @@ export function computeView(i: ViewInput): ViewModel {
   let nowLine: string | null = null;
   let plainScale = scaleLike;
 
-  const now = i.chordNow;
+  if (i.page === "practice" && i.practiceStep) {
+    root = i.practiceStep.root;
+    tones = i.practiceStep.tones;
+    active = i.practiceStep.show;
+    plainScale = false;
+  }
+
+  const now = i.page === "practice" ? undefined : i.chordNow;
   const showNow = now !== undefined && (i.overlay || i.page === "progressions");
   let chordTonePcs: Set<number> | null = null;
   let shapeNotes: FretNote[] = [];

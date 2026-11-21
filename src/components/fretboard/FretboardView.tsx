@@ -5,10 +5,12 @@ import { ChordBox } from "./ChordBox";
 import { FretSettingsModal } from "./FretSettingsModal";
 import { Neck } from "./Neck";
 import { PlayBar } from "./PlayBar";
+import { PracticePanel } from "./PracticePanel";
 import { ProgressionPanel } from "./ProgressionPanel";
 import { useSoundFont } from "./useSoundFont";
 import { engine } from "../../lib/fretboard/audio";
 import { buildChordSequence, buildSequence, orderSteps, type Step } from "../../lib/fretboard/playback";
+import { buildPlan, practiceEvents, type Plan } from "../../lib/fretboard/practice";
 import { buildProgression, chordRoot, progVoicings, suitedProgression, type ProgChord } from "../../lib/fretboard/progression";
 import { colourNotes, scaleInfo } from "../../lib/fretboard/scaleInfo";
 import { useFretSettings } from "../../lib/fretboard/settings";
@@ -41,6 +43,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: "arpeggios", label: "Arpeggios" },
   { id: "chords", label: "Chords" },
   { id: "progressions", label: "Progressions" },
+  { id: "practice", label: "Practice" },
 ];
 
 function groupBy<T extends { group: string }>(list: T[]): [string, T[]][] {
@@ -73,6 +76,12 @@ export function FretboardView({ onBack }: Props) {
   const [playingNote, setPlayingNote] = useState<string | null>(null);
   const [markerIdx, setMarkerIdx] = useState<number | null>(null);
   const [selectedChord, setSelectedChord] = useState<number | null>(null);
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  const [practiceMarker, setPracticeMarker] = useState<number | null>(null);
+  const [announceIdx, setAnnounceIdx] = useState<number | null>(null);
+  const [burstPass, setBurstPass] = useState(false);
+  const markerBase = useRef(0);
+  const loopsSinceRaise = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { settings, update, error: settingsError, clearError } = useFretSettings();
   const prog = useProgression();
@@ -83,7 +92,7 @@ export function FretboardView({ onBack }: Props) {
   const labelMode = settings.labels;
   const scale = SCALES[scaleIdx];
   const chord = CHORDS[chordIdx];
-  const scaleLike = page === "scales" || page === "progressions";
+  const scaleLike = page === "scales" || page === "progressions" || page === "practice";
 
   const scalePos = useMemo(() => scalePositions(tuning, key, scale.tones), [tuning, key, scale]);
   const arpPos = useMemo(() => arpeggioPositions(tuning, key, chord.tones), [tuning, key, chord]);
@@ -102,10 +111,31 @@ export function FretboardView({ onBack }: Props) {
 
   // The progression under this page: the one on the Progressions page, or on the
   // Scales page one that suits the scale.
-  const overlay = page !== "progressions" && settings.playOver;
+  const overlay = page !== "progressions" && page !== "practice" && settings.playOver;
   const progMode = page === "progressions" || overlay;
   const suited = useMemo(() => suitedProgression(scaleIdx), [scaleIdx]);
   const activeProg: ProgChord[] = page === "scales" && overlay && settings.suitScale ? suited : prog.chords;
+
+  // The practice routine's steps for the current settings.
+  const progItems = useMemo(() => {
+    const voicingsNow = progVoicings({ tuning, key, chords: prog.chords, nearFret: 3 });
+    return prog.chords.map((c, i) => ({
+      root: chordRoot(key, c),
+      chord: c.chord,
+      beats: c.beats || settings.beatsPerChord,
+      name: plainName(chordRoot(key, c)) + CHORDS[c.chord].symbol,
+      voicing: voicingNotes(voicingsNow[i] ?? { frets: [], bassString: 0, score: 0 }),
+    }));
+  }, [tuning, key, prog.chords, settings.beatsPerChord]);
+  const plan: Plan = useMemo(
+    () =>
+      page === "practice"
+        ? buildPlan(settings.practice, settings.notesPerBeat, tuning, settings.tuning === 0, key, scale, idx, progItems.map((p) => ({ ...p, voicing: p.voicing.length ? p.voicing : null })))
+        : { steps: [], message: null },
+    [page, settings.practice, settings.notesPerBeat, tuning, settings.tuning, key, scale, idx, progItems],
+  );
+  const stepIdx = page === "practice" ? (playing ? practiceMarker : selectedStep) : null;
+  const practiceStep = stepIdx !== null ? plan.steps[stepIdx] : undefined;
 
   const curIdx = progMode ? (playing ? markerIdx : page === "progressions" ? selectedChord : null) : null;
   const chordNow = curIdx !== null ? activeProg[curIdx] : undefined;
@@ -117,9 +147,9 @@ export function FretboardView({ onBack }: Props) {
         overlay: overlay && playing, follow: settings.follow, focus: settings.focus,
         hiddenDegrees: settings.hiddenDegrees, hiddenStrings: settings.hiddenStrings, ghosts: settings.ghosts,
         showPrev: settings.showPrev, showNext: settings.showNext, connect: settings.connect, connectStrings: settings.connectStrings,
-        blendScale: settings.blendScale, blendRoot: settings.blendRoot,
+        blendScale: settings.blendScale, blendRoot: settings.blendRoot, practiceStep,
       }),
-    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus, settings.hiddenDegrees, settings.hiddenStrings, settings.ghosts, settings.showPrev, settings.showNext, settings.connect, settings.connectStrings, settings.blendScale, settings.blendRoot],
+    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus, settings.hiddenDegrees, settings.hiddenStrings, settings.ghosts, settings.showPrev, settings.showNext, settings.connect, settings.connectStrings, settings.blendScale, settings.blendRoot, practiceStep],
   );
   const voicing: Voicing | undefined = view.voicing;
 
@@ -129,7 +159,7 @@ export function FretboardView({ onBack }: Props) {
   const keyChords = useMemo(() => diatonicChords(scale.tones, false), [scale]);
 
   const title =
-    scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
+    page === "practice" && practiceStep ? practiceStep.title : scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
   const posShort = (choices[idx] ?? "").split(" — ")[0];
   const pageLabel = PAGES.find((p) => p.id === page)?.label;
 
@@ -213,6 +243,10 @@ export function FretboardView({ onBack }: Props) {
         voicingsNow,
       );
     }
+    if (page === "practice") {
+      if (plan.steps.length === 0) throw new Error(plan.message ?? "Nothing to practise with these settings.");
+      return withCountIn(practiceEvents(plan, settings.practice, settings.notesPerBeat, tuning, 60 / settings.bpm), countInBars);
+    }
     if (page === "chords") {
       if (!voicing) throw new Error("There is no chord shape to play.");
       return buildChordSequence({ notes: stepsOf(voicingNotes(voicing)), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
@@ -222,9 +256,21 @@ export function FretboardView({ onBack }: Props) {
     return buildSequence({ steps: orderSteps(stepsOf(notes), settings.direction), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
   }
 
+  // Put count-in clicks in front of a built sequence; the count-in plays once, then playback loops from after it.
+  function withCountIn(built: { events: import("../../lib/fretboard/audio").SeqEvent[]; length: number }, bars: number) {
+    const beat = 60 / settings.bpm;
+    const lead = bars * 4 * beat;
+    const events = [
+      ...Array.from({ length: bars * 4 }, (_, i) => ({ time: i * beat, kind: { type: "click" as const, accent: i % 4 === 0 } })),
+      ...built.events.map((e) => ({ ...e, time: e.time + lead })),
+    ];
+    return { events, length: built.length + lead, loopFrom: lead };
+  }
+
   // The scale's root chord held softly under scale runs: root, 5th and the scale's own 3rd.
   function droneNotes(): number[] | null {
-    if (page !== "scales" || !settings.drone || progMode) return null;
+    const droneOk = page === "scales" || (page === "practice" && ["ladder", "sequences"].includes(settings.practice.routine));
+    if (!droneOk || !settings.drone || progMode) return null;
     const root = 36 + key;
     const third = scale.tones.find((t) => t.label === "3" || t.label === "b3");
     return [root, root + 7, ...(third ? [root + third.semis] : [])];
@@ -235,9 +281,16 @@ export function FretboardView({ onBack }: Props) {
     engine.drone(null);
     setPlaying(false);
     setMarkerIdx(null);
+    setPracticeMarker(null);
+    setAnnounceIdx(null);
+    setBurstPass(false);
   }, []);
 
   function startPlayback(countInBars: number, log = true) {
+    if (log) {
+      markerBase.current = 0;
+      loopsSinceRaise.current = 0;
+    }
     try {
       const built = buildCurrent(countInBars);
       setPlaying(true);
@@ -248,11 +301,32 @@ export function FretboardView({ onBack }: Props) {
         loopFrom: built.loopFrom,
         loop: settings.loop,
         onHighlight: setPlayingNote,
-        onMarker: (code) => setMarkerIdx(parseInt(code)),
+        onMarker: (code) => {
+          if (code.startsWith("p:")) {
+            setPracticeMarker(parseInt(code.slice(2)) + markerBase.current);
+            setBurstPass(false);
+          } else if (code.startsWith("a:")) setAnnounceIdx(parseInt(code.slice(2)) + markerBase.current);
+          else if (code.startsWith("b:")) setBurstPass(true);
+          else setMarkerIdx(parseInt(code));
+        },
+        onLoop: () => {
+          // The speed trainer: raise the tempo every few loops, up to the limit.
+          const cur = settingsRef.current;
+          const pr = cur.practice;
+          if (page !== "practice" || !pr.speedUp) return;
+          loopsSinceRaise.current += 1;
+          if (loopsSinceRaise.current >= pr.speedEvery && cur.bpm < pr.speedMax) {
+            loopsSinceRaise.current = 0;
+            update({ bpm: Math.min(pr.speedMax, cur.bpm + pr.speedStep) });
+          }
+        },
         onEnd: () => {
           engine.drone(null);
           setPlaying(false);
           setMarkerIdx(null);
+          setPracticeMarker(null);
+          setAnnounceIdx(null);
+          setBurstPass(false);
         },
       });
     } catch (err) {
@@ -272,12 +346,46 @@ export function FretboardView({ onBack }: Props) {
     else startPlayback(settings.countIn);
   }
 
+  // Click a step: show it and play it once.
+  function previewStep(i: number) {
+    const st = plan.steps[i];
+    if (!st) return;
+    stopPlayback();
+    setSelectedStep(i);
+    try {
+      const built = practiceEvents({ steps: [st], message: null }, { ...settings.practice, burst: 0, clicks: "off" }, settings.notesPerBeat, tuning, 60 / settings.bpm);
+      markerBase.current = i;
+      setPlaying(true);
+      engine.play({
+        events: built.events,
+        length: built.length,
+        loop: false,
+        onHighlight: setPlayingNote,
+        onMarker: (code) => {
+          if (code.startsWith("p:")) setPracticeMarker(parseInt(code.slice(2)) + i);
+        },
+        onEnd: () => {
+          setPlaying(false);
+          setPracticeMarker(null);
+        },
+      });
+    } catch (err) {
+      engine.stop();
+      setPlaying(false);
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    logTrainerActivity(`Fretboard Trainer — Practice: ${settings.practice.routine === "metronome" ? "Time keeping" : st.title}`);
+  }
+
   // Follow changes while playing: restart on the new notes or tempo without another count-in.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const playingRef = useRef(false);
   playingRef.current = playing;
   const restartKey = [
     page, key, scaleIdx, chordIdx, idx, settings.bpm, settings.notesPerBeat, settings.direction, settings.loop, settings.click, settings.drone,
-    settings.comp, settings.drums, settings.beatsPerChord, settings.playOver, settings.suitScale, JSON.stringify(activeProg),
+    settings.comp, settings.drums, settings.beatsPerChord, settings.playOver, settings.suitScale, JSON.stringify(activeProg), JSON.stringify(settings.practice), settings.tuning,
   ].join("|");
   const lastKey = useRef(restartKey);
   useEffect(() => {
@@ -329,6 +437,18 @@ export function FretboardView({ onBack }: Props) {
   function stepPosition(delta: number) {
     setPosIdx(Math.max(0, Math.min(idx + delta, choices.length - 1)));
   }
+
+  // What the current note is called, when call-outs are on.
+  const callout = useMemo(() => {
+    const mode = settings.practice.callouts;
+    if (page !== "practice" || mode === "off" || !playing || !playingNote) return "";
+    const m = view.marks.find((x) => `${x.string}:${x.fret}` === playingNote);
+    if (!m) return "";
+    if (mode === "note") return spell(view.root, m.semis, m.label);
+    if (mode === "interval") return intervalName(m.label) || m.label;
+    return m.label === "1" ? "Root" : m.label;
+  }, [page, settings.practice.callouts, playing, playingNote, view.marks, view.root]);
+  const announceKey = announceIdx !== null ? plan.steps[announceIdx] : undefined;
 
   const changeNotes = diff.changes.map(([t]) => t).join(", ");
   const chordNotes = chord.tones.map((t) => ({
@@ -520,6 +640,18 @@ export function FretboardView({ onBack }: Props) {
             </div>
           )}
 
+          {!focus && page === "practice" && (
+            <PracticePanel
+              set={settings.practice}
+              onChange={(patch) => update({ practice: { ...settings.practice, ...patch } })}
+              plan={plan}
+              selected={selectedStep}
+              playingStep={playing ? practiceMarker : null}
+              onStep={previewStep}
+              standardTuning={settings.tuning === 0}
+            />
+          )}
+
           {!focus && page === "progressions" && (
             <ProgressionPanel
               prog={prog}
@@ -535,7 +667,12 @@ export function FretboardView({ onBack }: Props) {
             />
           )}
 
-          <h2 className="fretboard-title">{title}</h2>
+          <h2 className="fretboard-title">
+            {title}
+            {page === "practice" && playing && settings.practice.burst > 1 && (
+              <span className={`fb-pass-badge ${burstPass ? "fb-pass-badge--burst" : ""}`}>{burstPass ? "SPEED BURSTS" : "Normal speed"}</span>
+            )}
+          </h2>
           <p className="fretboard-tonality">
             {scaleLike ? (
               <>
@@ -550,6 +687,10 @@ export function FretboardView({ onBack }: Props) {
             )}
           </p>
           <p className="fb-prog-now">{view.nowLine ?? ""}</p>
+          {page === "practice" && settings.practice.callouts !== "off" && <p className="fb-callout" aria-live="polite">{callout}</p>}
+          {page === "practice" && settings.practice.routine === "circle" && playing && (
+            <p className="fb-announce">{announceKey ? `Next key: ${KEYS[announceKey.root]}` : ""}</p>
+          )}
 
           <Neck
             marks={view.marks}
