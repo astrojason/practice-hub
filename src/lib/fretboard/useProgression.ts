@@ -18,9 +18,12 @@ interface Current {
 }
 
 /** The progression being edited, plus the person's saved ones. Storage problems come back in `error`. */
-export function useProgression() {
+export function useProgression(suggested?: Current) {
   const [initial] = useState(() => {
-    const cur = readLocalStorageJSON<Current>(CURRENT, { chords: presetChords(0), name: "" });
+    // A progression suggested by the dashboard is the starting point; it is only kept once the person changes something.
+    const cur = suggested
+      ? { value: suggested, error: undefined }
+      : readLocalStorageJSON<Current>(CURRENT, { chords: presetChords(0), name: "" });
     const saved = readLocalStorageJSON<SavedProgression[]>(SAVED, []);
     return { cur: cur.value, saved: saved.value, error: cur.error ?? saved.error };
   });

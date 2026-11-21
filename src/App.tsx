@@ -8,6 +8,7 @@ import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { BrowseView } from "./components/BrowseView";
 import { consumeLeaveRequest, requestSaveSession, useSaveRequests } from "./lib/trainerSession";
 import { FretboardView } from "./components/fretboard/FretboardView";
+import { suggestionsFrom, type Suggestions } from "./lib/fretboard/suggestions";
 import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
 import { useAppConfig } from "./hooks/useAppConfig";
@@ -59,6 +60,8 @@ export function App() {
   }, [saveRequests]);
   const [helpTopic, setHelpTopic] = useState<string | undefined>(undefined);
   const [metronomeOpen, setMetronomeOpen] = useState(false);
+  // What the dashboard suggests (scale, key, chord, progression): where Theory Training starts.
+  const [suggested, setSuggested] = useState<Suggestions>({});
   const [albumBadges, setAlbumBadges] = useState<AlbumBadgesResponse | null>(null);
   const [badgeError, setBadgeError] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState<AlbumBadge[]>([]);
@@ -130,6 +133,7 @@ export function App() {
     overlay = <BrowseView token={token} onBack={() => setView("session")} />;
   } else if (view === "fretboard") {
     overlay = <FretboardView
+        suggested={suggested}
         onBack={() => setView("session")}
         onSaveSession={requestSaveSession}
         onHelp={() => {
@@ -167,6 +171,7 @@ export function App() {
           onBadges={() => setView("badges")}
           onLeaderboard={() => setView("leaderboard")}
           onGpView={openGpFile}
+          onDashboard={(dash) => setSuggested(suggestionsFrom(dash))}
         />
       </div>
       {overlay}

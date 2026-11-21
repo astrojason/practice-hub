@@ -3052,8 +3052,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 .mp-single-region-select { flex: 1; min-width: 0; }
 
 /* ─── AI challenges ──────────────────────────────────────────────────────────── */
-.ai-challenges { padding: 8px 16px 0; }
-.ai-challenges-title { font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+.ai-challenges { padding: 0; }
 .ai-challenges-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .ai-challenge {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
@@ -3479,3 +3478,4 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .mp-bar__fill { display: block; height: 100%; background: var(--accent); transition: width 0.3s ease; }
 .mp-bar__fill--busy { animation: mp-bar-slide 1.2s ease-in-out infinite alternate; }
 @keyframes mp-bar-slide { from { margin-left: 0; } to { margin-left: 65%; } }
+.ai-challenges-generate { margin-bottom: 8px; }

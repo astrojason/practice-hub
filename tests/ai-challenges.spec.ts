@@ -65,6 +65,7 @@ async function setup(
   page: import("@playwright/test").Page,
   listResponse: () => { status: number; body: unknown },
   dashboard: unknown = mockDashboard,
+  expand = true,
 ) {
   await page.addInitScript(() => {
     localStorage.setItem("ph:refreshToken", "fake-refresh-token");
@@ -88,6 +89,8 @@ async function setup(
   });
   await page.goto("/");
   await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  // The challenges sit in a collapsed group like exercises and study materials.
+  if (expand) await page.locator(".item-group-toggle", { hasText: "AI Challenges" }).click();
 }
 
 test("shows the current AI challenges with their progress", async ({ page }) => {
@@ -147,13 +150,13 @@ test("a failed check-off shows the server's error", async ({ page }) => {
 });
 
 test("a failed load shows the error instead of failing silently", async ({ page }) => {
-  await setup(page, () => ({ status: 500, body: { error: "AI challenges exploded" } }));
+  await setup(page, () => ({ status: 500, body: { error: "AI challenges exploded" } }), mockDashboard, false);
 
   await expect(page.locator(".error-modal")).toContainText("AI challenges exploded");
 });
 
 test("nothing is shown when there are no challenges yet", async ({ page }) => {
-  await setup(page, () => ({ status: 200, body: { current: [], recent: [] } }));
+  await setup(page, () => ({ status: 200, body: { current: [], recent: [] } }), mockDashboard, false);
 
   await expect(page.locator(".session-view")).toBeVisible();
   await expect(page.locator(".ai-challenges")).toHaveCount(0);
@@ -237,4 +240,90 @@ test("a challenge for a child exercise under a collapsed parent opens its sessio
 
   await page.locator('[data-challenge-id="1"]').getByRole("button", { name: "Start session" }).click();
   await expect(page.locator(".modal-card .modal-title")).toContainText("Child Twentyone");
+});
+
+test("AI challenges are a collapsed group at the bottom of the list, with a done count", async ({ page }) => {
+  await setup(
+    page,
+    () => ({ status: 200, body: { current: [challenge(), challenge({ id: 2, completed: true })], recent: [] } }),
+    { ...mockDashboard, project: { songs: [songRow(10, "Song Ten")] } },
+    false,
+  );
+
+  const groups = page.locator(".item-group");
+  const last = groups.last();
+  await expect(last.locator(".item-group-title")).toHaveText("AI Challenges");
+  await expect(last.locator(".item-group-count")).toHaveText("1/2");
+  await expect(page.locator(".ai-challenges")).toHaveCount(0);
+  await last.locator(".item-group-toggle").click();
+  await expect(page.locator(".ai-challenges")).toBeVisible();
+  await expect(page.locator('[data-challenge-id="1"]')).toBeVisible();
+});
+
+test("a challenge the nightly run hasn't written yet shows as being written, not as nothing", async ({ page }) => {
+  await setup(page, () => ({
+    status: 200,
+    body: { current: [manual], recent: [], enabled: true, pending_periods: ["daily", "weekly"], daily_ready: false },
+  }));
+
+  const panel = page.locator(".ai-challenges");
+  await expect(panel.locator('[data-pending="daily"]')).toContainText("Today");
+  await expect(panel.locator('[data-pending="daily"]')).toContainText("being written");
+  await expect(panel.locator('[data-pending="weekly"]')).toBeVisible();
+  await expect(panel.locator('[data-challenge-id="3"]')).toBeVisible();
+});
+
+test("pending challenges are looked for again until they arrive", async ({ page }) => {
+  await page.addInitScript(() => { (window as unknown as { __challengePollMs: number }).__challengePollMs = 300; });
+  let calls = 0;
+  await setup(page, () => {
+    calls++;
+    return calls < 3
+      ? { status: 200, body: { current: [], recent: [], enabled: true, pending_periods: ["daily"], daily_ready: false } }
+      : { status: 200, body: { current: [challenge()], recent: [], enabled: true, pending_periods: [], daily_ready: true } };
+  });
+
+  await expect(page.locator('[data-challenge-id="1"]')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('[data-pending]')).toHaveCount(0);
+});
+
+test("Generate now writes the missing challenges, showing progress and the result", async ({ page }) => {
+  let generated = false;
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  await page.route("**/user-ai-challenge/generate", async (route) => {
+    await gate;
+    generated = true;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ message: "Wrote 1 challenge" }) });
+  });
+  await setup(page, () => generated
+    ? { status: 200, body: { current: [challenge()], recent: [], enabled: true, pending_periods: [], daily_ready: true } }
+    : { status: 200, body: { current: [], recent: [], enabled: true, pending_periods: ["daily"], daily_ready: false } });
+
+  const btn = page.getByRole("button", { name: "Generate now" });
+  await btn.click();
+  await expect(page.getByRole("button", { name: "Generating…" })).toBeDisabled();
+  release();
+  await expect(page.locator(".ai-challenges")).toContainText("Wrote 1 challenge");
+  await expect(page.locator('[data-challenge-id="1"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "Generate now" })).toHaveCount(0);
+});
+
+test("a failed Generate now shows the server's error", async ({ page }) => {
+  await page.route("**/user-ai-challenge/generate", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Model budget used up" }) }));
+  await setup(page, () => ({
+    status: 200, body: { current: [], recent: [], enabled: true, pending_periods: ["daily"], daily_ready: false },
+  }));
+
+  await page.getByRole("button", { name: "Generate now" }).click();
+  await expect(page.locator(".error-modal")).toContainText("Model budget used up");
+});
+
+test("when generation is off nothing pending is shown", async ({ page }) => {
+  await setup(page, () => ({
+    status: 200, body: { current: [], recent: [], enabled: false, pending_periods: [], daily_ready: true },
+  }), mockDashboard, false);
+  await expect(page.locator(".session-view")).toBeVisible();
+  await expect(page.locator(".item-group-toggle", { hasText: "AI Challenges" })).toHaveCount(0);
 });

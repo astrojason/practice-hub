@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
-import { getAiChallenges, updateAiChallenge } from "../../api/client";
+import { generateAiChallenges, getAiChallenges, updateAiChallenge } from "../../api/client";
 import type { AiChallenge, AiChallengeAction, AiChallengePeriod } from "../../api/types";
 import { ErrorModal } from "../ErrorModal";
+import { ItemGroup } from "../session/ItemGroup";
 
 const PERIOD_LABELS: Record<AiChallengePeriod, string> = {
   daily: "Today",
   weekly: "This week",
   monthly: "This month",
 };
+
+const PERIODS: AiChallengePeriod[] = ["daily", "weekly", "monthly"];
+/** While challenges are still being written, look again this often (tests shorten it). */
+const pollMs = () => (window as unknown as { __challengePollMs?: number }).__challengePollMs ?? 5 * 60 * 1000;
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -19,9 +24,13 @@ interface Props {
   onStartSession: (challenge: AiChallenge) => void;
 }
 
-/** The AI-written daily, weekly and monthly challenges, shown above today's list. */
+/** The AI-written daily, weekly and monthly challenges, shown as a group at the bottom of today's list. */
 export function AiChallengesPanel({ token, refreshKey, onStartSession }: Props) {
   const [challenges, setChallenges] = useState<AiChallenge[]>([]);
+  const [pending, setPending] = useState<AiChallengePeriod[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +38,9 @@ export function AiChallengesPanel({ token, refreshKey, onStartSession }: Props) 
     let cancelled = false;
     getAiChallenges(token)
       .then((res) => {
-        if (!cancelled) setChallenges(res.current ?? []);
+        if (cancelled) return;
+        setChallenges(res.current ?? []);
+        setPending(res.pending_periods ?? []);
       })
       .catch((err) => {
         if (!cancelled) setError(`Couldn't load AI challenges: ${message(err)}`);
@@ -37,7 +48,28 @@ export function AiChallengesPanel({ token, refreshKey, onStartSession }: Props) 
     return () => {
       cancelled = true;
     };
-  }, [token, refreshKey]);
+  }, [token, refreshKey, reload]);
+
+  // The nightly run writes the day's challenges a few minutes after midnight, and one
+  // opened in that gap (or before it ran) has none yet: look again until they arrive.
+  const waiting = pending.length > 0;
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => setReload((n) => n + 1), pollMs());
+    return () => clearInterval(timer);
+  }, [waiting]);
+
+  const generate = () => {
+    setGenerating(true);
+    setGenerated(null);
+    generateAiChallenges(token)
+      .then((res) => {
+        setGenerated(res.message);
+        setReload((n) => n + 1);
+      })
+      .catch((err) => setError(`Couldn't write the challenges: ${message(err)}`))
+      .finally(() => setGenerating(false));
+  };
 
   const act = (challenge: AiChallenge, action: AiChallengeAction) => {
     setBusyId(challenge.id);
@@ -52,10 +84,30 @@ export function AiChallengesPanel({ token, refreshKey, onStartSession }: Props) 
   return (
     <>
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
-      {challenges.length > 0 && (
-        <section className="ai-challenges" aria-label="AI challenges">
-          <h2 className="ai-challenges-title">AI Challenges</h2>
+      {(challenges.length > 0 || pending.length > 0) && (
+        <ItemGroup
+          title="AI Challenges"
+          completedCount={challenges.filter((c) => c.completed).length}
+          totalCount={challenges.length + pending.length}
+        >
+          <div className="ai-challenges" aria-label="AI challenges">
+          {pending.length > 0 && (
+            <div className="ai-challenges-generate">
+              <button className="btn-secondary" disabled={generating} onClick={generate}>
+                {generating ? "Generating…" : "Generate now"}
+              </button>
+            </div>
+          )}
+          {generated && <div className="ai-challenge-progress">{generated}</div>}
           <div className="ai-challenges-list">
+            {PERIODS.filter((p) => pending.includes(p)).map((p) => (
+              <div key={`${p}-pending`} data-pending={p} className="ai-challenge">
+                <div className="ai-challenge-top">
+                  <span className="ai-challenge-period">{PERIOD_LABELS[p]}</span>
+                </div>
+                <div className="ai-challenge-description">Your {p} challenge is being written…</div>
+              </div>
+            ))}
             {challenges.map((c) => {
               const percent = Math.min(100, Math.round((c.current / Math.max(1, c.target)) * 100));
               return (
@@ -103,7 +155,8 @@ export function AiChallengesPanel({ token, refreshKey, onStartSession }: Props) 
               );
             })}
           </div>
-        </section>
+          </div>
+        </ItemGroup>
       )}
     </>
   );

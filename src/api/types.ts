@@ -851,6 +851,10 @@ export interface AiChallenge {
 export interface AiChallengesResponse {
   current: AiChallenge[];
   recent: AiChallenge[];
+  /** Whether nightly generation is on for this user. */
+  enabled?: boolean;
+  /** Periods whose challenge the nightly run hasn't written yet. */
+  pending_periods?: AiChallengePeriod[];
 }
 
 export type AiChallengeAction = "complete" | "reopen";

@@ -374,6 +374,8 @@ interface Props {
   onCalendar: () => void;
   onBrowse: () => void;
   onFretboard: () => void;
+  /** Called whenever the dashboard loads, so other views can use what it suggests. */
+  onDashboard?: (dash: DashboardData) => void;
   onSettings: () => void;
   onReports: () => void;
   onBadges: () => void;
@@ -381,7 +383,7 @@ interface Props {
   onGpView?: (path: string, resources?: Resource[]) => void;
 }
 
-export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, onBrowse, onFretboard, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {
+export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, onBrowse, onFretboard, onDashboard, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -657,6 +659,7 @@ export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, 
 
       const dash = { ...raw, study_materials: nestedSms };
       setDashboard(dash);
+      onDashboard?.(dash);
       setUserProfile(user);
       setServerTotal(user.time_practiced_today ?? 0);
 
@@ -1360,10 +1363,6 @@ export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, 
         onMediaTab={setMediaTab}
       />
 
-      <div style={{ display: mediaFullscreen ? "none" : "contents" }}>
-        <AiChallengesPanel token={token} refreshKey={serverTotal} onStartSession={handleStartChallengeSession} />
-      </div>
-
       {openSessionModalOpen && createPortal(
         <OpenSessionForm
           token={token}
@@ -1874,6 +1873,8 @@ export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, 
             ))}
           </ItemGroup>
         )}
+        {/* AI challenges: the last group */}
+        <AiChallengesPanel token={token} refreshKey={serverTotal} onStartSession={handleStartChallengeSession} />
       </main>
     </div>
     </StreakTokenContext.Provider>

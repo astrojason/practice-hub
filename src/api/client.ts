@@ -178,6 +178,15 @@ export async function getAiChallenges(token: string): Promise<AiChallengesRespon
   return handleResponse<AiChallengesResponse>(response);
 }
 
+/** Writes the caller's missing challenges now instead of waiting for the nightly run. */
+export async function generateAiChallenges(token: string): Promise<{ message: string }> {
+  const response = await apiFetch(`${API_BASE_URL}/user-ai-challenge/generate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  return handleResponse<{ message: string }>(response);
+}
+
 export async function updateAiChallenge(
   token: string,
   challengeId: number,

@@ -47,6 +47,7 @@ import {
   type Voicing,
 } from "../../lib/fretboard/theory";
 import { useProgression } from "../../lib/fretboard/useProgression";
+import type { Suggestions } from "../../lib/fretboard/suggestions";
 import { computeView, type Page } from "../../lib/fretboard/view";
 import { isTrainerSessionStarted, logTrainerActivity, setTrainerBusy, startTrainerSession, touchTrainer } from "../../lib/trainerSession";
 import { byItem, stringPicks, summarize } from "../../lib/fretboard/history";
@@ -79,13 +80,15 @@ interface Props {
   onHelp: () => void;
   /** Go back to the session view and open the Open Session form to log what was practised. */
   onSaveSession: (leave?: boolean) => void;
+  /** The scale, key, chord and progression the dashboard suggests; they are where the trainer starts. */
+  suggested?: Suggestions;
 }
 
-export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
+export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Props) {
   const [page, setPage] = useState<Page>("scales");
-  const [key, setKey] = useState(0);
-  const [scaleIdx, setScaleIdx] = useState(0);
-  const [chordIdx, setChordIdx] = useState(0);
+  const [key, setKey] = useState(suggested?.key ?? 0);
+  const [scaleIdx, setScaleIdx] = useState(suggested?.scaleIdx ?? 0);
+  const [chordIdx, setChordIdx] = useState(suggested?.chordIdx ?? 0);
   const [posIdx, setPosIdx] = useState(0);
   const [focus, setFocus] = useState(false);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true);
@@ -110,7 +113,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   const loopsSinceRaise = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { settings, update, error: settingsError, clearError } = useFretSettings();
-  const prog = useProgression();
+  const prog = useProgression(suggested?.progression);
   const showError = useCallback((m: string) => setError(m), []);
   const font = useSoundFont(settings, update, showError);
 
