@@ -92,6 +92,7 @@ test("the strings you pick are tracked, in the session and in the report", async
   expect(records[0].spot[0]).toBe(1);
   expect(records[2].spot[0]).toBe(4);
   await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
   await page.getByRole("button", { name: "Open the report" }).first().click();
   const report = page.locator('[role="dialog"][aria-label="Quiz report"]');
   await expect(report).toContainText("Strings you pick");

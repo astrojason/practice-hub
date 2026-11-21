@@ -28,6 +28,25 @@ export function clearTrainerActivity() {
   emit();
 }
 
+let saveRequests = 0;
+const saveListeners = new Set<() => void>();
+
+/** Ask the session view to open the Open Session form, ready to save what the trainer logged. */
+export function requestSaveSession() {
+  saveRequests += 1;
+  saveListeners.forEach((l) => l());
+}
+
+export function useSaveRequests(): number {
+  return useSyncExternalStore(
+    (cb) => {
+      saveListeners.add(cb);
+      return () => saveListeners.delete(cb);
+    },
+    () => saveRequests,
+  );
+}
+
 export function useTrainerActivity(): readonly string[] {
   return useSyncExternalStore(
     (cb) => {

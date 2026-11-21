@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   NoSymbolIcon,
   PauseIcon,
@@ -38,6 +38,8 @@ interface Props {
   onSubmit: (dailyPracticeTime: number) => void;
   /** Notes to start with (e.g. what the Fretboard Trainer was practising). */
   initialNotes?: string;
+  /** Open straight on the save form (the timer is paused and its time filled in). */
+  startInSave?: boolean;
 }
 
 export function OpenSessionForm({
@@ -50,10 +52,15 @@ export function OpenSessionForm({
   onClose,
   onSubmit,
   initialNotes = "",
+  startInSave = false,
 }: Props) {
   type Phase = "running" | "form";
-  const [phase, setPhase] = useState<Phase>("running");
-  const [formSeconds, setFormSeconds] = useState("");
+  const [phase, setPhase] = useState<Phase>(startInSave ? "form" : "running");
+  const [formSeconds, setFormSeconds] = useState(startInSave ? String(elapsed) : "");
+  useEffect(() => {
+    if (startInSave) onPause();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [notes, setNotes] = useState(initialNotes);
   const [rating, setRating] = useState("");
   const [submitting, setSubmitting] = useState(false);

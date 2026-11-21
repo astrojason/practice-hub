@@ -52,7 +52,7 @@ import { QuickAddPanel } from "./session/QuickAddPanel";
 import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
 import { requestSessionModal } from "../lib/sessionModalRequest";
-import { clearTrainerActivity, useTrainerActivity } from "../lib/trainerSession";
+import { clearTrainerActivity, useSaveRequests, useTrainerActivity } from "../lib/trainerSession";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
@@ -467,6 +467,16 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   // The Fretboard Trainer starts the Open Session timer the first time it
   // does something, and its activity becomes the session's notes.
   const trainerActivity = useTrainerActivity();
+  // The trainer asks to save what was practised: open the Open Session form ready to log it.
+  const saveRequests = useSaveRequests();
+  const lastSaveRequest = useRef(saveRequests);
+  const [openSessionSaveFirst, setOpenSessionSaveFirst] = useState(false);
+  useEffect(() => {
+    if (saveRequests === lastSaveRequest.current) return;
+    lastSaveRequest.current = saveRequests;
+    setOpenSessionSaveFirst(true);
+    setOpenSessionModalOpen(true);
+  }, [saveRequests]);
   useEffect(() => {
     if (trainerActivity.length === 0) return;
     if (!activeTimers.has(OPEN_SESSION_KEY) && !pausedElapsed.has(OPEN_SESSION_KEY)) {
@@ -1321,17 +1331,23 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
           onPause={() => pauseTimer(OPEN_SESSION_KEY)}
           onResume={() => startTimer(OPEN_SESSION_KEY)}
           initialNotes={trainerActivity.join("\n")}
-          onClose={() => setOpenSessionModalOpen(false)}
+          startInSave={openSessionSaveFirst}
+          onClose={() => {
+            setOpenSessionModalOpen(false);
+            setOpenSessionSaveFirst(false);
+          }}
           onCancel={() => {
             cancelSession(OPEN_SESSION_KEY);
             clearTrainerActivity();
             setOpenSessionModalOpen(false);
+            setOpenSessionSaveFirst(false);
           }}
           onSubmit={(dpt) => {
             setServerTotal(dpt);
             cancelSession(OPEN_SESSION_KEY);
             clearTrainerActivity();
             setOpenSessionModalOpen(false);
+            setOpenSessionSaveFirst(false);
           }}
         />
       )}

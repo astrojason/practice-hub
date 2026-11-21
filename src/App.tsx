@@ -6,6 +6,7 @@ import { SessionView } from "./components/SessionView";
 import { GpLibraryView } from "./components/GpLibraryView";
 import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { BrowseView } from "./components/BrowseView";
+import { requestSaveSession } from "./lib/trainerSession";
 import { FretboardView } from "./components/fretboard/FretboardView";
 import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
@@ -119,6 +120,10 @@ export function App() {
   } else if (view === "fretboard") {
     overlay = <FretboardView
         onBack={() => setView("session")}
+        onSaveSession={() => {
+          setView("session");
+          requestSaveSession();
+        }}
         onHelp={() => {
           setHelpTopic("fretboard-trainer");
           setHelpOpen(true);

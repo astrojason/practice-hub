@@ -74,9 +74,11 @@ const CHORD_GROUPS = groupBy(CHORDS);
 interface Props {
   onBack: () => void;
   onHelp: () => void;
+  /** Go back to the session view and open the Open Session form to log what was practised. */
+  onSaveSession: () => void;
 }
 
-export function FretboardView({ onBack, onHelp }: Props) {
+export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   const [page, setPage] = useState<Page>("scales");
   const [key, setKey] = useState(0);
   const [scaleIdx, setScaleIdx] = useState(0);
@@ -96,6 +98,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
   const markerBase = useRef(0);
   const [reportOpen, setReportOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [savePrompt, setSavePrompt] = useState(false);
   const [speedRun, setSpeedRun] = useState<SpeedRun | null>(null);
   const [speedNow, setSpeedNow] = useState(() => Date.now());
   const [speedLogs, setSpeedLogs] = useState<SpeedLog[]>(() => loadSpeedLog().logs);
@@ -120,12 +123,13 @@ export function FretboardView({ onBack, onHelp }: Props) {
   });
   // Spoken quiz answers: "next" and "again" are commands; anything else is matched to the answers.
   const voice = useVoice({
-    want: settings.voice && page === "quiz" && quiz.running,
+    want: settings.voice && page === "quiz" && quiz.running && quiz.kind === "note",
     kind: quiz.kind,
     input: settings.micName,
     onHeard: (guesses, onsetAt) => {
+      const stopQuiz = () => stopQuizRef.current();
       const cmd = spokenCommand(guesses);
-      if (cmd === "stop") quiz.stop();
+      if (cmd === "stop") stopQuiz();
       else if (cmd === "next") {
         if (quiz.picked !== null) quiz.next();
       } else if (cmd === "again") quiz.hear();
@@ -136,9 +140,17 @@ export function FretboardView({ onBack, onHelp }: Props) {
     },
   });
   pauseVoice.current = voice.pauseFor;
+  // Stopping a quiz that had answers offers to log it to the practice tracker.
+  function stopQuiz() {
+    const answered = quiz.session.length > 0;
+    quiz.stop();
+    if (answered) setSavePrompt(true);
+  }
+  const stopQuizRef = useRef(stopQuiz);
+  stopQuizRef.current = stopQuiz;
   // When answering out loud, the next question follows three seconds after each answer, until "stop" is heard.
   useEffect(() => {
-    if (!(settings.voice && page === "quiz" && quiz.running && quiz.picked !== null)) return;
+    if (!(settings.voice && page === "quiz" && quiz.running && quiz.kind === "note" && quiz.picked !== null)) return;
     const id = window.setTimeout(() => quiz.next(), 3000);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1004,7 +1016,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
               <span className={`fb-pass-badge ${burstPass ? "fb-pass-badge--burst" : ""}`}>{burstPass ? "SPEED BURSTS" : "Normal speed"}</span>
             )}
           </h2>
-          {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} voice={voice} voiceOn={settings.voice} tuning={tuning} />}
+          {page === "quiz" && <QuizMain quiz={quiz} scaleLabel={`${KEYS[key]} ${scale.name}`} voice={voice} voiceOn={settings.voice && quiz.kind === "note"} tuning={tuning} onStop={stopQuiz} />}
           {page !== "quiz" && scaleLike && <TonalityRow tonality={tonality(scale.tones)} parent={diff.parent} changes={diff.changes} />}
           {page !== "quiz" && !scaleLike && (
             <p className="fretboard-tonality">
@@ -1217,6 +1229,18 @@ export function FretboardView({ onBack, onHelp }: Props) {
       )}
       {settingsError && <ErrorModal error={settingsError} onDismiss={clearError} />}
       {reportOpen && <QuizReport history={quiz.history} tuning={tuning} onClear={quiz.clear} onClose={() => setReportOpen(false)} />}
+      {savePrompt && (
+        <ConfirmModal
+          title="Save this session?"
+          message="Log this quiz session to your practice tracker? It opens an Open Session with the time and what you practised filled in."
+          confirmLabel="Save session"
+          onConfirm={() => {
+            setSavePrompt(false);
+            onSaveSession();
+          }}
+          onCancel={() => setSavePrompt(false)}
+        />
+      )}
       {confirmReset && (
         <ConfirmModal
           title="Reset the score?"

@@ -296,6 +296,24 @@ test("answering out loud moves to the next question after three seconds, until i
   expect(Date.now() - started).toBeGreaterThan(2000);
   await expect(page.locator(".fb-quiz-score")).toHaveText("1 / 1");
   await emit(page, { type: "heard", guesses: ["stop"] });
+  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
   await expect(page.getByRole("button", { name: /Start/ }).first()).toBeVisible();
   await expect(page.locator(".fb-quiz-summary")).toContainText("Last session");
+});
+
+test("listening is only for Name the note", async ({ page }) => {
+  await page.locator(".fb-tab", { hasText: "Quiz" }).click();
+  await expect(page.locator(".fb-quiz-side label", { hasText: "Answer out loud" })).toBeVisible();
+  for (const kind of ["Find the scale degree", "Name the interval", "Ear: hear the interval", "Ear: chord quality", "Find the note"]) {
+    await page.locator(".fb-quiz-kind", { hasText: kind }).click();
+    await expect(page.locator(".fb-quiz-side label", { hasText: "Answer out loud" })).toHaveCount(0);
+  }
+  // With it on for notes, switching to another kind stops the microphone.
+  await page.locator(".fb-quiz-kind", { hasText: "Name the note" }).click();
+  await page.locator(".fb-quiz-side label", { hasText: "Answer out loud" }).locator("input").check();
+  await page.getByRole("button", { name: /Start/ }).first().click();
+  await expect(page.locator(".fb-voice-status")).toContainText("Listening");
+  await page.locator(".fb-quiz-kind", { hasText: "Name the interval" }).click();
+  await expect(page.locator(".fb-voice-status")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __voiceStopped?: boolean }).__voiceStopped === true)).toBe(true);
 });

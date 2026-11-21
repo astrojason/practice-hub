@@ -16,7 +16,7 @@ export const answerKeyIndex = (key: string) => ANSWER_KEYS.indexOf(key.toLowerCa
 const s1 = (ms: number) => (ms / 1000).toFixed(1);
 
 /** The prompt bar and the answer buttons. */
-export function QuizMain({ quiz, scaleLabel, voice, voiceOn, tuning }: { quiz: Quiz; scaleLabel: string; voice: Voice; voiceOn: boolean; tuning: number[] }) {
+export function QuizMain({ quiz, scaleLabel, voice, voiceOn, tuning, onStop }: { quiz: Quiz; scaleLabel: string; voice: Voice; voiceOn: boolean; tuning: number[]; onStop: () => void }) {
   const info = QUIZ_KINDS.find((k) => k.id === quiz.kind)!;
   const q = quiz.question;
   const last = quiz.lastSession;
@@ -27,7 +27,7 @@ export function QuizMain({ quiz, scaleLabel, voice, voiceOn, tuning }: { quiz: Q
     <div className="fb-quiz">
       <div className="fb-quiz-prompt">
         {quiz.running ? (
-          <button className="btn-secondary fb-danger" onClick={quiz.stop}>Stop</button>
+          <button className="btn-secondary fb-danger" onClick={onStop}>Stop</button>
         ) : (
           <button className="btn-primary" onClick={() => quiz.start()} title="Start a timed session; every answer's time is saved for the report">▶ Start</button>
         )}
@@ -187,9 +187,11 @@ export function QuizSide({ quiz, voiceOn, onVoice, tuning, onReport, onConfirmRe
           ))}
         </div>
       )}
-      <label className="fb-playbar__check" title="Say your answers instead of clicking: “C sharp”, “flat three”, “minor third”, “minor seven”. Say “next” to move on, “hear it” to hear it again and “stop” to finish; the next question follows three seconds after each answer. Uses macOS speech recognition; macOS asks for permission the first time.">
-        <input type="checkbox" checked={voiceOn} onChange={(e) => onVoice(e.target.checked)} /> Answer out loud (microphone)
-      </label>
+      {quiz.kind === "note" && (
+        <label className="fb-playbar__check" title="Say the note's name instead of clicking: “C sharp”, “B flat”. Say “next” to move on, “hear it” to hear it again and “stop” to finish; the next question follows three seconds after each answer. Only for Name the note. Uses macOS speech recognition; macOS asks for permission the first time.">
+          <input type="checkbox" checked={voiceOn} onChange={(e) => onVoice(e.target.checked)} /> Answer out loud (microphone)
+        </label>
+      )}
       {quiz.kind === "degree" && <p className="fb-dim">Degrees are asked in {scaleLabel} — change the key and scale at the top.</p>}
 
       <dl className="fb-quiz-stats">

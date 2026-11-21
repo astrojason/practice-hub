@@ -125,6 +125,7 @@ test("stopping shows a summary, and the history is kept between visits", async (
     await page.keyboard.press("Enter");
   }
   await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
   await expect(page.locator(".fb-quiz-summary")).toContainText("Last session");
   await expect(page.locator(".fb-quiz-summary")).toContainText("of 3 right");
   await page.reload();
@@ -141,6 +142,7 @@ test("the report shows totals and tables, and clearing the history asks first", 
     await page.keyboard.press("Enter");
   }
   await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
   await page.getByRole("button", { name: "Open the report" }).first().click();
   const report = page.locator('[role="dialog"][aria-label="Quiz report"]');
   await expect(report).toContainText("Answered");
@@ -294,4 +296,33 @@ test("the usual pace can be a fixed time, set in settings", async ({ page }) => 
   await page.locator("button", { hasText: "Fretboard" }).first().click();
   await page.locator('button[aria-label="Fretboard settings"]').click();
   await expect(page.getByRole("radio", { name: /A fixed time/ })).toBeChecked();
+});
+
+test("stopping a quiz with answers offers to save it to the practice tracker", async ({ page }) => {
+  await quiz(page);
+  await start(page);
+  await page.keyboard.press("1");
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.locator(".confirm-modal")).toContainText("Save this session?");
+  // Not now: stays in the trainer, with the summary.
+  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
+  await expect(page.locator(".fb-quiz-summary")).toBeVisible();
+  // Save: back in the session view with the Open Session form ready to log, time and notes filled in.
+  await start(page);
+  await page.keyboard.press("1");
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.locator(".confirm-modal button", { hasText: "Save session" }).click();
+  await expect(page.locator(".fretboard-view")).toHaveCount(0);
+  const form = page.locator(".modal-card");
+  await expect(form).toContainText("Open Session");
+  await expect(form.locator('input[type="number"]')).toBeVisible();
+  await expect(form.locator("textarea")).toHaveValue(/Quiz: Name the note/);
+  await expect(form.getByRole("button", { name: "Log Session" })).toBeVisible();
+});
+
+test("stopping a quiz with no answers does not ask", async ({ page }) => {
+  await quiz(page);
+  await start(page);
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.locator(".confirm-modal")).toHaveCount(0);
 });
