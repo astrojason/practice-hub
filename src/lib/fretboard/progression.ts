@@ -2,7 +2,7 @@
 // timed events for a loop. Ported from the Craft app's progression playback.
 
 import type { SeqEvent } from "./audio";
-import { CHORDS, PROGRESSIONS, SCALES, chordIndex, chordScale, chordVoicings, voicingNotes, type Tone, type Voicing } from "./theory";
+import { CHORDS, PROGRESSIONS, SCALES, chordIndex, chordScale, chordVoicings, diatonicChords, tonality, voicingNotes, type Tone, type Voicing } from "./theory";
 
 export interface ProgChord {
   /** Half steps above the key. */
@@ -230,4 +230,21 @@ export function buildProgression(o: ProgOptions, voicings: (Voicing | undefined)
 /** The scale to show over a chord when following chords. */
 export function followTones(parentScale: number, c: ProgChord): { name: string; tones: Tone[] } {
   return chordScale(SCALES[parentScale], c.semis, CHORDS[c.chord]);
+}
+
+/**
+ * A progression that suits a scale: the scale's own preset if it has one, otherwise one built
+ * from the scale's chords (I, IV, V, I with sevenths), otherwise a common one for its sound.
+ */
+export function suitedProgression(scaleIdx: number): ProgChord[] {
+  const scale = SCALES[scaleIdx];
+  const own = PROGRESSIONS.findIndex((p) => p.scale === scale.name);
+  if (own >= 0) return presetChords(own);
+  const chords = diatonicChords(scale.tones, true);
+  const byDegree = new Map(chords);
+  const picks = [0, 3, 4, 0].filter((d) => byDegree.has(d));
+  if (picks.length === 4) return picks.map((d) => ({ semis: scale.tones[d].semis, chord: byDegree.get(d) as number, beats: 0 }));
+  const sound = tonality(scale.tones);
+  const name = sound === "Major" ? "I – V – vi – IV (pop)" : sound === "Minor" ? "Minor i – bVII – bVI – bVII" : "Mixolydian I – bVII – IV – I";
+  return presetChords(PROGRESSIONS.findIndex((p) => p.name === name));
 }

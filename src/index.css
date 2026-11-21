@@ -3292,3 +3292,26 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .fb-settings label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
 .fb-settings__check { flex-direction: row !important; align-items: center; gap: 8px !important; }
 .fb-settings__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.fb-note--chordtone .fb-note__dot { stroke: var(--accent-light); stroke-width: 4; }
+.fb-note__badge circle { fill: var(--accent); stroke: var(--surface); stroke-width: 1; }
+.fb-note__badge text { fill: #fff; font-size: 9px; font-weight: 700; pointer-events: none; }
+.fb-prog { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.fb-chord-cards { display: flex; flex-wrap: wrap; gap: 8px; }
+.fb-chord-card {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 76px; padding: 8px 10px;
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--r);
+}
+.fb-chord-card:hover { background: var(--surface-3); }
+.fb-chord-card--selected { border-color: var(--accent); background: var(--accent-dim); }
+.fb-chord-card--playing { border-color: var(--green); background: var(--green-dim); box-shadow: 0 0 0 2px var(--green-dim); }
+.fb-chord-card__name { font-size: 16px; font-weight: 600; }
+.fb-chord-card__roman, .fb-chord-card__beats { font-size: 10px; color: var(--muted); }
+.fb-chord-editor {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+}
+.fb-chord-editor label, .fb-prog .fretboard-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.fb-prog-add { display: flex; flex-direction: column; gap: 8px; }
+.fb-add-key, .fb-add-any { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fb-prog-add__label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; min-width: 120px; }
+.fb-prog-now { margin: 0 0 8px; font-size: 14px; color: var(--green); font-weight: 600; min-height: 20px; }

@@ -4,6 +4,7 @@ import { INSTRUMENTS } from "../../lib/fretboard/audio";
 import type { Direction, FretSettings } from "../../lib/fretboard/settings";
 
 interface Props {
+  page: string;
   settings: FretSettings;
   update: (p: Partial<FretSettings>) => void;
   playing: boolean;
@@ -13,7 +14,7 @@ interface Props {
 }
 
 /** The bar at the bottom: playback and sound controls shared by every page. */
-export function PlayBar({ settings, update, playing, soundName, onToggle, onSettings }: Props) {
+export function PlayBar({ page, settings, update, playing, soundName, onToggle, onSettings }: Props) {
   return (
     <div className="fb-playbar" role="group" aria-label="Playback">
       <button data-testid="fb-play" className={playing ? "btn-secondary" : "btn-primary"} onClick={onToggle} title="Play or stop (space bar)">
@@ -61,6 +62,16 @@ export function PlayBar({ settings, update, playing, soundName, onToggle, onSett
       <label className="fb-playbar__check">
         <input type="checkbox" checked={settings.click} onChange={(e) => update({ click: e.target.checked })} /> Click
       </label>
+      {page !== "progressions" && (
+        <label className="fb-playbar__check" title="Play a progression with drums behind this page">
+          <input type="checkbox" checked={settings.playOver} onChange={(e) => update({ playOver: e.target.checked })} /> Play over a progression
+        </label>
+      )}
+      {page === "scales" && settings.playOver && (
+        <label className="fb-playbar__check" title="Pick a progression that fits the scale; off uses the Progressions page's">
+          <input type="checkbox" checked={settings.suitScale} onChange={(e) => update({ suitScale: e.target.checked })} /> Suit the scale
+        </label>
+      )}
       <label className="fb-playbar__check" title="Hold the scale's root chord under scale runs">
         <input type="checkbox" checked={settings.drone} onChange={(e) => update({ drone: e.target.checked })} /> Drone
       </label>

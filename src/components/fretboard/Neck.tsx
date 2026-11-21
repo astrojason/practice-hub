@@ -7,8 +7,16 @@ const NUT_X = 44;
 const TOP = 24;
 const MARKER_FRETS = [3, 5, 7, 9, 15, 17, 19, 21];
 
+export interface NeckMark extends Mark {
+  /** Ringed as a tone of the chord that is playing, with its role as a badge (R, 3, 5, b7). */
+  chordtone?: boolean;
+  badge?: string;
+  /** The shape being strummed is drawn biggest. */
+  big?: boolean;
+}
+
 interface Props {
-  marks: Mark[];
+  marks: NeckMark[];
   title: string;
   /** Text shown inside a note (empty for none). Only notes in the position are labelled. */
   labelFor: (m: Mark) => string;
@@ -16,7 +24,7 @@ interface Props {
   colourLabels?: string[];
   /** The note sounding now, as "string:fret". */
   playing?: string | null;
-  onNote: (m: Mark) => void;
+  onNote: (m: NeckMark) => void;
 }
 
 export function Neck({ marks, title, labelFor, colourLabels = [], playing = null, onNote }: Props) {
@@ -55,6 +63,7 @@ export function Neck({ marks, title, labelFor, colourLabels = [], playing = null
             colourLabels.includes(m.label) ? "fb-note--colour" : "",
             m.inPosition ? "" : "fb-note--dim",
             playing === `${m.string}:${m.fret}` ? "fb-note--playing" : "",
+            m.chordtone ? "fb-note--chordtone" : "",
           ].join(" ");
           const text = labelFor(m);
           return (
@@ -67,7 +76,13 @@ export function Neck({ marks, title, labelFor, colourLabels = [], playing = null
               data-fret={m.fret}
               onClick={() => onNote(m)}
             >
-              <circle cx={noteX(m.fret)} cy={stringY(m.string)} r={m.inPosition ? 12 : 8} className="fb-note__dot" />
+              <circle cx={noteX(m.fret)} cy={stringY(m.string)} r={m.big ? 15 : m.inPosition ? 12 : 8} className="fb-note__dot" />
+              {m.badge && (
+                <g className="fb-note__badge">
+                  <circle cx={noteX(m.fret) + 11} cy={stringY(m.string) - 11} r={7} />
+                  <text x={noteX(m.fret) + 11} y={stringY(m.string) - 8} textAnchor="middle">{m.badge}</text>
+                </g>
+              )}
               {text && m.inPosition && (
                 <text x={noteX(m.fret)} y={stringY(m.string) + 4} textAnchor="middle" className="fb-note__label">{text}</text>
               )}

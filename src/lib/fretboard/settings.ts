@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { readLocalStorageJSON, writeLocalStorageJSON } from "../../hooks/useLocalStorageJSON";
 import { DEFAULT_SOUND, engine, type SoundSettings } from "./audio";
+import type { ChordFocus, Comp, DrumStyle, Follow } from "./progression";
 
 export type Direction = "up" | "down" | "updown";
 
@@ -14,6 +15,17 @@ export interface PlaybackSettings {
   countIn: number;
   click: boolean;
   drone: boolean;
+  /** How the guitar plays a progression, and the drum style behind it. */
+  comp: Comp;
+  drums: DrumStyle;
+  /** Beats each chord lasts unless it sets its own. */
+  beatsPerChord: number;
+  follow: Follow;
+  focus: ChordFocus;
+  /** Play a progression under the Scales, Arpeggios and Chords pages. */
+  playOver: boolean;
+  /** On the Scales page, choose the progression that suits the scale. */
+  suitScale: boolean;
 }
 
 export type FretSettings = SoundSettings & PlaybackSettings;
@@ -27,6 +39,13 @@ export const DEFAULT_SETTINGS: FretSettings = {
   countIn: 1,
   click: true,
   drone: true,
+  comp: "beats",
+  drums: "rock",
+  beatsPerChord: 4,
+  follow: "off",
+  focus: "shape",
+  playOver: false,
+  suitScale: true,
 };
 
 const KEY = "ph:fretboard:settings";

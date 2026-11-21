@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftIcon } from "@heroicons/react/16/solid";
 import { ErrorModal } from "../ErrorModal";
 import { ChordBox } from "./ChordBox";
+import { FretSettingsModal } from "./FretSettingsModal";
 import { Neck } from "./Neck";
+import { PlayBar } from "./PlayBar";
+import { ProgressionPanel } from "./ProgressionPanel";
+import { useSoundFont } from "./useSoundFont";
 import { engine } from "../../lib/fretboard/audio";
 import { buildChordSequence, buildSequence, orderSteps, type Step } from "../../lib/fretboard/playback";
-import { useFretSettings } from "../../lib/fretboard/settings";
-import { FretSettingsModal } from "./FretSettingsModal";
-import { PlayBar } from "./PlayBar";
-import { useSoundFont } from "./useSoundFont";
+import { buildProgression, chordRoot, progVoicings, suitedProgression, type ProgChord } from "../../lib/fretboard/progression";
 import { colourNotes, scaleInfo } from "../../lib/fretboard/scaleInfo";
+import { useFretSettings } from "../../lib/fretboard/settings";
 import {
   CHORDS,
   KEYS,
@@ -28,19 +30,19 @@ import {
   tonality,
   voicingMinFret,
   voicingNotes,
-  wholeNeck,
-  type Mark,
   type Voicing,
 } from "../../lib/fretboard/theory";
+import { useProgression } from "../../lib/fretboard/useProgression";
+import { computeView, type Page } from "../../lib/fretboard/view";
 import { logTrainerActivity } from "../../lib/trainerSession";
 
-type Page = "scales" | "arpeggios" | "chords";
 type LabelMode = "degree" | "note" | "both" | "interval" | "none";
 
 const PAGES: { id: Page; label: string }[] = [
   { id: "scales", label: "Scales" },
   { id: "arpeggios", label: "Arpeggios" },
   { id: "chords", label: "Chords" },
+  { id: "progressions", label: "Progressions" },
 ];
 
 function groupBy<T extends { group: string }>(list: T[]): [string, T[]][] {
@@ -70,15 +72,18 @@ export function FretboardView({ onBack }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [playingNote, setPlayingNote] = useState<string | null>(null);
+  const [markerIdx, setMarkerIdx] = useState<number | null>(null);
+  const [selectedChord, setSelectedChord] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { settings, update, error: settingsError, clearError } = useFretSettings();
+  const prog = useProgression();
   const showError = useCallback((m: string) => setError(m), []);
   const font = useSoundFont(settings, update, showError);
 
   const tuning = TUNINGS[0].strings;
   const scale = SCALES[scaleIdx];
   const chord = CHORDS[chordIdx];
-  const tones = page === "scales" ? scale.tones : chord.tones;
+  const scaleLike = page === "scales" || page === "progressions";
 
   const scalePos = useMemo(() => scalePositions(tuning, key, scale.tones), [tuning, key, scale]);
   const arpPos = useMemo(() => arpeggioPositions(tuning, key, chord.tones), [tuning, key, chord]);
@@ -86,25 +91,34 @@ export function FretboardView({ onBack }: Props) {
 
   // The choices the Position/Shape select offers on the current page.
   const choices: string[] = useMemo(() => {
-    if (page === "scales") return scalePos.map((p) => p.title);
+    if (scaleLike) return scalePos.map((p) => p.title);
     if (page === "arpeggios") return arpPos.map((p) => p.title);
     return voicings.map((v, i) => {
       const fr = voicingNotes(v).map((n) => n[1]);
       return `Shape ${i + 1} — bass on the ${["6th", "5th", "4th"][v.bassString]} string, frets ${Math.min(...fr)}–${Math.max(...fr)}`;
     });
-  }, [page, scalePos, arpPos, voicings]);
+  }, [page, scaleLike, scalePos, arpPos, voicings]);
   const idx = Math.min(posIdx, Math.max(choices.length - 1, 0));
 
-  const voicing: Voicing | undefined = page === "chords" ? voicings[idx] : undefined;
-  const active = useMemo(() => {
-    const notes = page === "scales" ? scalePos[idx]?.notes : page === "arpeggios" ? arpPos[idx]?.notes : voicing ? voicingNotes(voicing) : [];
-    return new Set((notes ?? []).map(([s, f]) => `${s}:${f}`));
-  }, [page, idx, scalePos, arpPos, voicing]);
+  // The progression under this page: the one on the Progressions page, or on the
+  // Scales page one that suits the scale.
+  const overlay = page !== "progressions" && settings.playOver;
+  const progMode = page === "progressions" || overlay;
+  const suited = useMemo(() => suitedProgression(scaleIdx), [scaleIdx]);
+  const activeProg: ProgChord[] = page === "scales" && overlay && settings.suitScale ? suited : prog.chords;
 
-  const marks: Mark[] = useMemo(
-    () => wholeNeck(tuning, key, tones).map((m) => ({ ...m, inPosition: active.has(`${m.string}:${m.fret}`) })),
-    [tuning, key, tones, active],
+  const curIdx = progMode ? (playing ? markerIdx : page === "progressions" ? selectedChord : null) : null;
+  const chordNow = curIdx !== null ? activeProg[curIdx] : undefined;
+
+  const view = useMemo(
+    () =>
+      computeView({
+        page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow,
+        overlay: overlay && playing, follow: settings.follow, focus: settings.focus,
+      }),
+    [page, key, scaleIdx, chordIdx, idx, tuning, scalePos, arpPos, voicings, chordNow, overlay, playing, settings.follow, settings.focus],
   );
+  const voicing: Voicing | undefined = view.voicing;
 
   const colour = useMemo(() => colourNotes(scale.name, scale.tones), [scale]);
   const info = scaleInfo(scale.name);
@@ -112,8 +126,9 @@ export function FretboardView({ onBack }: Props) {
   const keyChords = useMemo(() => diatonicChords(scale.tones, false), [scale]);
 
   const title =
-    page === "scales" ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
+    scaleLike ? `${KEYS[key]} ${scale.name}` : page === "arpeggios" ? `${KEYS[key]} ${chord.name} arpeggio` : `${KEYS[key]} ${chord.name}`;
   const posShort = (choices[idx] ?? "").split(" — ")[0];
+  const pageLabel = PAGES.find((p) => p.id === page)?.label;
 
   function hear(action: () => void, detail?: string) {
     try {
@@ -122,38 +137,91 @@ export function FretboardView({ onBack }: Props) {
       setError(err instanceof Error ? err.message : String(err));
       return;
     }
-    const label = PAGES.find((p) => p.id === page)?.label;
-    logTrainerActivity(`Fretboard Trainer — ${label}: ${title}, ${posShort}${detail ? ` (${detail})` : ""}`);
+    logTrainerActivity(`Fretboard Trainer — ${pageLabel}: ${title}, ${posShort}${detail ? ` (${detail})` : ""}`);
   }
 
   function labelFor(m: { label: string; semis: number }): string {
     switch (labelMode) {
       case "degree": return m.label;
-      case "note": return spell(key, m.semis, m.label);
-      case "both": return `${m.label} ${spell(key, m.semis, m.label)}`;
+      case "note": return spell(view.root, m.semis, m.label);
+      case "both": return `${m.label} ${spell(view.root, m.semis, m.label)}`;
       case "interval": return intervalShort(m.label);
       default: return "";
     }
+  }
+
+  function strumVoicing(v: Voicing) {
+    engine.strumNow(voicingNotes(v).map(([s, f]) => ({ midi: tuning[s] + f, string: s })));
+  }
+
+  function playKeyChord(degreeIdx: number, chordI: number) {
+    const c = CHORDS[chordI];
+    const root = (key + scale.tones[degreeIdx].semis) % 12;
+    const v = chordVoicings(tuning, root, c.tones)[0];
+    if (!v) throw new Error(`No playable shape found for ${c.name}.`);
+    strumVoicing(v);
+  }
+
+  function hearProgChord(i: number) {
+    const c = prog.chords[i];
+    if (!c) return;
+    const v = progVoicings({ tuning, key, chords: [c], nearFret: 3 })[0];
+    if (!v) {
+      setError(`No playable shape found for ${plainName(chordRoot(key, c))}${CHORDS[c.chord].symbol}.`);
+      return;
+    }
+    hear(() => strumVoicing(v), `chord ${plainName(chordRoot(key, c))}${CHORDS[c.chord].symbol}`);
+  }
+
+  function openChord(degreeIdx: number, chordI: number) {
+    setKey((key + scale.tones[degreeIdx].semis) % 12);
+    setChordIdx(chordI);
+    setPosIdx(0);
+    setPage("chords");
+  }
+
+  function goPage(p: Page) {
+    if (playing) stopPlayback();
+    setPage(p);
+    setPosIdx(0);
   }
 
   function stepsOf(notes: [number, number][]): Step[] {
     return notes.map(([s, f]) => ({ midi: tuning[s] + f, string: s, fret: f }));
   }
 
+  // The fret the hand is around, so progression shapes stay close to it.
+  function anchorFret(): number {
+    if (page === "chords" && voicings[idx]) return voicingMinFret(voicings[idx]);
+    const notes = scaleLike ? scalePos[idx]?.notes : arpPos[idx]?.notes;
+    return notes?.length ? Math.min(...notes.map((n) => n[1])) : 3;
+  }
+
   // What Play should sound for the current page and selection.
   function buildCurrent(countInBars: number) {
+    if (progMode) {
+      if (activeProg.length === 0) throw new Error("The progression has no chords. Choose a preset or add some chords first.");
+      const voicingsNow = progVoicings({ tuning, key, chords: activeProg, nearFret: anchorFret() });
+      return buildProgression(
+        {
+          tuning, key, chords: activeProg, defaultBeats: settings.beatsPerChord, bpm: settings.bpm, notesPerBeat: settings.notesPerBeat,
+          comp: settings.comp, drums: settings.drums, click: settings.click, countInBars,
+        },
+        voicingsNow,
+      );
+    }
     if (page === "chords") {
       if (!voicing) throw new Error("There is no chord shape to play.");
       return buildChordSequence({ notes: stepsOf(voicingNotes(voicing)), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
     }
-    const notes = page === "scales" ? scalePos[idx]?.notes : arpPos[idx]?.notes;
+    const notes = page === "arpeggios" ? arpPos[idx]?.notes : scalePos[idx]?.notes;
     if (!notes?.length) throw new Error("There are no notes to play in this position.");
     return buildSequence({ steps: orderSteps(stepsOf(notes), settings.direction), bpm: settings.bpm, notesPerBeat: settings.notesPerBeat, countInBars, click: settings.click });
   }
 
   // The scale's root chord held softly under scale runs: root, 5th and the scale's own 3rd.
   function droneNotes(): number[] | null {
-    if (page !== "scales" || !settings.drone) return null;
+    if (page !== "scales" || !settings.drone || progMode) return null;
     const root = 36 + key;
     const third = scale.tones.find((t) => t.label === "3" || t.label === "b3");
     return [root, root + 7, ...(third ? [root + third.semis] : [])];
@@ -163,6 +231,7 @@ export function FretboardView({ onBack }: Props) {
     engine.stop();
     engine.drone(null);
     setPlaying(false);
+    setMarkerIdx(null);
   }, []);
 
   function startPlayback(countInBars: number, log = true) {
@@ -176,9 +245,11 @@ export function FretboardView({ onBack }: Props) {
         loopFrom: built.loopFrom,
         loop: settings.loop,
         onHighlight: setPlayingNote,
+        onMarker: (code) => setMarkerIdx(parseInt(code)),
         onEnd: () => {
           engine.drone(null);
           setPlaying(false);
+          setMarkerIdx(null);
         },
       });
     } catch (err) {
@@ -188,8 +259,8 @@ export function FretboardView({ onBack }: Props) {
       return;
     }
     if (log) {
-      const label = PAGES.find((p) => p.id === page)?.label;
-      logTrainerActivity(`Fretboard Trainer — ${label}: ${title}, ${posShort} at ${settings.bpm} bpm`);
+      const over = progMode ? ` over ${prog.name || "a progression"}` : "";
+      logTrainerActivity(`Fretboard Trainer — ${pageLabel}: ${title}, ${posShort} at ${settings.bpm} bpm${over}`);
     }
   }
 
@@ -201,7 +272,10 @@ export function FretboardView({ onBack }: Props) {
   // Follow changes while playing: restart on the new notes or tempo without another count-in.
   const playingRef = useRef(false);
   playingRef.current = playing;
-  const restartKey = [page, key, scaleIdx, chordIdx, idx, settings.bpm, settings.notesPerBeat, settings.direction, settings.loop, settings.click, settings.drone].join("|");
+  const restartKey = [
+    page, key, scaleIdx, chordIdx, idx, settings.bpm, settings.notesPerBeat, settings.direction, settings.loop, settings.click, settings.drone,
+    settings.comp, settings.drums, settings.beatsPerChord, settings.playOver, settings.suitScale, JSON.stringify(activeProg),
+  ].join("|");
   const lastKey = useRef(restartKey);
   useEffect(() => {
     if (lastKey.current === restartKey) return;
@@ -219,13 +293,16 @@ export function FretboardView({ onBack }: Props) {
     };
   }, []);
 
-  // Space plays and stops.
+  // Space plays and stops; Left/Right step through positions or shapes.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
-      if (e.code !== "Space" || (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
-      e.preventDefault();
-      if (e.type === "keydown" && !e.repeat) togglePlayback();
+      if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (e.type === "keydown" && !e.repeat) togglePlayback();
+      } else if (e.type === "keydown" && e.key === "ArrowRight") setPosIdx(Math.min(idx + 1, choices.length - 1));
+      else if (e.type === "keydown" && e.key === "ArrowLeft") setPosIdx(Math.max(idx - 1, 0));
     }
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
@@ -234,38 +311,6 @@ export function FretboardView({ onBack }: Props) {
       window.removeEventListener("keyup", onKey);
     };
   });
-
-  function playKeyChord(degreeIdx: number, chordI: number) {
-    const c = CHORDS[chordI];
-    const root = (key + scale.tones[degreeIdx].semis) % 12;
-    const v = chordVoicings(tuning, root, c.tones)[0];
-    if (!v) throw new Error(`No playable shape found for ${c.name}.`);
-    engine.strumNow(voicingNotes(v).map(([s, f]) => ({ midi: tuning[s] + f, string: s })));
-  }
-
-  function openChord(degreeIdx: number, chordI: number) {
-    setKey((key + scale.tones[degreeIdx].semis) % 12);
-    setChordIdx(chordI);
-    setPosIdx(0);
-    setPage("chords");
-  }
-
-  function goPage(p: Page) {
-    setPage(p);
-    setPosIdx(0);
-  }
-
-  // Left/Right arrows step through positions or shapes.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const t = e.target as HTMLElement | null;
-      if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
-      if (e.key === "ArrowRight") setPosIdx(Math.min(idx + 1, choices.length - 1));
-      else if (e.key === "ArrowLeft") setPosIdx(Math.max(idx - 1, 0));
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [idx, choices.length]);
 
   const changeNotes = diff.changes.map(([t]) => t).join(", ");
   const chordNotes = chord.tones.map((t) => ({
@@ -302,7 +347,7 @@ export function FretboardView({ onBack }: Props) {
           </div>
 
           <div className="fretboard-controls">
-            {page === "scales" ? (
+            {scaleLike ? (
               <label>
                 Scale
                 <select aria-label="Scale" value={scaleIdx} onChange={(e) => { setScaleIdx(parseInt(e.target.value)); setPosIdx(0); }}>
@@ -349,15 +394,30 @@ export function FretboardView({ onBack }: Props) {
             </label>
             {page === "chords" && voicing && (
               <div className="fretboard-actions">
-                <button className="btn-secondary" onClick={() => hear(() => engine.strumNow(voicingNotes(voicing).map(([s, f]) => ({ midi: tuning[s] + f, string: s }))))}>Strum</button>
+                <button className="btn-secondary" onClick={() => hear(() => strumVoicing(voicing))}>Strum</button>
                 <button className="btn-primary" onClick={togglePlayback}>{playing ? "Stop" : "Play"}</button>
               </div>
             )}
           </div>
 
+          {page === "progressions" && (
+            <ProgressionPanel
+              prog={prog}
+              keyIdx={key}
+              scaleIdx={scaleIdx}
+              onScale={(i) => { setScaleIdx(i); setPosIdx(0); }}
+              settings={settings}
+              update={update}
+              selected={selectedChord}
+              onSelect={setSelectedChord}
+              playingIndex={playing ? markerIdx : null}
+              onHear={hearProgChord}
+            />
+          )}
+
           <h2 className="fretboard-title">{title}</h2>
           <p className="fretboard-tonality">
-            {page === "scales" ? (
+            {scaleLike ? (
               <>
                 {tonality(scale.tones)} —{" "}
                 {diff.changes.length === 0 ? `the ${diff.parent.toLowerCase()} scale itself` : `compared with ${diff.parent}: ${changeNotes}`}
@@ -369,12 +429,13 @@ export function FretboardView({ onBack }: Props) {
               </>
             )}
           </p>
+          <p className="fb-prog-now">{view.nowLine ?? ""}</p>
 
           <Neck
-            marks={marks}
+            marks={view.marks}
             title={title}
             labelFor={labelFor}
-            colourLabels={page === "scales" ? colour.labels : []}
+            colourLabels={view.plainScale ? colour.labels : []}
             playing={playingNote}
             onNote={(m) => hear(() => engine.pluck(m.midi, m.string))}
           />
@@ -390,7 +451,7 @@ export function FretboardView({ onBack }: Props) {
           )}
 
           <section className="fretboard-about">
-            {page === "scales" ? (
+            {scaleLike ? (
               <>
                 <h3>About this scale</h3>
                 {info ? (
@@ -448,6 +509,7 @@ export function FretboardView({ onBack }: Props) {
       </div>
 
       <PlayBar
+        page={page}
         settings={settings}
         update={update}
         playing={playing}
@@ -469,6 +531,7 @@ export function FretboardView({ onBack }: Props) {
         />
       )}
       {settingsError && <ErrorModal error={settingsError} onDismiss={clearError} />}
+      {prog.error && <ErrorModal error={prog.error} onDismiss={prog.clearError} />}
       {error && <ErrorModal error={error} onDismiss={() => setError(null)} />}
     </div>
   );
