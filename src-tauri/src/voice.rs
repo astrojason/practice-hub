@@ -51,12 +51,19 @@ impl Listener {
 
     /// Ask for permission, open the default microphone and start listening.
     /// While `paused` is set, what the microphone hears is ignored (the app itself is making sound).
-    pub fn start(vocabulary: Vec<String>, paused: Arc<AtomicBool>, stop: Arc<AtomicBool>) -> Result<Listener, String> {
+    pub fn start(vocabulary: Vec<String>, input: Option<String>, paused: Arc<AtomicBool>, stop: Arc<AtomicBool>) -> Result<Listener, String> {
         let (tx, events) = channel();
         let level = Arc::new(AtomicU32::new(0));
 
         let host = cpal::default_host();
-        let device = host.default_input_device().ok_or_else(|| "No microphone was found. Plug one in or pick an input in System Settings > Sound > Input.".to_string())?;
+        let device = match input.as_deref().filter(|n| !n.is_empty()) {
+            Some(want) => host
+                .input_devices()
+                .map_err(|e| format!("Could not list the microphones: {e}"))?
+                .find(|d| device_name(d).as_deref() == Some(want))
+                .ok_or_else(|| format!("The microphone \"{want}\" isn't connected. Pick another in Settings, or use the system default."))?,
+            None => host.default_input_device().ok_or_else(|| "No microphone was found. Plug one in or pick an input in System Settings > Sound > Input.".to_string())?,
+        };
         let supported = device.default_input_config().map_err(|e| format!("Could not read the microphone's settings: {e}"))?;
         let format = supported.sample_format();
         let config = supported.config();
@@ -407,7 +414,24 @@ mod recognizer {
 }
 
 
+fn device_name(d: &cpal::Device) -> Option<String> {
+    d.description().ok().map(|x| x.name().to_string())
+}
+
 // ------------------------------------------------------------ Tauri commands
+
+/// The microphones this computer has, and which one is the system default.
+#[tauri::command]
+pub fn voice_inputs() -> Result<serde_json::Value, String> {
+    let host = cpal::default_host();
+    let names: Vec<String> = host
+        .input_devices()
+        .map_err(|e| format!("Could not list the microphones: {e}"))?
+        .filter_map(|d| device_name(&d))
+        .collect();
+    let default = host.default_input_device().and_then(|d| device_name(&d));
+    Ok(json!({ "inputs": names, "default": default }))
+}
 
 /// Shared with the listening thread: set `stop` to end it, `paused` to ignore the microphone.
 #[derive(Default)]
@@ -423,7 +447,7 @@ fn emit(app: &AppHandle, payload: serde_json::Value) {
 /// Start listening for spoken answers. Events arrive on the `fret-voice` channel:
 /// ready, onset, heard, nothing, dropout, level and error.
 #[tauri::command]
-pub fn voice_start(app: AppHandle, state: State<VoiceState>, vocabulary: Vec<String>) -> Result<(), String> {
+pub fn voice_start(app: AppHandle, state: State<VoiceState>, vocabulary: Vec<String>, input: Option<String>) -> Result<(), String> {
     let mut cur = state.current.lock().map_err(|_| "The listening state is locked up; restart the app.".to_string())?;
     if let Some((stop, _)) = cur.take() {
         stop.store(true, Ordering::Relaxed);
@@ -435,7 +459,7 @@ pub fn voice_start(app: AppHandle, state: State<VoiceState>, vocabulary: Vec<Str
         .name("voice events".into())
         .spawn(move || {
             // The microphone stream isn't Send, so it lives (and dies) on this thread.
-            let listener = match Listener::start(vocabulary, paused, stop.clone()) {
+            let listener = match Listener::start(vocabulary, input, paused, stop.clone()) {
                 Ok(l) => l,
                 Err(e) => {
                     emit(&app, json!({ "type": "error", "message": e }));

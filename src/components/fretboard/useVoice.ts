@@ -7,6 +7,8 @@ interface Options {
   /** Listen now (the quiz is running and "Answer out loud" is on). */
   want: boolean;
   kind: QuizKind;
+  /** The microphone by name ("" for the system default). */
+  input: string;
   /** A phrase was heard: the recogniser's guesses and when speech began (ms since 1970), if known. */
   onHeard: (guesses: string[], onsetAt: number | null) => void;
 }
@@ -14,7 +16,7 @@ interface Options {
 export type VoiceStatus = "off" | "starting" | "listening" | "error";
 
 /** Keeps the microphone listening while it is wanted, and reports what it hears. */
-export function useVoice({ want, kind, onHeard }: Options) {
+export function useVoice({ want, kind, input, onHeard }: Options) {
   const [status, setStatus] = useState<VoiceStatus>("off");
   const [onDevice, setOnDevice] = useState<boolean | null>(null);
   const [level, setLevel] = useState(0);
@@ -59,7 +61,7 @@ export function useVoice({ want, kind, onHeard }: Options) {
       }
     };
     voiceBackend()
-      .start(spokenVocabulary(kind), handle)
+      .start(spokenVocabulary(kind), input, handle)
       .then((s) => {
         if (cancelled) s();
         else stop = s;
@@ -74,7 +76,7 @@ export function useVoice({ want, kind, onHeard }: Options) {
       cancelled = true;
       stop?.();
     };
-  }, [want, kind, error, attempt]);
+  }, [want, kind, input, error, attempt]);
 
   /** Stop listening for a moment while the app plays a note, and a little after it. */
   const pauseFor = useCallback(

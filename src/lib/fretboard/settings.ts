@@ -37,6 +37,8 @@ export interface PlaybackSettings {
   voice: boolean;
   /** How fast the voice talks, in words per minute. */
   voiceRate: number;
+  /** The microphone for spoken answers, by name ("" for the system default). */
+  micName: string;
   /** The speech voice by name ("" for the system default). */
   voiceName: string;
 }
@@ -98,6 +100,7 @@ export const DEFAULT_SETTINGS: FretSettings = {
   voice: false,
   voiceRate: 175,
   voiceName: "",
+  micName: "",
   theme: "dark",
   scheme: 0,
   labels: "degree",

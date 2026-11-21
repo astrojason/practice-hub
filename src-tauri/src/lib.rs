@@ -887,6 +887,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
+            voice::voice_inputs,
             voice::voice_start,
             voice::voice_stop,
             voice::voice_pause,

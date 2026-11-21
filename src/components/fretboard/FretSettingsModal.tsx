@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ConfirmModal } from "../ConfirmModal";
 import { ErrorModal } from "../ErrorModal";
 import { INSTRUMENTS, engine, type SoundFontPreset } from "../../lib/fretboard/audio";
-import { availableVoices, speak } from "../../lib/fretboard/voice";
+import { availableVoices, speak, voiceBackend } from "../../lib/fretboard/voice";
 import { SCHEMES } from "../../lib/fretboard/schemes";
 import type { FretSettings, LabelMode } from "../../lib/fretboard/settings";
 import { TUNINGS, plainName } from "../../lib/fretboard/theory";
@@ -28,6 +28,17 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<{ id: string; label: string }[]>([]);
   const [output, setOutput] = useState("default");
+  const [mics, setMics] = useState<{ inputs: string[]; default: string | null } | null>(null);
+  const lookForMics = () =>
+    voiceBackend()
+      .inputs()
+      .then(setMics)
+      .catch((err) => setMicNote(err instanceof Error ? err.message : String(err)));
+  const [micNote, setMicNote] = useState<string | null>(null);
+  useEffect(() => {
+    void lookForMics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() => availableVoices());
   useEffect(() => {
     // Voices can arrive after the page loads.
@@ -381,6 +392,20 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
                 </span>
               );
             })}
+          <label>
+            Microphone (for answering out loud)
+            <select aria-label="Microphone" value={settings.micName} onChange={(e) => update({ micName: e.target.value })}>
+              <option value="">System default{mics?.default ? ` (${mics.default})` : ""}</option>
+              {(mics?.inputs ?? []).map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+              {settings.micName && !(mics?.inputs ?? []).includes(settings.micName) && <option value={settings.micName}>{settings.micName} (not connected)</option>}
+            </select>
+          </label>
+          <div className="fb-settings__row">
+            <button className="btn-ghost" onClick={() => void lookForMics()}>Look for microphones again</button>
+            {micNote && <span className="fb-dim">{micNote}</span>}
+          </div>
           <span className="fb-dim">{QUIZ_KINDS.length} kinds of question are tracked.</span>
         </section>
 

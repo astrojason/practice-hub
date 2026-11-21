@@ -122,6 +122,7 @@ export function FretboardView({ onBack, onHelp }: Props) {
   const voice = useVoice({
     want: settings.voice && page === "quiz" && quiz.running,
     kind: quiz.kind,
+    input: settings.micName,
     onHeard: (guesses, onsetAt) => {
       const cmd = spokenCommand(guesses);
       if (cmd === "next") {

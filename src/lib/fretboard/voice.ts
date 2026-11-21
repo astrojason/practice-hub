@@ -17,7 +17,9 @@ export type VoiceEvent =
 /** Where spoken answers come from. The desktop app supplies one; tests can put their own on `window`. */
 export interface VoiceBackend {
   /** Start listening for the given words. Returns a function that stops listening. */
-  start(vocabulary: string[], onEvent: (e: VoiceEvent) => void): Promise<() => void>;
+  start(vocabulary: string[], input: string, onEvent: (e: VoiceEvent) => void): Promise<() => void>;
+  /** The microphones available and the system default one. */
+  inputs(): Promise<{ inputs: string[]; default: string | null }>;
   /** Ignore the microphone while the app itself is making sound. */
   pause(paused: boolean): Promise<void>;
 }
@@ -29,13 +31,13 @@ declare global {
 }
 
 const tauriBackend: VoiceBackend = {
-  async start(vocabulary, onEvent) {
+  async start(vocabulary, input, onEvent) {
     if (!("__TAURI_INTERNALS__" in window)) {
       throw new Error("Answering out loud needs the Practice Hub desktop app: this window has no microphone access.");
     }
     const unlisten = await listen<VoiceEvent>("fret-voice", (e) => onEvent(e.payload));
     try {
-      await invoke("voice_start", { vocabulary });
+      await invoke("voice_start", { vocabulary, input: input || null });
     } catch (err) {
       unlisten();
       throw new Error(typeof err === "string" ? err : err instanceof Error ? err.message : String(err));
@@ -44,6 +46,10 @@ const tauriBackend: VoiceBackend = {
       unlisten();
       invoke("voice_stop").catch((err) => onEvent({ type: "error", message: `Could not stop listening: ${err instanceof Error ? err.message : String(err)}` }));
     };
+  },
+  async inputs() {
+    if (!("__TAURI_INTERNALS__" in window)) throw new Error("Choosing a microphone needs the Practice Hub desktop app.");
+    return invoke<{ inputs: string[]; default: string | null }>("voice_inputs");
   },
   async pause(paused) {
     await invoke("voice_pause", { paused });

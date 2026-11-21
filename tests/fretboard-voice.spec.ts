@@ -23,8 +23,10 @@ async function stubVoice(page: P) {
     w.__voiceStarts = 0;
     w.__voicePauses = [];
     w.__fretboardVoice = {
-      start: async (vocab: string[], onEvent: (e: unknown) => void) => {
+      inputs: async () => ({ inputs: ["Built-in Microphone", "USB Mic"], default: "Built-in Microphone" }),
+      start: async (vocab: string[], input: string, onEvent: (e: unknown) => void) => {
         w.__voiceStarts = (w.__voiceStarts as number) + 1;
+        w.__voiceInput = input;
         w.__voiceVocab = vocab;
         w.__voiceEmit = onEvent;
         onEvent({ type: "ready", onDevice: true });
@@ -250,4 +252,20 @@ test("the speech voice can be chosen, and is the one used", async ({ page }) => 
   await page.locator("button", { hasText: "Fretboard" }).first().click();
   await page.locator('button[aria-label="Fretboard settings"]').click();
   await expect(page.locator('select[aria-label="Voice"]')).toHaveValue("Test Voice");
+});
+
+test("the microphone can be chosen, and the choice is used and remembered", async ({ page }) => {
+  await page.locator('button[aria-label="Fretboard settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await expect(dlg.locator('select[aria-label="Microphone"] option')).toHaveCount(3);
+  await expect(dlg.locator('select[aria-label="Microphone"] option').first()).toContainText("System default (Built-in Microphone)");
+  await dlg.locator('select[aria-label="Microphone"]').selectOption("USB Mic");
+  await dlg.locator("button", { hasText: "Done" }).click();
+  await startVoiceQuiz(page);
+  await expect(page.locator(".fb-voice-status")).toContainText("Listening");
+  expect(await page.evaluate(() => (window as unknown as { __voiceInput: string }).__voiceInput)).toBe("USB Mic");
+  await page.reload();
+  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator('button[aria-label="Fretboard settings"]').click();
+  await expect(page.locator('select[aria-label="Microphone"]')).toHaveValue("USB Mic");
 });
