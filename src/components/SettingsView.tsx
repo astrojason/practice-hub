@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 import { ErrorModal } from "./ErrorModal";
+import type { AppConfig } from "../hooks/useAppConfig";
 
 const STORE_KEY = "gp-library";
 const NIGHTLY_SCAN_HOUR = 3;
@@ -14,6 +15,10 @@ interface NightlyScanStatus {
 
 interface Props {
   onBack: () => void;
+  config: AppConfig;
+  /** Where the config file is saved. */
+  configPath: string;
+  onConfigSaved: () => Promise<void> | void;
 }
 
 function nextScheduledRun(): Date {
@@ -23,7 +28,24 @@ function nextScheduledRun(): Date {
   return next;
 }
 
-export function SettingsView({ onBack }: Props) {
+export function SettingsView({ onBack, config, configPath, onConfigSaved }: Props) {
+  const [gpRoot, setGpRoot] = useState(config.gp_library_root);
+  const [python, setPython] = useState(config.instrumenta_python);
+  const [cronDir, setCronDir] = useState(config.cron_jobs_dir);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  async function saveConfig() {
+    setSavingConfig(true);
+    try {
+      await invoke("save_app_config", { gpLibraryRoot: gpRoot, instrumentaPython: python, cronJobsDir: cronDir });
+      await onConfigSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingConfig(false);
+    }
+  }
+
   const [launchdEnabled, setLaunchdEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -103,12 +125,35 @@ export function SettingsView({ onBack }: Props) {
         <h2>Settings</h2>
       </div>
 
+      <section className="settings-card" data-testid="admin-paths">
+        <div className="settings-card-copy">
+          <h3>Admin paths</h3>
+          <p>
+            Where things are on this computer. They are saved in this app's config file
+            (<code>{configPath}</code>), which also holds the <code>admin</code> switch that shows this page.
+          </p>
+        </div>
+        <label>
+          Guitar Pro folder
+          <input type="text" aria-label="Guitar Pro folder" value={gpRoot} onChange={(e) => setGpRoot(e.target.value)} placeholder="/Users/you/Documents/Sheet Music" />
+        </label>
+        <label>
+          Instrumenta Python (writes song difficulty)
+          <input type="text" aria-label="Instrumenta Python" value={python} onChange={(e) => setPython(e.target.value)} placeholder="~/Projects/practice.astrojason.com/.venv/bin/python3" />
+        </label>
+        <label>
+          Scheduled jobs folder (nightly scan)
+          <input type="text" aria-label="Scheduled jobs folder" value={cronDir} onChange={(e) => setCronDir(e.target.value)} placeholder="~/Projects/tools/cron-jobs" />
+        </label>
+        <button className="btn-primary" onClick={saveConfig} disabled={savingConfig}>{savingConfig ? "Saving…" : "Save paths"}</button>
+      </section>
+
       <section className="settings-card">
         <div className="settings-card-copy">
           <h3>Guitar Pro library</h3>
           <p>
             Run the library scan every day at 3:00 AM, even when Practice Hub is closed.
-            Output is written to <code>~/Projects/tools/cron-jobs/logs/nightly-gp-scan.log</code>.
+            Output is written to <code>logs/nightly-gp-scan.log</code> in the scheduled jobs folder.
           </p>
         </div>
         <label className="settings-toggle">

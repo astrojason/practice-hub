@@ -93,6 +93,7 @@ test.beforeEach(async ({ page }) => {
         if (cmd === "plugin:store|save") return Promise.resolve(null);
         if (cmd === "plugin:store|has") return Promise.resolve(Object.prototype.hasOwnProperty.call(storeData, args?.key as string));
         if (cmd === "plugin:store|get_store") return Promise.resolve(null);
+        if (cmd === "get_app_config") return Promise.resolve({ config: { admin: true, gp_library_root: "/Songs", instrumenta_python: "", cron_jobs_dir: "" }, path: "/cfg/config.json" });
         if (cmd === "plugin:event|listen") return Promise.resolve(1);
         if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
         if (cmd === "scan_gp_directory") {

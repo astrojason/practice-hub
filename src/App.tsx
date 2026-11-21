@@ -10,6 +10,7 @@ import { consumeLeaveRequest, requestSaveSession, useSaveRequests } from "./lib/
 import { FretboardView } from "./components/fretboard/FretboardView";
 import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
+import { useAppConfig } from "./hooks/useAppConfig";
 import { PracticeTimeReport } from "./components/reports/PracticeTimeReport";
 import { ErrorModal } from "./components/ErrorModal";
 import { LeaderboardView } from "./components/leaderboard/LeaderboardView";
@@ -39,12 +40,14 @@ const MUSIC_QUOTES = [
 ];
 
 export function App() {
-  const { isLoading, isAuthenticated, token, authError, signIn, signOut } = useAuth();
+  const { isLoading, isAuthenticated, token, authError, signIn, signInWithPassword, createAccount, signOut } = useAuth();
   const quoteRef = useRef(MUSIC_QUOTES[Math.floor(Math.random() * MUSIC_QUOTES.length)]);
   const [slowLoad, setSlowLoad] = useState(false);
   const [view, setView] = useState<AppView>("session");
   const [gpOpenError, setGpOpenError] = useState<string | null>(null);
   const [tabPlayer, setTabPlayer] = useState<{ path: string; resources: Resource[] } | null>(null);
+  const appConfig = useAppConfig();
+  const admin = appConfig.config.admin;
   const [helpOpen, setHelpOpen] = useState(false);
   // A request to save what the trainer logged (from it, or after it sat idle) shows the session view.
   const saveRequests = useSaveRequests();
@@ -115,12 +118,12 @@ export function App() {
   }
 
   if (!isAuthenticated || !token) {
-    return <SignInScreen onSignIn={signIn} restoreError={authError} />;
+    return <SignInScreen onSignIn={signIn} onSignInWithPassword={signInWithPassword} onCreateAccount={createAccount} restoreError={authError} />;
   }
 
   let overlay = null;
-  if (view === "gp-library") {
-    overlay = <GpLibraryView token={token} onBack={() => setView("session")} />;
+  if (view === "gp-library" && admin) {
+    overlay = <GpLibraryView token={token} defaultRoot={appConfig.config.gp_library_root} onBack={() => setView("session")} />;
   } else if (view === "calendar") {
     overlay = <InterleavedCalendarView token={token} onBack={() => setView("session")} />;
   } else if (view === "browse") {
@@ -136,8 +139,8 @@ export function App() {
       />;
   } else if (view === "changelog") {
     overlay = <Changelog onBack={() => setView("session")} />;
-  } else if (view === "settings") {
-    overlay = <SettingsView onBack={() => setView("session")} />;
+  } else if (view === "settings" && admin) {
+    overlay = <SettingsView config={appConfig.config} configPath={appConfig.path} onConfigSaved={appConfig.reload} onBack={() => setView("session")} />;
   } else if (view === "reports") {
     overlay = <PracticeTimeReport token={token} onBack={() => setView("session")} />;
   } else if (view === "leaderboard") {
@@ -154,6 +157,7 @@ export function App() {
         <SessionView
           token={token}
           onSignOut={signOut}
+          admin={admin}
           onGpLibrary={() => setView("gp-library")}
           onCalendar={() => setView("calendar")}
           onBrowse={() => setView("browse")}
@@ -167,6 +171,7 @@ export function App() {
       </div>
       {overlay}
       {metronomeOpen && <Metronome onClose={() => setMetronomeOpen(false)} />}
+      {appConfig.error && <ErrorModal error={appConfig.error} onDismiss={appConfig.clearError} />}
       {helpOpen && <HelpModal initialId={helpTopic} onClose={() => setHelpOpen(false)} />}
       {badgeError && <ErrorModal error={badgeError} onDismiss={() => setBadgeError(null)} />}
       {unlocked.length > 0 && <BadgeUnlockModal badges={unlocked} onDismiss={() => setUnlocked([])} />}

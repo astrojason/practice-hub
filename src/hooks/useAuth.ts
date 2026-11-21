@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FIREBASE_CONFIG } from "../config";
-import { createGoogleAuthUri, exchangeCallbackForTokens } from "../auth/oauth";
+import { createGoogleAuthUri, exchangeCallbackForTokens, signInWithEmail, signUpWithEmail } from "../auth/oauth";
 import {
   getStoredRefreshToken,
   storeRefreshToken,
@@ -107,6 +107,21 @@ export function useAuth() {
     setState({ status: "authenticated", token: idToken });
   }, []);
 
+  // Email and password: for people without a Google account to sign in with, or who want a new account.
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    const { idToken, refreshToken } = await signInWithEmail(email, password);
+    storeRefreshToken(refreshToken);
+    setAuthError(null);
+    setState({ status: "authenticated", token: idToken });
+  }, []);
+
+  const createAccount = useCallback(async (email: string, password: string) => {
+    const { idToken, refreshToken } = await signUpWithEmail(email, password);
+    storeRefreshToken(refreshToken);
+    setAuthError(null);
+    setState({ status: "authenticated", token: idToken });
+  }, []);
+
   const signOut = useCallback(async () => {
     clearStoredRefreshToken();
     setState({ status: "unauthenticated" });
@@ -118,6 +133,8 @@ export function useAuth() {
     token: state.status === "authenticated" ? state.token : null,
     authError,
     signIn,
+    signInWithPassword,
+    createAccount,
     signOut,
   };
 }

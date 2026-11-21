@@ -368,6 +368,8 @@ async function fetchFullChildHistory(
 interface Props {
   token: string;
   onSignOut: () => Promise<void>;
+  /** Admin features (GP Library, settings) are shown only when the app's config file turns them on. */
+  admin: boolean;
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
@@ -379,7 +381,7 @@ interface Props {
   onGpView?: (path: string, resources?: Resource[]) => void;
 }
 
-export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrowse, onFretboard, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {
+export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, onBrowse, onFretboard, onSettings, onReports, onBadges, onLeaderboard, onGpView }: Props) {
   // ── Load state ──────────────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -1347,6 +1349,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         onReports={onReports}
         onBadges={onBadges}
         onLeaderboard={onLeaderboard}
+        admin={admin}
         onGpLibrary={onGpLibrary}
         onCalendar={onCalendar}
         onBrowse={onBrowse}

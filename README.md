@@ -84,3 +84,31 @@ src-tauri/
 ## Auth flow
 
 Sign-in uses Firebase REST API + a Tauri `WebviewWindow` rather than the Firebase JS SDK. The Tauri window opens the Google OAuth URL, intercepts the callback redirect (before WKWebView's ITP can block it), and returns the ID token. Refresh tokens are stored in `localStorage` under `ph:refreshToken`.
+
+## Sharing the app / admin features
+
+The Guitar Pro library scanner, GP analysis, the difficulty writer and the nightly scan are
+**admin-only** and are off by default. Machine-specific paths live in a config file saved with the
+app, not in the code:
+
+`~/Library/Application Support/com.astrojason.practicehub/config.json` (created on first run)
+
+```json
+{
+  "admin": false,
+  "gp_library_root": "/Users/you/Documents/Sheet Music",
+  "instrumenta_python": "~/Projects/practice.astrojason.com/.venv/bin/python3",
+  "cron_jobs_dir": "~/Projects/tools/cron-jobs"
+}
+```
+
+Set `"admin": true` and restart to show **GP Library** and **Settings** (where the paths can also be
+edited). New users can create an Instrumenta account from the sign-in screen (email and password);
+this needs the **Email/Password** sign-in provider enabled in the Firebase console.
+
+## Building a release
+
+`./scripts/build.sh` builds a universal (Apple silicon + Intel) app. The bundle version comes from
+`package.json` automatically. To sign and notarize it, set `APPLE_SIGNING_IDENTITY` (a "Developer ID
+Application" certificate), `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and `APPLE_TEAM_ID`
+first; see the top of the script.

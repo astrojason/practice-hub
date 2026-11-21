@@ -28,7 +28,6 @@ import type { Song } from "../api/types";
 import { getCatalogSongs, getSong } from "../api/client";
 
 const STORE_KEY = "gp-library";
-const DEFAULT_ROOT = "/Users/jasonsylvester/Documents/Sheet Music";
 
 // ── Filename parser ───────────────────────────────────────────────────────────
 // Format: {Artist}-{Song Title}-{MM-DD-YYYY}.gp
@@ -168,8 +167,9 @@ function resolveUndatedResource(file: GpFileParsed, rawEntries: GpFileEntry[]): 
 
 type ScanStatus = "idle" | "scanning" | "analyzing" | "done" | "error";
 
-export function useGpScanner(token: string) {
-  const [rootPath, setRootPathState] = useState<string>(DEFAULT_ROOT);
+export function useGpScanner(token: string, defaultRoot: string) {
+  // The folder comes from the app's config file, unless one was chosen in the library view.
+  const [rootPath, setRootPathState] = useState<string>(defaultRoot);
   const [tursoDbUrl, setTursoDbUrl] = useState("");
   const [tursoAuthToken, setTursoAuthToken] = useState("");
   const [scanResult, setScanResult] = useState<GpScanResult | null>(null);

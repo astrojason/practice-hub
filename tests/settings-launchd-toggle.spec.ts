@@ -53,6 +53,7 @@ async function setupPage(page: Page, options: SetupOptions = {}) {
           return Promise.resolve(Object.prototype.hasOwnProperty.call(storeData, args?.key as string));
         }
         if (cmd === "plugin:store|get_store") return Promise.resolve(null);
+        if (cmd === "get_app_config") return Promise.resolve({ config: { admin: true, gp_library_root: "", instrumenta_python: "", cron_jobs_dir: "" }, path: "/cfg/config.json" });
         if (cmd === "plugin:event|listen") return Promise.resolve(1);
         if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
         if (cmd === "is_launchd_agent_installed") {
@@ -177,9 +178,8 @@ test("hides the next-run line when the agent is disabled", async ({ page }) => {
   await expect(page.getByText(/Next run:/)).not.toBeVisible();
 });
 
-test("the settings text points at the cron-jobs log where the nightly scan writes", async ({ page }) => {
+test("the settings text points at the nightly scan's log in the scheduled jobs folder from the config", async ({ page }) => {
   await setupPage(page);
-  await expect(page.locator(".settings-card code")).toHaveText(
-    "~/Projects/tools/cron-jobs/logs/nightly-gp-scan.log"
-  );
+  await expect(page.locator(".settings-card code", { hasText: "nightly-gp-scan.log" })).toHaveText("logs/nightly-gp-scan.log");
+  await expect(page.locator(".settings-card code", { hasText: "config.json" })).toBeVisible();
 });

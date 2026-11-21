@@ -28,6 +28,7 @@ interface Props {
   onReports: () => void;
   onBadges: () => void;
   onLeaderboard: () => void;
+  admin: boolean;
   onGpLibrary: () => void;
   onCalendar: () => void;
   onBrowse: () => void;
@@ -62,6 +63,7 @@ export function SessionHeader({
   onReports,
   onBadges,
   onLeaderboard,
+  admin,
   onGpLibrary,
   onCalendar,
   onBrowse,
@@ -132,9 +134,11 @@ export function SessionHeader({
           <button onClick={onLeaderboard} className="btn-ghost" title="Leaderboard">
             <UsersIcon className="icon-sm" /> Leaderboard
           </button>
-          <button onClick={onGpLibrary} className="btn-ghost" title="Guitar Pro library scanner">
-            <MusicalNoteIcon className="icon-sm" /> GP Library
-          </button>
+          {admin && (
+            <button onClick={onGpLibrary} className="btn-ghost" title="Guitar Pro library scanner">
+              <MusicalNoteIcon className="icon-sm" /> GP Library
+            </button>
+          )}
           <button onClick={onCalendar} className="btn-ghost" title="Practice calendar">
             Calendar
           </button>
@@ -144,9 +148,11 @@ export function SessionHeader({
           <button onClick={onBrowse} className="btn-ghost" title="Browse catalog">
             <RectangleStackIcon className="icon-sm" /> Browse
           </button>
-          <button onClick={onSettings} className="btn-ghost" title="Application settings">
-            Settings
-          </button>
+          {admin && (
+            <button onClick={onSettings} className="btn-ghost" title="Application settings">
+              Settings
+            </button>
+          )}
           <button onClick={onRebuild} disabled={isRebuilding} className="btn-ghost">
             <ArrowPathIcon className="icon-sm" />
             {isRebuilding ? "Rebuilding…" : "Rebuild"}

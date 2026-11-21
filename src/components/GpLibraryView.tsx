@@ -21,10 +21,12 @@ type SortDir = "asc" | "desc";
 
 interface Props {
   token: string;
+  /** The Guitar Pro folder from the app's config file. */
+  defaultRoot: string;
   onBack: () => void;
 }
 
-export function GpLibraryView({ token, onBack }: Props) {
+export function GpLibraryView({ token, defaultRoot, onBack }: Props) {
   const {
     rootPath,
     setRootPath,
@@ -42,7 +44,7 @@ export function GpLibraryView({ token, onBack }: Props) {
     dismissUnmatched,
     clearSeenCache,
     updateMatchScore,
-  } = useGpScanner(token);
+  } = useGpScanner(token, defaultRoot);
 
   const [pathInput, setPathInput] = useState(rootPath);
   const [dbUrlInput, setDbUrlInput] = useState(tursoDbUrl);

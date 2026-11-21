@@ -3469,3 +3469,7 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .fb-pick-string__bar span { display: block; height: 100%; background: var(--accent); }
 .fb-instrument { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
 .fb-instrument select { text-transform: none; letter-spacing: 0; font-size: 13px; }
+.sign-in-form { display: flex; flex-direction: column; gap: 10px; width: min(320px, 90vw); text-align: left; }
+.sign-in-form h2 { margin: 0 0 4px; font-size: 16px; }
+.sign-in-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.sign-in-alt { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }

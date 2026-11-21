@@ -13,6 +13,93 @@ use url::Url;
 
 mod tab;
 
+// ─── App configuration ────────────────────────────────────────────────────────
+// Machine-specific settings live in a config file saved with the app (in its
+// app-config folder), not in the code. By default the admin features (the Guitar
+// Pro library scanner, GP analysis, the difficulty writer and the nightly scan)
+// are off; the file's `admin` flag turns them on and its paths say where things are.
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+#[serde(default)]
+struct AppConfig {
+    /// Turns on the admin-only features.
+    admin: bool,
+    /// The folder of Guitar Pro files the GP Library scans.
+    gp_library_root: String,
+    /// The Python used to write song difficulty to the database (the Instrumenta virtualenv's python3).
+    instrumenta_python: String,
+    /// The folder holding the scheduled jobs (the nightly GP scan's launchd plist, script and logs).
+    cron_jobs_dir: String,
+}
+
+fn config_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("Could not find the app's config folder: {e}"))?
+        .join("config.json"))
+}
+
+fn load_app_config(app: &tauri::AppHandle) -> Result<AppConfig, String> {
+    let path = config_file(app)?;
+    if !path.is_file() {
+        // First run: write the defaults so there is a file to edit.
+        let cfg = AppConfig::default();
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+        }
+        let json = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
+        fs::write(&path, json).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+        return Ok(cfg);
+    }
+    let text = fs::read_to_string(&path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    serde_json::from_str(&text).map_err(|e| format!("{} is not valid: {e}", path.display()))
+}
+
+fn require_admin(app: &tauri::AppHandle) -> Result<AppConfig, String> {
+    let cfg = load_app_config(app)?;
+    if !cfg.admin {
+        return Err("This is an admin-only feature, and admin features are turned off in this app's config file.".into());
+    }
+    Ok(cfg)
+}
+
+/// The expanded path from the config, or an error saying which setting is empty.
+fn config_path(value: &str, what: &str) -> Result<PathBuf, String> {
+    let v = value.trim();
+    if v.is_empty() {
+        return Err(format!("{what} is not set in the app's config file."));
+    }
+    if let Some(rest) = v.strip_prefix("~/") {
+        return Ok(home_directory()?.join(rest));
+    }
+    Ok(PathBuf::from(v))
+}
+
+#[derive(serde::Serialize)]
+struct AppConfigInfo {
+    config: AppConfig,
+    path: String,
+}
+
+#[tauri::command]
+fn get_app_config(app: tauri::AppHandle) -> Result<AppConfigInfo, String> {
+    let config = load_app_config(&app)?;
+    Ok(AppConfigInfo { config, path: config_file(&app)?.display().to_string() })
+}
+
+/// Save the config's paths (admin only). The admin flag itself is changed by editing the file.
+#[tauri::command]
+fn save_app_config(app: tauri::AppHandle, gp_library_root: String, instrumenta_python: String, cron_jobs_dir: String) -> Result<(), String> {
+    let mut cfg = require_admin(&app)?;
+    cfg.gp_library_root = gp_library_root;
+    cfg.instrumenta_python = instrumenta_python;
+    cfg.cron_jobs_dir = cron_jobs_dir;
+    let path = config_file(&app)?;
+    let json = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
+    fs::write(&path, json).map_err(|e| format!("Could not write {}: {e}", path.display()))
+}
+
 // ─── HTTP file server ─────────────────────────────────────────────────────────
 // Serves local media files to the frontend via http://127.0.0.1:17865/asset?path=...
 // This mirrors the server from practice-player and enables Web Audio API decoding
@@ -252,6 +339,7 @@ async fn analyze_gp_file(
     app: tauri::AppHandle,
     file_path: String,
 ) -> Result<String, String> {
+    require_admin(&app)?;
     let script = app
         .path()
         .resolve("sidecar/analyze_gp.py", BaseDirectory::Resource)
@@ -287,10 +375,8 @@ async fn write_song_difficulty(
         .resolve("sidecar/write_song_difficulty.py", BaseDirectory::Resource)
         .map_err(|e| format!("Could not locate Turso writer script: {e}"))?;
 
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| "Could not locate the home directory for the Instrumenta Python environment".to_string())?;
-    let python = PathBuf::from(home)
-        .join("Projects/astrojason/practice.astrojason.com/.venv/bin/python3");
+    let cfg = require_admin(&app)?;
+    let python = config_path(&cfg.instrumenta_python, "The Instrumenta python path (instrumenta_python)")?;
     if !python.is_file() {
         return Err(format!(
             "Instrumenta Python environment not found at {}",
@@ -377,12 +463,12 @@ fn launchctl_already_unloaded(message: &str) -> bool {
 /// The nightly scan job lives in the cron-jobs folder (the one place for every scheduled job on
 /// this Mac): its launchd plist, script and logs are all there. Installing it from the app copies
 /// that plist into ~/Library/LaunchAgents and loads it.
-const CRON_JOBS_RELATIVE: &str = "Projects/tools/cron-jobs";
 const NIGHTLY_SCAN_JOB_RELATIVE: &str = "jobs/practice-hub-gp-scan";
 
 #[tauri::command]
-async fn install_launchd_agent() -> Result<(), String> {
-    let cron_jobs = home_directory()?.join(CRON_JOBS_RELATIVE);
+async fn install_launchd_agent(app: tauri::AppHandle) -> Result<(), String> {
+    let cfg = require_admin(&app)?;
+    let cron_jobs = config_path(&cfg.cron_jobs_dir, "The scheduled-jobs folder (cron_jobs_dir)")?;
     let job_dir = cron_jobs.join(NIGHTLY_SCAN_JOB_RELATIVE);
     let script = job_dir.join("nightly_gp_scan.py");
     let template_path = job_dir.join(format!("{NIGHTLY_SCAN_LABEL}.plist"));
@@ -418,7 +504,8 @@ async fn install_launchd_agent() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn uninstall_launchd_agent() -> Result<(), String> {
+async fn uninstall_launchd_agent(app: tauri::AppHandle) -> Result<(), String> {
+    require_admin(&app)?;
     let agent_path = launchd_agent_path()?;
     if !agent_path.exists() {
         return Ok(());
@@ -438,11 +525,12 @@ async fn uninstall_launchd_agent() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn is_launchd_agent_installed() -> Result<bool, String> {
+fn is_launchd_agent_installed(app: tauri::AppHandle) -> Result<bool, String> {
+    require_admin(&app)?;
     Ok(launchd_agent_path()?.is_file())
 }
 
-const NIGHTLY_SCAN_LOG_RELATIVE: &str = "Projects/tools/cron-jobs/logs/nightly-gp-scan.log";
+const NIGHTLY_SCAN_LOG_RELATIVE: &str = "logs/nightly-gp-scan.log";
 
 #[derive(serde::Serialize)]
 struct NightlyScanStatus {
@@ -451,8 +539,9 @@ struct NightlyScanStatus {
 }
 
 #[tauri::command]
-fn nightly_scan_last_run() -> Result<Option<NightlyScanStatus>, String> {
-    let log_path = home_directory()?.join(NIGHTLY_SCAN_LOG_RELATIVE);
+fn nightly_scan_last_run(app: tauri::AppHandle) -> Result<Option<NightlyScanStatus>, String> {
+    let cfg = require_admin(&app)?;
+    let log_path = config_path(&cfg.cron_jobs_dir, "The scheduled-jobs folder (cron_jobs_dir)")?.join(NIGHTLY_SCAN_LOG_RELATIVE);
     if !log_path.is_file() {
         return Ok(None);
     }
@@ -487,7 +576,8 @@ struct GpFileEntry {
 }
 
 #[tauri::command]
-async fn scan_gp_directory(root_path: String) -> Result<String, String> {
+async fn scan_gp_directory(app: tauri::AppHandle, root_path: String) -> Result<String, String> {
+    require_admin(&app)?;
     let mut entries: Vec<GpFileEntry> = Vec::new();
     scan_dir(Path::new(&root_path), &mut entries)
         .map_err(|e| format!("Scan error: {e}"))?;
@@ -891,6 +981,8 @@ pub fn run() {
             voice::voice_start,
             voice::voice_stop,
             voice::voice_pause,
+            get_app_config,
+            save_app_config,
             start_auth,
             analyze_gp_file,
             write_song_difficulty,
