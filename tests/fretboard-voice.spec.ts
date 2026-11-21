@@ -122,6 +122,8 @@ test("spoken answers are understood (same cases as the Craft app)", async ({ pag
     eq("major", named("major"), "Major");
     eq("next", spokenCommand(g("next")), "next");
     eq("again", spokenCommand(g("play it again")), "again");
+    eq("hear it", spokenCommand(g("hear it")), "again");
+    eq("stop", spokenCommand(g("stop")), "stop");
     eq("not a command", spokenCommand(g("C sharp")), null);
     return bad;
   });
@@ -268,4 +270,22 @@ test("the microphone can be chosen, and the choice is used and remembered", asyn
   await page.locator("button", { hasText: "Fretboard" }).first().click();
   await page.locator('button[aria-label="Fretboard settings"]').click();
   await expect(page.locator('select[aria-label="Microphone"]')).toHaveValue("USB Mic");
+});
+
+test("answering out loud moves to the next question after three seconds, until it hears stop", async ({ page }) => {
+  await startVoiceQuiz(page);
+  await expect(page.locator(".fb-voice-status")).toContainText("Listening");
+  await emit(page, { type: "heard", guesses: ["hear it"] });
+  await expect(page.locator(".fb-quiz-feedback")).toHaveCount(0);
+  const vocab = await page.evaluate(() => (window as unknown as { __voiceVocab: string[] }).__voiceVocab);
+  expect(vocab).toContain("stop");
+  await emit(page, { type: "heard", guesses: [SPOKEN_NOTES[(await litPitchClass(page))]] });
+  await expect(page.locator(".fb-quiz-feedback")).toBeVisible();
+  const started = Date.now();
+  await expect(page.locator(".fb-quiz-feedback")).toHaveCount(0, { timeout: 6000 });
+  expect(Date.now() - started).toBeGreaterThan(2000);
+  await expect(page.locator(".fb-quiz-score")).toHaveText("1 / 1");
+  await emit(page, { type: "heard", guesses: ["stop"] });
+  await expect(page.getByRole("button", { name: /Start/ }).first()).toBeVisible();
+  await expect(page.locator(".fb-quiz-summary")).toContainText("Last session");
 });

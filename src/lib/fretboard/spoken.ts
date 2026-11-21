@@ -5,11 +5,11 @@
 import { BOTH_NAMES, KEYS } from "./theory";
 import { INTERVALS, type QuizKind } from "./quiz";
 
-export type SpokenCommand = "next" | "again";
+export type SpokenCommand = "next" | "again" | "stop";
 
 /** Words the speech recogniser is told to expect, so it leans towards them. */
 export function spokenVocabulary(kind: QuizKind): string[] {
-  const v = ["next", "again"];
+  const v = ["next", "again", "hear it", "stop"];
   switch (kind) {
     case "note":
       for (const l of ["C", "D", "E", "F", "G", "A", "B"]) v.push(l, `${l} sharp`, `${l} flat`);
@@ -207,12 +207,13 @@ export function spokenAnswer(kind: QuizKind, choices: string[], guesses: string[
   return null;
 }
 
-/** "next" moves on, "again" / "repeat" plays the question again. */
+/** "next" moves on, "again" / "hear it" plays the question again, "stop" ends the session. */
 export function spokenCommand(guesses: string[]): SpokenCommand | null {
   for (const g of guesses) {
     const w = spokenWords(g);
+    if (has(w, ["stop", "finish", "quit", "end"])) return "stop";
     if (has(w, ["next", "skip", "continue"])) return "next";
-    if (has(w, ["again", "repeat", "replay"])) return "again";
+    if (has(w, ["again", "repeat", "replay", "hear"])) return "again";
   }
   return null;
 }

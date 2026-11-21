@@ -155,7 +155,7 @@ export function QuizSide({ quiz, voiceOn, onVoice, onReport, onConfirmReset, sca
       <label className="fb-playbar__check" title="Ask more about the notes, degrees and intervals your history says you find hard">
         <input type="checkbox" checked={quiz.focusWeak} onChange={(e) => quiz.setFocusWeak(e.target.checked)} /> Focus on my weak spots
       </label>
-      <label className="fb-playbar__check" title="Say your answers instead of clicking: “C sharp”, “flat three”, “minor third”, “minor seven”. Say “next” to move on and “again” to hear it again. Uses macOS speech recognition; macOS asks for permission the first time.">
+      <label className="fb-playbar__check" title="Say your answers instead of clicking: “C sharp”, “flat three”, “minor third”, “minor seven”. Say “next” to move on, “hear it” to hear it again and “stop” to finish; the next question follows three seconds after each answer. Uses macOS speech recognition; macOS asks for permission the first time.">
         <input type="checkbox" checked={voiceOn} onChange={(e) => onVoice(e.target.checked)} /> Answer out loud (microphone)
       </label>
       {quiz.kind === "degree" && <p className="fb-dim">Degrees are asked in {scaleLabel} — change the key and scale at the top.</p>}

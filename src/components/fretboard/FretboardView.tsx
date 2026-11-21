@@ -125,7 +125,8 @@ export function FretboardView({ onBack, onHelp }: Props) {
     input: settings.micName,
     onHeard: (guesses, onsetAt) => {
       const cmd = spokenCommand(guesses);
-      if (cmd === "next") {
+      if (cmd === "stop") quiz.stop();
+      else if (cmd === "next") {
         if (quiz.picked !== null) quiz.next();
       } else if (cmd === "again") quiz.hear();
       else if (quiz.question && quiz.picked === null) {
@@ -135,6 +136,13 @@ export function FretboardView({ onBack, onHelp }: Props) {
     },
   });
   pauseVoice.current = voice.pauseFor;
+  // When answering out loud, the next question follows three seconds after each answer, until "stop" is heard.
+  useEffect(() => {
+    if (!(settings.voice && page === "quiz" && quiz.running && quiz.picked !== null)) return;
+    const id = window.setTimeout(() => quiz.next(), 3000);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.voice, page, quiz.running, quiz.picked, quiz.question]);
   const scaleLike = page === "scales" || page === "progressions" || page === "practice" || page === "speed";
 
   const scalePos = useMemo(() => scalePositions(tuning, key, scale.tones), [tuning, key, scale]);
