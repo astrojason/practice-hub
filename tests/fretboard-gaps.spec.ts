@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
 });
 
 type P = import("@playwright/test").Page;
@@ -173,8 +173,8 @@ test("a SoundFont dropped on the window is added; other files are refused with a
 
 test("the list of outputs can be looked up again", async ({ page, browserName }) => {
   test.skip(browserName === "webkit", "Choosing an output needs setSinkId, which this webview may not have");
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await dlg.getByRole("button", { name: "Look for outputs again" }).click();
   await expect(page.locator(".error-modal:not(.fb-settings)")).toHaveCount(0);
 });

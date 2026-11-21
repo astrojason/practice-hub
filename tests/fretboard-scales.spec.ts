@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fretboard-view")).toBeVisible();
 });
 
@@ -65,15 +65,15 @@ test("label modes switch between degree, interval and none", async ({ page }) =>
   await expect(label).toHaveText("");
 });
 
-test("clicking a note plays it without an error, and starts an Open Session describing what is being practised", async ({ page }) => {
+test("clicking a note plays it without an error; Play starts an Open Session and Stop opens the save form describing what was practised", async ({ page }) => {
   await page.locator('.fb-note[data-in-position="true"]').first().click();
   await expect(page.locator(".error-modal")).toHaveCount(0);
-  await page.locator("button", { hasText: "Back" }).first().click();
-  await expect(page.locator(".fretboard-view")).toHaveCount(0);
-  // The trainer started the Open Session timer, so the header button now shows the elapsed time.
-  await page.locator(".btn-open-session-active").click();
-  const notes = page.locator(".modal-notes-label textarea");
-  await expect(notes).toHaveValue(/Fretboard Trainer/);
+  // Only Start/Play starts the Open Session timer.
+  await page.getByTestId("fb-play").click();
+  await expect(page.getByTestId("fb-play")).toHaveText("Stop");
+  await page.getByTestId("fb-play").click();
+  const notes = page.locator(".modal-card textarea");
+  await expect(notes).toHaveValue(/Theory Training/);
   await expect(notes).toHaveValue(/C Major \(Ionian\)/);
 });
 

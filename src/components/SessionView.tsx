@@ -1,5 +1,6 @@
 import { sortByName } from "../lib/sortByName";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   getDashboard,
   getExerciseById,
@@ -52,7 +53,7 @@ import { QuickAddPanel } from "./session/QuickAddPanel";
 import { QuickAddModal } from "./session/QuickAddModal";
 import { MediaPlayer } from "./player/MediaPlayer";
 import { requestSessionModal } from "../lib/sessionModalRequest";
-import { clearTrainerActivity, idleMs, isTrainerBusy, requestSaveSession, useSaveRequests, useTrainerActivity } from "../lib/trainerSession";
+import { clearTrainerActivity, idleMs, isTrainerBusy, requestSaveSession, useSaveRequests, useTrainerActivity, useTrainerStarts } from "../lib/trainerSession";
 import { SequentialSessionModal } from "./session/SequentialSessionModal";
 import { ConfettiCanvas } from "./session/ConfettiCanvas";
 import type { ConfettiCanvasHandle } from "./session/ConfettiCanvas";
@@ -464,7 +465,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
 
   const OPEN_SESSION_KEY = "open-session";
 
-  // The Fretboard Trainer starts the Open Session timer the first time it
+  // The Theory Training starts the Open Session timer the first time it
   // does something, and its activity becomes the session's notes.
   const trainerActivity = useTrainerActivity();
   // The trainer asks to save what was practised: open the Open Session form ready to log it.
@@ -474,17 +475,22 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   useEffect(() => {
     if (saveRequests === lastSaveRequest.current) return;
     lastSaveRequest.current = saveRequests;
+    if (activeTimers.has(OPEN_SESSION_KEY)) pauseTimer(OPEN_SESSION_KEY);
     setOpenSessionSaveFirst(true);
     setOpenSessionModalOpen(true);
   }, [saveRequests]);
+  const trainerStarts = useTrainerStarts();
+  const lastStart = useRef(trainerStarts);
   useEffect(() => {
-    if (trainerActivity.length === 0) return;
-    if (!activeTimers.has(OPEN_SESSION_KEY) && !pausedElapsed.has(OPEN_SESSION_KEY)) {
+    if (trainerStarts === lastStart.current) return;
+    lastStart.current = trainerStarts;
+    if (!activeTimers.has(OPEN_SESSION_KEY)) {
+      // A timer already paused (a form closed without logging) carries on from where it stopped.
+      if (!pausedElapsed.has(OPEN_SESSION_KEY)) trainerOwnsTimer.current = true;
       startTimer(OPEN_SESSION_KEY);
-      trainerOwnsTimer.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trainerActivity]);
+  }, [trainerStarts]);
 
   // A timer the trainer started doesn't keep running while nobody is doing anything: after a
   // couple of minutes with no input and nothing playing it stops (without the idle time) and
@@ -494,6 +500,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
   const pauseTrimmed = useRef(pauseTimerTrimmed);
   pauseTrimmed.current = pauseTimerTrimmed;
   useEffect(() => {
+    // Only watch for idleness while the Open Session timer is running.
+    if (!activeTimers.has(OPEN_SESSION_KEY)) return;
     const mark = () => {
       lastInput.current = Date.now();
     };
@@ -504,7 +512,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
       if (isTrainerBusy()) return;
       if (Date.now() - lastInput.current > idleMs()) {
         pauseTrimmed.current(OPEN_SESSION_KEY, Math.round(idleMs() / 1000));
-        requestSaveSession();
+        requestSaveSession(true);
       }
     }, 500);
     return () => {
@@ -1353,7 +1361,7 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
         <AiChallengesPanel token={token} refreshKey={serverTotal} onStartSession={handleStartChallengeSession} />
       </div>
 
-      {openSessionModalOpen && (
+      {openSessionModalOpen && createPortal(
         <OpenSessionForm
           token={token}
           elapsed={getElapsed(OPEN_SESSION_KEY)}
@@ -1381,7 +1389,8 @@ export function SessionView({ token, onSignOut, onGpLibrary, onCalendar, onBrows
             setOpenSessionModalOpen(false);
             setOpenSessionSaveFirst(false);
           }}
-        />
+        />,
+        document.body,
       )}
 
       {showAdd && (

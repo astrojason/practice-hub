@@ -1,4 +1,4 @@
-// Audio engine for the Fretboard Trainer, on the Web Audio API.
+// Audio engine for the Theory Training, on the Web Audio API.
 //
 // Built-in instruments are synthesised (Karplus-Strong strings, FM keys) and
 // rendered to cached buffers; real guitar samples come from a SoundFont played

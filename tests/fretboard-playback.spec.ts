@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fretboard-view")).toBeVisible();
 });
 
@@ -47,6 +47,9 @@ test("with Loop on it keeps playing until stopped, and Space toggles", async ({ 
   await expect(playBtn(page)).toHaveText("Stop");
   await playBtn(page).click();
   await expect(playBtn(page)).toHaveText("Play");
+  // Stop opens the Open Session save form.
+  await expect(page.locator(".modal-card")).toContainText("Open Session");
+  await page.keyboard.press("Escape");
   await page.locator(".fretboard-title").click();
   await page.keyboard.press("Space");
   await expect(playBtn(page)).toHaveText("Stop");
@@ -65,6 +68,9 @@ test("direction decides which note comes first", async ({ page }) => {
     await expect(note).toBeVisible();
     const s = await note.getAttribute("data-string");
     await playBtn(page).click();
+    await expect(page.locator(".modal-card")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".modal-card")).toHaveCount(0);
     return s;
   };
   expect(await first()).toBe("0"); // up: starts on the low E string
@@ -81,8 +87,8 @@ test("tempo is clamped, and notes per beat can be chosen", async ({ page }) => {
 });
 
 test("settings: choose a built-in guitar, count-in, and have them remembered", async ({ page }) => {
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await expect(dlg).toBeVisible();
   await dlg.locator('select[aria-label="Guitar sound"]').selectOption("nylon");
   await dlg.locator('select[aria-label="Count-in"]').selectOption("2");
@@ -91,15 +97,15 @@ test("settings: choose a built-in guitar, count-in, and have them remembered", a
   await dlg.locator("button", { hasText: "Done" }).click();
   await expect(page.locator(".fb-playbar__sound")).toHaveText("Nylon classical");
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fb-playbar__sound")).toHaveText("Nylon classical");
 });
 
 test("a SoundFont can be chosen: guitar instruments are listed and playing makes no error", async ({ page, browserName }) => {
   test.setTimeout(90_000);
   test.skip(browserName === "webkit", "SoundFont playback is checked in Chromium");
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await dlg.locator('select[aria-label="Guitar sound"]').selectOption("sf");
   const presets = dlg.locator('select[aria-label="SoundFont instrument"]');
   await expect(presets.locator("optgroup[label=Guitars] option").first()).toBeAttached({ timeout: 60_000 });
@@ -113,8 +119,8 @@ test("a SoundFont can be chosen: guitar instruments are listed and playing makes
 test("the chosen SoundFont instrument is remembered after reopening", async ({ page, browserName }) => {
   test.setTimeout(90_000);
   test.skip(browserName === "webkit", "SoundFont playback is checked in Chromium");
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await dlg.locator('select[aria-label="Guitar sound"]').selectOption("sf");
   const presets = dlg.locator('select[aria-label="SoundFont instrument"]');
   await expect(presets.locator("optgroup[label=Guitars] option").first()).toBeAttached({ timeout: 60_000 });
@@ -122,9 +128,9 @@ test("the chosen SoundFont instrument is remembered after reopening", async ({ p
   await presets.selectOption(second as string);
   await dlg.locator("button", { hasText: "Done" }).click();
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const again = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const again = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await expect(again.locator('select[aria-label="Guitar sound"]')).toHaveValue("sf");
   await expect(again.locator('select[aria-label="SoundFont instrument"]')).toHaveValue(second as string, { timeout: 60_000 });
 });
@@ -136,6 +142,6 @@ test("the SoundFont instrument's name shows straight away on reopening", async (
     localStorage.setItem("ph:fretboard:settings", JSON.stringify({ ...s, instrument: "sf", preset: [0, 24], presetName: "Nylon Guitar" }));
   });
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fb-playbar__sound")).toContainText("Guitar");
 });

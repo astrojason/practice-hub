@@ -29,7 +29,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await page.locator(".fb-tab", { hasText: "Speed" }).click();
 });
 
@@ -63,7 +63,7 @@ test("the log is kept and can be filtered by kind of run", async ({ page }) => {
   await expect(page.locator(".fb-speed-run")).toContainText("Round 1 of 4");
   await page.getByRole("button", { name: "Stop session" }).click();
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await page.locator(".fb-tab", { hasText: "Speed" }).click();
   await expect(page.locator(".fb-speed-log tbody tr")).toHaveCount(1);
   await page.getByRole("radio", { name: "Arpeggio", exact: true }).check();
@@ -76,12 +76,10 @@ test("a session puts what was practised into the Open Session notes", async ({ p
   await page.getByRole("button", { name: /Start session/ }).click();
   await expect(page.locator(".fb-speed-run")).toContainText("Round 1 of 4");
   await page.getByRole("button", { name: "Stop session" }).click();
-  await page.locator("button", { hasText: "Back" }).first().click();
-  await page.locator(".btn-open-session-active").click();
-  const notes = page.locator(".modal-notes-label textarea");
+  const notes = page.locator(".modal-card textarea");
   await expect(notes).toHaveValue(/Speed trainer: Scale run/);
   await expect(notes).toHaveValue(/100 to 160 bpm/);
-  await expect(notes).toHaveValue(/Speed session saved/);
+  await expect(notes).toHaveValue(/Speed session result/);
 });
 
 test("speed bursts are one setting shared with the Practice page", async ({ page }) => {

@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
 });
 
 const STD = [40, 45, 50, 55, 59, 64];
@@ -125,11 +125,12 @@ test("stopping shows a summary, and the history is kept between visits", async (
     await page.keyboard.press("Enter");
   }
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.locator(".fb-quiz-summary")).toContainText("Last session");
   await expect(page.locator(".fb-quiz-summary")).toContainText("of 3 right");
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await quiz(page);
   await expect(page.locator(".fb-quiz-saved")).toContainText("3 answers from 1 session");
 });
@@ -142,7 +143,8 @@ test("the report shows totals and tables, and clearing the history asks first", 
     await page.keyboard.press("Enter");
   }
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Open the report" }).first().click();
   const report = page.locator('[role="dialog"][aria-label="Quiz report"]');
   await expect(report).toContainText("Answered");
@@ -175,9 +177,7 @@ test("starting a quiz puts it in the Open Session notes", async ({ page }) => {
   await quiz(page);
   await start(page);
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator("button", { hasText: "Back" }).first().click();
-  await page.locator(".btn-open-session-active").click();
-  await expect(page.locator(".modal-notes-label textarea")).toHaveValue(/Quiz: Name the note/);
+  await expect(page.locator(".modal-card textarea")).toHaveValue(/Quiz: Name the note/);
 });
 
 // ── weak spots ──
@@ -194,7 +194,7 @@ test.describe("weak spots", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((h) => localStorage.setItem("ph:fretboard:quiz-history", JSON.stringify(h)), weakHistory());
     await page.reload();
-    await page.locator("button", { hasText: "Fretboard" }).first().click();
+    await page.locator("button", { hasText: "Theory Training" }).first().click();
     await page.locator(".fb-key", { hasText: /^Bb$/ }).click();
   });
 
@@ -210,8 +210,8 @@ test.describe("weak spots", () => {
   });
 
   test("the marks can be switched off in settings", async ({ page }) => {
-    await page.locator('button[aria-label="Fretboard settings"]').click();
-    const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+    await page.locator('button[aria-label="Theory Training settings"]').click();
+    const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
     await dlg.locator("label", { hasText: "Mark my weak spots" }).locator("input").uncheck();
     await dlg.locator("button", { hasText: "Done" }).click();
     await expect(page.locator(".fb-note [data-weak]")).toHaveCount(0);
@@ -286,45 +286,58 @@ test("weakness rules: weak after misses, per-key degrees, clears after three qui
 });
 
 test("the usual pace can be a fixed time, set in settings", async ({ page }) => {
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await dlg.getByRole("radio", { name: /A fixed time/ }).check();
   await dlg.locator('input[aria-label="Fixed pace (seconds)"]').fill("2");
   await expect(dlg.getByRole("radio", { name: /A fixed time/ })).toBeChecked();
   await dlg.locator("button", { hasText: "Done" }).click();
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
-  await page.locator('button[aria-label="Fretboard settings"]').click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
+  await page.locator('button[aria-label="Theory Training settings"]').click();
   await expect(page.getByRole("radio", { name: /A fixed time/ })).toBeChecked();
 });
 
-test("stopping a quiz with answers offers to save it to the practice tracker", async ({ page }) => {
+test("stopping a quiz opens the Open Session save form with the time and notes filled in; nothing is saved automatically", async ({ page }) => {
   await quiz(page);
   await start(page);
   await page.keyboard.press("1");
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await expect(page.locator(".confirm-modal")).toContainText("Save this session?");
-  // Not now: stays in the trainer, with the summary.
-  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
-  await expect(page.locator(".fb-quiz-summary")).toBeVisible();
-  // Save: back in the session view with the Open Session form ready to log, time and notes filled in.
-  await start(page);
-  await page.keyboard.press("1");
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator(".confirm-modal button", { hasText: "Save session" }).click();
-  await expect(page.locator(".fretboard-view")).toHaveCount(0);
   const form = page.locator(".modal-card");
   await expect(form).toContainText("Open Session");
   await expect(form.locator('input[type="number"]')).toBeVisible();
   await expect(form.locator("textarea")).toHaveValue(/Quiz: Name the note/);
   await expect(form.getByRole("button", { name: "Log Session" })).toBeVisible();
+  // Closing it without logging keeps you in the trainer, with the summary.
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".fb-quiz-summary")).toBeVisible();
+  await expect(page.locator(".fretboard-view")).toBeVisible();
 });
 
-test("stopping a quiz with no answers does not ask", async ({ page }) => {
+test("leaving Theory Training, or changing what is being studied, ends the session with the save form", async ({ page }) => {
   await quiz(page);
   await start(page);
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await expect(page.locator(".confirm-modal")).toHaveCount(0);
+  await page.keyboard.press("1");
+  await page.locator(".fb-tab", { hasText: "Scales" }).click();
+  await expect(page.locator(".modal-card")).toContainText("Open Session");
+  await expect(page.locator(".modal-card textarea")).toHaveValue(/Quiz: Name the note/);
+  await expect(page.locator(".fretboard-view")).toBeVisible();
+  await page.keyboard.press("Escape");
+  // Start again, then leave: the session view shows, with the form open.
+  await page.getByTestId("fb-play").click();
+  await page.locator("button", { hasText: "Back" }).first().click();
+  await expect(page.locator(".fretboard-view")).toHaveCount(0);
+  await expect(page.locator(".modal-card")).toContainText("Open Session");
+});
+
+test("nothing is asked when no session was started", async ({ page }) => {
+  await page.locator(".fb-tab", { hasText: "Arpeggios" }).click();
+  await page.locator('.fb-note[data-in-position="true"]').first().click();
+  await page.locator(".fb-tab", { hasText: "Chords" }).click();
+  await expect(page.locator(".modal-card")).toHaveCount(0);
+  await page.locator("button", { hasText: "Back" }).first().click();
+  await expect(page.locator(".fretboard-view")).toHaveCount(0);
+  await expect(page.locator(".modal-card")).toHaveCount(0);
 });
 
 test("the quiz results go into the Open Session notes", async ({ page }) => {
@@ -336,7 +349,6 @@ test("the quiz results go into the Open Session notes", async ({ page }) => {
   }
   await page.keyboard.press("1");
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator(".confirm-modal button", { hasText: "Save session" }).click();
   const notes = page.locator(".modal-card textarea");
   await expect(notes).toHaveValue(/Quiz result: Name the note: \d of 3 right \(\d+%\), average \d+\.\d s, fastest right \d+\.\d s/);
   await expect(notes).toHaveValue(/slowest: /);
@@ -348,6 +360,5 @@ test("the Find the note results include the strings picked", async ({ page }) =>
   await start(page);
   await page.locator('.fb-note[data-pickable="true"][data-string="1"]').first().click({ force: true });
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator(".confirm-modal button", { hasText: "Save session" }).click();
   await expect(page.locator(".modal-card textarea")).toHaveValue(/Quiz result: Find the note: \d of 1 right.*strings picked: A 1/);
 });

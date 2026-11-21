@@ -21,6 +21,8 @@ interface Props {
   onSetup: (p: Partial<SpeedSetup>) => void;
   burst: number;
   onBurst: (n: number) => void;
+  burstMix: boolean;
+  onBurstMix: (m: boolean) => void;
   chordIdx: number;
   onChord: (i: number) => void;
   pattern: SeqPattern;
@@ -36,7 +38,7 @@ interface Props {
 
 const dateLabel = (secs: number) => new Date(secs * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-export function SpeedPanel({ setup, onSetup, burst, onBurst, chordIdx, onChord, pattern, onPattern, detail, run, nowMs, logs, onStart, onStop, notice }: Props) {
+export function SpeedPanel({ setup, onSetup, burst, onBurst, burstMix, onBurstMix, chordIdx, onChord, pattern, onPattern, detail, run, nowMs, logs, onStart, onStop, notice }: Props) {
   const [filter, setFilter] = useState<Exercise | "all">("all");
   const ph = phases(setup);
   const rounds = ph.filter((p) => p.kind === "work").length;
@@ -160,6 +162,15 @@ export function SpeedPanel({ setup, onSetup, burst, onBurst, chordIdx, onChord, 
                 ))}
               </select>
             </label>
+            {burst > 1 && (
+          <label>
+            Bursts
+            <select aria-label="Burst placement" value={burstMix ? "mixed" : "after"} onChange={(e) => onBurstMix(e.target.value === "mixed")}>
+              <option value="after">Repeat the run in bursts afterwards</option>
+              <option value="mixed">Mix bursts into the run</option>
+            </select>
+          </label>
+            )}
             <label title="After each run at the round's tempo, play it again in groups of notes at double the tempo, each followed by a rest as long as the burst">
               Speed bursts
               <select aria-label="Speed bursts" value={burst} onChange={(e) => onBurst(parseInt(e.target.value))}>

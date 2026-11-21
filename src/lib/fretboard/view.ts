@@ -277,7 +277,11 @@ export function computeView(i: ViewInput): ViewModel {
     for (const m of marks) {
       if (!m.inPosition) continue;
       const role = cd.tones.find((t) => (cr + t.semis) % 12 === m.midi % 12);
-      if (!role) continue;
+      if (!role) {
+        // Scale tones that are not in the chord fade back so the chord notes stand out.
+        m.dimmed = true;
+        continue;
+      }
       if (useShape) {
         if (!shapeSet.has(`${m.string}:${m.fret}`)) continue;
         m.big = true;

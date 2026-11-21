@@ -3,7 +3,7 @@ import { engine } from "../../lib/fretboard/audio";
 import { appendRecord, bestStreak, clearHistory, loadHistory, type QuizRecord } from "../../lib/fretboard/history";
 import { QUIZ_KINDS, Rng, itemName, kindIndex, makeQuestion, type Question, type QuizKind } from "../../lib/fretboard/quiz";
 import { Weakness, type Pace } from "../../lib/fretboard/weakness";
-import { logTrainerActivity } from "../../lib/trainerSession";
+import { logTrainerActivity, startTrainerSession } from "../../lib/trainerSession";
 
 interface Options {
   tuning: number[];
@@ -140,6 +140,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
   const start = useCallback(
     (k: QuizKind = kind) => {
       setKindState(k);
+      startTrainerSession();
       setRunning(true);
       sessionId.current = Math.floor(Date.now() / 1000);
       setSession([]);
@@ -147,7 +148,7 @@ export function useQuiz({ tuning, key, scaleIdx, pace, scaleName, keyName, onErr
       setTotal(0);
       setStreak(0);
       const info = QUIZ_KINDS[kindIndex(k)];
-      logTrainerActivity(`Fretboard Trainer — Quiz: ${info.name}${k === "degree" ? ` in ${keyName} ${scaleName}` : ""}`);
+      logTrainerActivity(`Theory Training — Quiz: ${info.name}${k === "degree" ? ` in ${keyName} ${scaleName}` : ""}`);
       next(k, maxFret, true);
     },
     [kind, maxFret, next, keyName, scaleName],

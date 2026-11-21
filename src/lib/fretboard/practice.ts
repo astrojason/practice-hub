@@ -80,6 +80,8 @@ export interface PracticeSettings {
   metronomeBars: number;
   /** Speed bursts: groups of this many notes at double speed, each followed by a rest (0 = off). */
   burst: number;
+  /** Mix the bursts into the run (a group of notes at the normal speed, then a burst, and so on) instead of repeating the run in bursts afterwards. */
+  burstMix: boolean;
   /** Circle of fifths: go down in fourths (C F Bb…) instead of up in fifths. */
   fourths: boolean;
   relaySevenths: boolean;
@@ -109,6 +111,7 @@ export const DEFAULT_PRACTICE: PracticeSettings = {
   clicks: "all",
   metronomeBars: 4,
   burst: 0,
+  burstMix: false,
   fourths: false,
   relaySevenths: false,
   relaySet: 3,
@@ -574,9 +577,20 @@ export function practiceEvents(plan: Plan, set: PracticeSettings, perBeat: numbe
       const soft = set.routine === "changes";
       st.chord.forEach(([s, f], k) => ev.push(note(s, f, t0 + k * 0.02, soft ? 0.45 : 0.8)));
     }
-    st.notes.forEach(([s, f], k) => ev.push(note(s, f, t0 + k * stepT, k % Math.max(1, perBeat) === 0 ? 0.85 : 0.68)));
     let beats = st.beats;
-    if (set.burst > 1 && st.notes.length > 0) {
+    if (set.burst > 1 && set.burstMix && st.notes.length > 0) {
+      // Bursts mixed into the run: a group of notes at the normal speed, then a group as a burst at
+      // double speed followed by a rest as long as the burst, and so on. The run lasts as long as usual.
+      st.notes.forEach(([s, f], k) => {
+        const g = Math.floor(k / set.burst);
+        const j = k % set.burst;
+        const burstGroup = g % 2 === 1;
+        if (j === 0) ev.push({ time: t0 + g * set.burst * stepT, kind: { type: "marker", code: `${burstGroup ? "b" : "n"}:${i}` } });
+        const at = g * set.burst * stepT + j * stepT * (burstGroup ? 0.5 : 1);
+        ev.push(note(s, f, t0 + at, j === 0 ? 0.85 : 0.68));
+      });
+    } else st.notes.forEach(([s, f], k) => ev.push(note(s, f, t0 + k * stepT, k % Math.max(1, perBeat) === 0 ? 0.85 : 0.68)));
+    if (set.burst > 1 && !set.burstMix && st.notes.length > 0) {
       // Then the same notes again as speed bursts: groups at double speed, each followed by a rest as long as the burst.
       const b0 = t0 + st.beats * beat;
       ev.push({ time: b0, kind: { type: "marker", code: `b:${i}` } });

@@ -61,7 +61,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
 });
 
 const emit = (page: P, e: unknown) => page.evaluate((ev) => (window as unknown as { __voiceEmit: (x: unknown) => void }).__voiceEmit(ev), e);
@@ -197,7 +197,7 @@ test("in a browser with no microphone access the reason is shown", async ({ page
     delete (window as unknown as Record<string, unknown>).__fretboardVoice;
   });
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await startVoiceQuiz(page);
   await expect(page.locator(".fb-voice-error")).toContainText("desktop app");
 });
@@ -212,16 +212,20 @@ test("call-outs and the next key can be spoken aloud, at the chosen voice speed"
   expect(first.text).toMatch(/^(see|dee|ee|eff|gee|ay|bee)/);
   expect(first.rate).toBeCloseTo(1, 1);
   await page.getByTestId("fb-play").click();
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.keyboard.press("Escape");
   // The circle of fifths says the next key.
   await page.locator('select[aria-label="Routine"]').selectOption({ label: "Circle of fifths" });
   await page.getByTestId("fb-play").click();
   await expect.poll(async () => (await spokenList(page)).some((s) => /major/.test(s.text))).toBe(true);
   await page.getByTestId("fb-play").click();
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.keyboard.press("Escape");
 });
 
 test("voice speed is a setting", async ({ page }) => {
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await dlg.locator('input[aria-label="Voice speed"]').fill("260");
   await dlg.locator('input[aria-label="Voice speed"]').dispatchEvent("change");
   await dlg.locator("button", { hasText: "Done" }).click();
@@ -253,22 +257,22 @@ test("the speech voice can be chosen, and is the one used", async ({ page }) => 
     });
   });
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await expect(dlg.locator('select[aria-label="Voice"] option')).toHaveCount(2);
   await dlg.locator('select[aria-label="Voice"]').selectOption({ label: "Test Voice (en-GB)" });
   await expect.poll(() => page.evaluate(() => (window as unknown as { __voiceUsed: string[] }).__voiceUsed.length)).toBeGreaterThan(0);
   await dlg.locator("button", { hasText: "Done" }).click();
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
-  await page.locator('button[aria-label="Fretboard settings"]').click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
+  await page.locator('button[aria-label="Theory Training settings"]').click();
   await expect(page.locator('select[aria-label="Voice"]')).toHaveValue("Test Voice");
 });
 
 test("the microphone can be chosen, and the choice is used and remembered", async ({ page }) => {
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  const dlg = page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  const dlg = page.locator('[role="dialog"][aria-label="Theory Training settings"]');
   await expect(dlg.locator('select[aria-label="Microphone"] option')).toHaveCount(3);
   await expect(dlg.locator('select[aria-label="Microphone"] option').first()).toContainText("System default (Built-in Microphone)");
   await dlg.locator('select[aria-label="Microphone"]').selectOption("USB Mic");
@@ -277,8 +281,8 @@ test("the microphone can be chosen, and the choice is used and remembered", asyn
   await expect(page.locator(".fb-voice-status")).toContainText("Listening");
   expect(await page.evaluate(() => (window as unknown as { __voiceInput: string }).__voiceInput)).toBe("USB Mic");
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
-  await page.locator('button[aria-label="Fretboard settings"]').click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
+  await page.locator('button[aria-label="Theory Training settings"]').click();
   await expect(page.locator('select[aria-label="Microphone"]')).toHaveValue("USB Mic");
 });
 
@@ -296,7 +300,7 @@ test("answering out loud moves to the next question after three seconds, until i
   expect(Date.now() - started).toBeGreaterThan(2000);
   await expect(page.locator(".fb-quiz-score")).toHaveText("1 / 1");
   await emit(page, { type: "heard", guesses: ["stop"] });
-  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: /Start/ }).first()).toBeVisible();
   await expect(page.locator(".fb-quiz-summary")).toContainText("Last session");
 });

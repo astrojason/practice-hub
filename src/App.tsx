@@ -6,7 +6,7 @@ import { SessionView } from "./components/SessionView";
 import { GpLibraryView } from "./components/GpLibraryView";
 import { InterleavedCalendarView } from "./components/InterleavedCalendarView";
 import { BrowseView } from "./components/BrowseView";
-import { requestSaveSession, useSaveRequests } from "./lib/trainerSession";
+import { consumeLeaveRequest, requestSaveSession, useSaveRequests } from "./lib/trainerSession";
 import { FretboardView } from "./components/fretboard/FretboardView";
 import { Changelog } from "./components/Changelog";
 import { SettingsView } from "./components/SettingsView";
@@ -52,7 +52,7 @@ export function App() {
   useEffect(() => {
     if (saveRequests === lastSaveRequest.current) return;
     lastSaveRequest.current = saveRequests;
-    setView("session");
+    if (consumeLeaveRequest()) setView("session");
   }, [saveRequests]);
   const [helpTopic, setHelpTopic] = useState<string | undefined>(undefined);
   const [metronomeOpen, setMetronomeOpen] = useState(false);

@@ -10,6 +10,8 @@ export interface NeckMark extends Mark {
   /** A note of the previous or next position, shown faded. */
   neighbor?: boolean;
   side?: "prev" | "next";
+  /** A scale note that is not in the chord sounding now. */
+  dimmed?: boolean;
   /** A note on the path joining two positions. */
   link?: boolean;
   /** When two scales are blended: 0 in both, 1 only in the first, 2 only in the second. */
@@ -111,6 +113,7 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
             faded ? "fb-note--dim" : "",
             m.neighbor ? "fb-note--neighbor" : "",
             m.side ? `fb-note--${m.side}` : "",
+            m.dimmed ? "fb-note--chordless" : "",
             m.link ? "fb-note--link" : "",
             m.source === 1 ? "fb-note--only-first" : "",
             m.source === 2 ? "fb-note--only-second" : "",
@@ -123,7 +126,7 @@ export function Neck({ marks, title, tuning, labelFor, colourLabels = [], playin
           const cx = noteX(m.fret);
           const cy = stringY(m.string);
           const r = m.big ? 15 : m.pickable ? 8 : m.inPosition ? 12 : 8;
-          const opacity = m.pickable ? 0.35 : m.neighbor ? 0.55 : faded ? 1 - dimOpacity : 1;
+          const opacity = m.dimmed ? 0.28 : m.pickable ? 0.35 : m.neighbor ? 0.55 : faded ? 1 - dimOpacity : 1;
           return (
             <g
               key={`${m.string}:${m.fret}`}

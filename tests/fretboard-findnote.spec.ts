@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
 });
 
 type P = import("@playwright/test").Page;
@@ -92,7 +92,8 @@ test("the strings you pick are tracked, in the session and in the report", async
   expect(records[0].spot[0]).toBe(1);
   expect(records[2].spot[0]).toBe(4);
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator(".confirm-modal button", { hasText: "Cancel" }).click();
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Open the report" }).first().click();
   const report = page.locator('[role="dialog"][aria-label="Quiz report"]');
   await expect(report).toContainText("Strings you pick");
@@ -113,9 +114,7 @@ test("the fret limit keeps the clickable neck inside the chosen frets", async ({
 test("Find the note counts as a Quiz session in the Open Session notes", async ({ page }) => {
   await startFind(page);
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.locator("button", { hasText: "Back" }).first().click();
-  await page.locator(".btn-open-session-active").click();
-  await expect(page.locator(".modal-notes-label textarea")).toHaveValue(/Quiz: Find the note/);
+  await expect(page.locator(".modal-card textarea")).toHaveValue(/Quiz: Find the note/);
 });
 
 test("how well each note is found feeds the weak spots", async ({ page }) => {
@@ -125,6 +124,6 @@ test("how well each note is found feeds the weak spots", async ({ page }) => {
     localStorage.setItem("ph:fretboard:quiz-history", JSON.stringify(h));
   });
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fb-weak-card")).toContainText("Naming D#/Eb");
 });

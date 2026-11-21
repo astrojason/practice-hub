@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fretboard-view")).toBeVisible();
 });
 
@@ -90,7 +90,7 @@ test("a progression can be saved, reloaded and deleted (deleting asks first)", a
   await page.locator('select[aria-label="My progressions"]').selectOption({ label: "My pop loop" });
   await expect(cards(page)).toHaveCount(4);
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await tab(page, "Progressions");
   await expect(page.locator('select[aria-label="My progressions"] option', { hasText: "My pop loop" })).toBeAttached();
   await page.locator('select[aria-label="My progressions"]').selectOption({ label: "My pop loop" });
@@ -159,9 +159,36 @@ test("arpeggios and chords follow the progression", async ({ page }) => {
   const degrees = await page.locator('.fb-note[data-in-position="true"]').evaluateAll((els) => els.map((e) => e.getAttribute("data-degree")));
   expect(new Set(degrees)).toEqual(new Set(["1", "b3", "5", "b7"]));
   await playBtn(page).click();
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.keyboard.press("Escape");
   await tab(page, "Chords");
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".modal-card")).toHaveCount(0);
   await playBtn(page).click();
   await expect(page.locator(".fb-prog-now")).toContainText("Dm7");
   await expect(page.locator(".chord-box")).toBeVisible();
   await playBtn(page).click();
+});
+
+test("scale tones that are not in the sounding chord are dimmed so the chord notes stand out", async ({ page }) => {
+  await tab(page, "Progressions");
+  await page.locator('select[aria-label="Preset"]').selectOption({ label: "ii – V – I (jazz)" });
+  await expect(page.locator(".fb-note--chordless")).toHaveCount(0);
+  await cards(page).nth(0).click(); // Dm7: D F A C
+  await expect(page.locator(".fb-note--chordtone").first()).toBeVisible();
+  const dimmed = await page.locator(".fb-note--chordless").evaluateAll((els) => els.map((e) => e.getAttribute("data-degree")));
+  expect(dimmed.length).toBeGreaterThan(3);
+  // C major's 3rd, 5th and 7th (E, G, B) are not in Dm7 (D F A C).
+  expect(new Set(dimmed)).toEqual(new Set(["3", "5", "7"]));
+});
+
+test("scales and arpeggios go up and down by default, not just up", async ({ page }) => {
+  await expect(page.locator('select[aria-label="Direction"]')).toHaveValue("updown");
+  const order = await page.evaluate(async () => {
+    const { orderSteps } = await import("/src/lib/fretboard/playback.ts");
+    const steps = [1, 2, 3, 4].map((m) => ({ midi: 40 + m, string: 0, fret: m }));
+    return orderSteps(steps, "updown").map((s) => s.midi);
+  });
+  expect(order).toEqual([41, 42, 43, 44, 43, 42]);
 });

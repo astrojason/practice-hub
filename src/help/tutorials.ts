@@ -39,7 +39,7 @@ export const TUTORIALS: Tutorial[] = [
   },
   {
     id: "fretboard-trainer",
-    title: "Fretboard Trainer",
+    title: "Theory Training",
     content: fretboardTrainer,
   },
 ];

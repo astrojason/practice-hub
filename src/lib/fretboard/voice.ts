@@ -1,4 +1,4 @@
-// Talking to the Fretboard Trainer: speaking aloud (call-outs, key names) with the
+// Talking to the Theory Training: speaking aloud (call-outs, key names) with the
 // webview's speech synthesis, and listening for spoken quiz answers through the
 // desktop app's microphone and macOS speech recogniser (see src-tauri/src/voice.rs).
 

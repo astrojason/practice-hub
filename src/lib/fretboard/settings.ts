@@ -14,6 +14,8 @@ export interface PlaybackSettings {
   notesPerBeat: number;
   direction: Direction;
   loop: boolean;
+  /** Settings saved before scales and arpeggios played up and down by default: 2 once the default was applied. */
+  dirVersion: number;
   /** Bars of count-in before playback (0, 1 or 2). */
   countIn: number;
   click: boolean;
@@ -82,9 +84,10 @@ export const DEFAULT_SETTINGS: FretSettings = {
   ...DEFAULT_SOUND,
   bpm: 80,
   notesPerBeat: 2,
-  direction: "up",
+  direction: "updown",
   loop: true,
   countIn: 1,
+  dirVersion: 2,
   click: true,
   drone: true,
   comp: "beats",
@@ -122,10 +125,12 @@ export const DEFAULT_SETTINGS: FretSettings = {
 
 const KEY = "ph:fretboard:settings";
 
-/** Fretboard Trainer settings, saved in local storage. Problems reading or saving are returned in `error`. */
+/** Theory Training settings, saved in local storage. Problems reading or saving are returned in `error`. */
 export function useFretSettings() {
   const [state] = useState(() => readLocalStorageJSON<Partial<FretSettings>>(KEY, {}));
-  const [settings, setSettings] = useState<FretSettings>({ ...DEFAULT_SETTINGS, ...state.value, connect: typeof state.value.connect === "number" ? state.value.connect : 0, practice: { ...DEFAULT_PRACTICE, ...state.value.practice }, speed: { ...DEFAULT_SPEED, ...state.value.speed } });
+  const [settings, setSettings] = useState<FretSettings>({ ...DEFAULT_SETTINGS, ...state.value, connect: typeof state.value.connect === "number" ? state.value.connect : 0,
+    // Scales and arpeggios now go up and down by default, not just up; carry that over once.
+    ...(state.value.dirVersion === 2 || Object.keys(state.value).length === 0 ? {} : { direction: "updown" as const, dirVersion: 2 }), practice: { ...DEFAULT_PRACTICE, ...state.value.practice }, speed: { ...DEFAULT_SPEED, ...state.value.speed } });
   const [error, setError] = useState<string | null>(state.error);
 
   useEffect(() => {
@@ -138,7 +143,7 @@ export function useFretSettings() {
       try {
         writeLocalStorageJSON(KEY, next);
       } catch (err) {
-        setError(`Couldn't save the Fretboard Trainer settings: ${err instanceof Error ? err.message : String(err)}`);
+        setError(`Couldn't save the Theory Training settings: ${err instanceof Error ? err.message : String(err)}`);
       }
       return next;
     });

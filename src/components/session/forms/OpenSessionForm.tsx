@@ -36,7 +36,7 @@ interface Props {
   onCancel: () => void;  // cancel session entirely (clears timer + closes modal)
   onClose: () => void;   // close modal only (keeps timer running)
   onSubmit: (dailyPracticeTime: number) => void;
-  /** Notes to start with (e.g. what the Fretboard Trainer was practising). */
+  /** Notes to start with (e.g. what the Theory Training was practising). */
   initialNotes?: string;
   /** Open straight on the save form (the timer is paused and its time filled in). */
   startInSave?: boolean;

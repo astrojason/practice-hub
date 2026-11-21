@@ -92,7 +92,7 @@ export function PlayBar({ page, settings, update, playing, soundName, onToggle, 
       <button className="btn-ghost fb-playbar__sound" onClick={onSettings} title="Change the guitar sound">
         {settings.instrument === "sf" ? soundName : (INSTRUMENTS.find((i) => i.id === settings.instrument)?.name ?? soundName)}
       </button>
-      <button className="btn-ghost" onClick={onSettings} aria-label="Fretboard settings" title="Fretboard settings">
+      <button className="btn-ghost" onClick={onSettings} aria-label="Theory Training settings" title="Theory Training settings">
         <Cog6ToothIcon className="icon-sm" /> Settings
       </button>
     </div>

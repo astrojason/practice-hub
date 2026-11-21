@@ -46,7 +46,7 @@ import {
 } from "../../lib/fretboard/theory";
 import { useProgression } from "../../lib/fretboard/useProgression";
 import { computeView, type Page } from "../../lib/fretboard/view";
-import { logTrainerActivity, setTrainerBusy, touchTrainer } from "../../lib/trainerSession";
+import { isTrainerSessionStarted, logTrainerActivity, setTrainerBusy, startTrainerSession, touchTrainer } from "../../lib/trainerSession";
 import { byItem, stringPicks, summarize } from "../../lib/fretboard/history";
 
 const PAGES: { id: Page; label: string }[] = [
@@ -76,7 +76,7 @@ interface Props {
   onBack: () => void;
   onHelp: () => void;
   /** Go back to the session view and open the Open Session form to log what was practised. */
-  onSaveSession: () => void;
+  onSaveSession: (leave?: boolean) => void;
 }
 
 export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
@@ -99,7 +99,6 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   const markerBase = useRef(0);
   const [reportOpen, setReportOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [savePrompt, setSavePrompt] = useState(false);
   const [speedRun, setSpeedRun] = useState<SpeedRun | null>(null);
   const [speedNow, setSpeedNow] = useState(() => Date.now());
   const [speedLogs, setSpeedLogs] = useState<SpeedLog[]>(() => loadSpeedLog().logs);
@@ -141,7 +140,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
     },
   });
   pauseVoice.current = voice.pauseFor;
-  // Stopping a quiz that had answers offers to log it to the practice tracker.
+  // Stopping a quiz logs its results in the Open Session notes and opens the save form.
   function stopQuiz() {
     const answered = quiz.session.length > 0;
     if (answered) {
@@ -151,13 +150,13 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       const slow = byItem(quiz.session)[0];
       const strings = quiz.kind === "findnote" ? stringPicks(quiz.session).filter((e) => e.picks > 0) : [];
       logTrainerActivity(
-        `Fretboard Trainer — Quiz result: ${kindName}: ${sum.right} of ${sum.answered} right (${Math.round((sum.right * 100) / sum.answered)}%), average ${(sum.avgMs / 1000).toFixed(1)} s, fastest right ${(sum.fastestMs / 1000).toFixed(1)} s` +
+        `Theory Training — Quiz result: ${kindName}: ${sum.right} of ${sum.answered} right (${Math.round((sum.right * 100) / sum.answered)}%), average ${(sum.avgMs / 1000).toFixed(1)} s, fastest right ${(sum.fastestMs / 1000).toFixed(1)} s` +
           (slow ? `; slowest: ${slow.item} (${(slow.avgMs / 1000).toFixed(1)} s)` : "") +
           (strings.length ? `; strings picked: ${strings.map((e) => `${plainName(tuning[e.string])} ${e.picks}`).join(", ")}` : ""),
       );
     }
     quiz.stop();
-    if (answered) setSavePrompt(true);
+    onSaveSession();
   }
   // Tell the session view when the trainer is busy on its own, or being used, so its timer knows.
   useEffect(() => {
@@ -288,7 +287,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       setError(err instanceof Error ? err.message : String(err));
       return;
     }
-    logTrainerActivity(`Fretboard Trainer — ${pageLabel}: ${title}, ${posShort}${detail ? ` (${detail})` : ""}`);
+    logTrainerActivity(`Theory Training — ${pageLabel}: ${title}, ${posShort}${detail ? ` (${detail})` : ""}`);
   }
 
   function labelFor(m: { label: string; semis: number }): string {
@@ -332,11 +331,26 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   }
 
   function goPage(p: Page) {
-    if (speedRunRef.current) finishSpeed(false);
+    if (p === page) return;
+    if (speedRunRef.current) finishSpeed(false, false);
     if (quiz.running) quiz.stop();
     if (playing) stopPlayback();
     setPage(p);
     setPosIdx(0);
+    // Changing what is being studied ends the session: the Open Session save form opens.
+    onSaveSession();
+  }
+
+  // Leaving Theory Training ends the session too.
+  function leave() {
+    if (!isTrainerSessionStarted()) {
+      onBack();
+      return;
+    }
+    if (speedRunRef.current) finishSpeed(false, false);
+    if (quiz.running) quiz.stop();
+    if (playing) stopPlayback();
+    onSaveSession(true);
   }
 
   function stepsOf(notes: [number, number][]): Step[] {
@@ -418,6 +432,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
     if (log) {
       markerBase.current = 0;
       loopsSinceRaise.current = 0;
+      startTrainerSession();
     }
     try {
       const built = buildCurrent(countInBars);
@@ -435,6 +450,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
             setBurstPass(false);
           } else if (code.startsWith("a:")) setAnnounceIdx(parseInt(code.slice(2)) + markerBase.current);
           else if (code.startsWith("b:")) setBurstPass(true);
+          else if (code.startsWith("n:")) setBurstPass(false);
           else setMarkerIdx(parseInt(code));
         },
         onLoop: () => {
@@ -465,7 +481,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
     }
     if (log) {
       const over = progMode ? ` over ${prog.name || "a progression"}` : "";
-      logTrainerActivity(`Fretboard Trainer — ${pageLabel}: ${title}, ${posShort} at ${settings.bpm} bpm${over}`);
+      logTrainerActivity(`Theory Training — ${pageLabel}: ${title}, ${posShort} at ${settings.bpm} bpm${over}`);
     }
   }
 
@@ -475,8 +491,11 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       else startSpeed();
       return;
     }
-    if (engine.playing) stopPlayback();
-    else startPlayback(settings.countIn);
+    if (engine.playing) {
+      // Stop ends the session: the Open Session save form opens.
+      stopPlayback();
+      onSaveSession();
+    } else startPlayback(settings.countIn);
   }
 
   // ── Speed trainer sessions ──
@@ -489,6 +508,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   }
 
   function startSpeed() {
+    startTrainerSession();
     if (plan.steps.length === 0) {
       setError(plan.message ?? "Nothing to play with these settings.");
       return;
@@ -510,7 +530,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
     setSpeedNotice(null);
     setSpeedNow(run.startedAt);
     const name = EXERCISES.find((e) => e.id === setup.exercise)?.name;
-    logTrainerActivity(`Fretboard Trainer — Speed trainer: ${name}, ${detail}, ${setup.startBpm} to ${setup.targetBpm} bpm over ${setup.minutes} min`);
+    logTrainerActivity(`Theory Training — Speed trainer: ${name}, ${detail}, ${setup.startBpm} to ${setup.targetBpm} bpm over ${setup.minutes} min`);
     tickSpeed();
   }
 
@@ -550,7 +570,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
   }
 
   // End the session (finished or stopped early) and log it.
-  function finishSpeed(finished: boolean) {
+  function finishSpeed(finished: boolean, prompt = true) {
     const run = speedRunRef.current;
     if (!run) return;
     speedRunRef.current = null;
@@ -567,7 +587,8 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       setError(`This speed session couldn't be saved: ${err instanceof Error ? err.message : String(err)}`);
     }
     setSpeedNotice(`Session saved: ${name} — ${log.startBpm} to ${log.topBpm} bpm in ${mmss(secs)}`);
-    logTrainerActivity(`Fretboard Trainer — Speed session saved: ${name}, ${log.startBpm} to ${log.topBpm} bpm in ${mmss(secs)}${finished ? "" : " (stopped early)"}`);
+    logTrainerActivity(`Theory Training — Speed session result: ${name}, ${log.startBpm} to ${log.topBpm} bpm in ${mmss(secs)}${finished ? "" : " (stopped early)"}`);
+    if (prompt) onSaveSession();
   }
   const finishSpeedRef = useRef(finishSpeed);
   finishSpeedRef.current = finishSpeed;
@@ -579,7 +600,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
     const id = window.setInterval(() => tickSpeedRef.current(), 200);
     return () => window.clearInterval(id);
   }, [running]);
-  useEffect(() => () => finishSpeedRef.current(false), []);
+  useEffect(() => () => finishSpeedRef.current(false, false), []);
 
   // Click a step: show it and play it once.
   function previewStep(i: number) {
@@ -610,7 +631,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       setError(err instanceof Error ? err.message : String(err));
       return;
     }
-    logTrainerActivity(`Fretboard Trainer — Practice: ${settings.practice.routine === "metronome" ? "Time keeping" : st.title}`);
+    logTrainerActivity(`Theory Training — Practice: ${settings.practice.routine === "metronome" ? "Time keeping" : st.title}`);
   }
 
   // Follow changes while playing: restart on the new notes or tempo without another count-in.
@@ -760,7 +781,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
     if (!md?.addEventListener) return;
     const onChange = () => {
       const wasPlaying = engine.playing || speedRunRef.current !== null;
-      if (speedRunRef.current) finishSpeed(false);
+      if (speedRunRef.current) finishSpeed(false, false);
       stopPlayback();
       void engine
         .reset()
@@ -829,10 +850,10 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       )}
       {!focus && (
       <header className="browse-header">
-        <button className="btn-ghost" onClick={onBack} title="Back to session">
+        <button className="btn-ghost" onClick={leave} title="Back to session">
           <ArrowLeftIcon className="icon-sm" /> Back
         </button>
-        <h1 className="browse-title">Fretboard Trainer</h1>
+        <h1 className="browse-title">Theory Training</h1>
         <button className="btn-ghost" onClick={onHelp} title="Every feature and how to use it (F1)">
           Help
         </button>
@@ -996,6 +1017,8 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
               onSetup={(patch) => update({ speed: { ...settings.speed, ...patch } })}
               burst={settings.practice.burst}
               onBurst={(n) => update({ practice: { ...settings.practice, burst: n } })}
+              burstMix={settings.practice.burstMix}
+              onBurstMix={(m) => update({ practice: { ...settings.practice, burstMix: m } })}
               chordIdx={chordIdx}
               onChord={setChordIdx}
               pattern={settings.practice.pattern}
@@ -1113,7 +1136,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
               scaleLabel={`${KEYS[key]} ${scale.name}`}
               pace={settings.pace}
               onQuiz={(degree) => {
-                if (speedRunRef.current) finishSpeed(false);
+                if (speedRunRef.current) finishSpeed(false, false);
                 if (playing) stopPlayback();
                 setPage("quiz");
                 quiz.setFocusWeak(true);
@@ -1256,18 +1279,6 @@ export function FretboardView({ onBack, onHelp, onSaveSession }: Props) {
       )}
       {settingsError && <ErrorModal error={settingsError} onDismiss={clearError} />}
       {reportOpen && <QuizReport history={quiz.history} tuning={tuning} onClear={quiz.clear} onClose={() => setReportOpen(false)} />}
-      {savePrompt && (
-        <ConfirmModal
-          title="Save this session?"
-          message="Log this quiz session to your practice tracker? It opens an Open Session with the time and what you practised filled in."
-          confirmLabel="Save session"
-          onConfirm={() => {
-            setSavePrompt(false);
-            onSaveSession();
-          }}
-          onCancel={() => setSavePrompt(false)}
-        />
-      )}
       {confirmReset && (
         <ConfirmModal
           title="Reset the score?"

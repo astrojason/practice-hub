@@ -1,4 +1,5 @@
 import {
+  AcademicCapIcon,
   ArrowPathIcon,
   ArrowRightStartOnRectangleIcon,
   ChartBarIcon,
@@ -137,8 +138,8 @@ export function SessionHeader({
           <button onClick={onCalendar} className="btn-ghost" title="Practice calendar">
             Calendar
           </button>
-          <button onClick={onFretboard} className="btn-ghost" title="Fretboard Trainer: scales, arpeggios and chords on the neck">
-            <MusicalNoteIcon className="icon-sm" /> Fretboard
+          <button onClick={onFretboard} className="btn-ghost" title="Theory Training: scales, arpeggios, chords, progressions, practice and quizzes">
+            <AcademicCapIcon className="icon-sm" /> Theory Training
           </button>
           <button onClick={onBrowse} className="btn-ghost" title="Browse catalog">
             <RectangleStackIcon className="icon-sm" /> Browse

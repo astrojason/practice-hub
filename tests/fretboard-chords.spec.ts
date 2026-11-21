@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fretboard-view")).toBeVisible();
 });
 
@@ -64,8 +64,7 @@ test("Strum and Play make sound without errors and log what was practised", asyn
   await page.waitForTimeout(300);
   await expect(page.locator(".error-modal")).toHaveCount(0);
   await page.locator("button", { hasText: "Back" }).first().click();
-  await page.locator(".btn-open-session-active").click();
-  await expect(page.locator(".modal-notes-label textarea")).toHaveValue(/Chords: C Major/);
+  await expect(page.locator(".modal-card textarea")).toHaveValue(/Chords: C Major/);
 });
 
 test("double-clicking a chord in the key opens it on the Chords page", async ({ page }) => {

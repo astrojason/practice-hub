@@ -1,6 +1,6 @@
-# Fretboard Trainer
+# Theory Training
 
-The Fretboard Trainer shows scales, arpeggios and chords on a guitar neck, plays them, and gives you exercises and quizzes to learn them. Open it with **Fretboard** in the session header. Anything you play or practise in it starts the **Open Session** timer, and what you worked on (key, scale, position, tempo, quiz kind and the quiz results…) is written into the Open Session's notes. The timer doesn't run while you're idle: after two minutes with no clicks or keys and nothing playing, it stops (without counting those two minutes) and the Open Session form opens so you can log what you did. While the trainer is playing on its own (a loop you play along to, a speed session, a quiz) it keeps running.
+The Theory Training shows scales, arpeggios and chords on a guitar neck, plays them, and gives you exercises and quizzes to learn them. Open it with **Theory Training** in the session header. Pressing **Start** or **Play** anywhere in it starts the **Open Session** timer. **Stop**, leaving Theory Training, or changing what you are studying (for example from Scales to Progressions) ends the session and opens the Open Session save form with the time and notes filled in. Nothing is saved without going through that form. The notes record what you worked on (key, scale, position, tempo, quiz kind and the quiz results…) in the Open Session's notes. The timer doesn't run while you're idle: after two minutes with no clicks or keys and nothing playing, it stops (without counting those two minutes) and the Open Session form opens so you can log what you did. While the trainer is playing on its own (a loop you play along to, a speed session, a quiz) it keeps running.
 
 ## Getting started
 
@@ -30,7 +30,7 @@ Over 50 scales, grouped by sound: major-sounding modes, minor-sounding modes, pe
 - **Blend with.** Lay a second scale over the first. Notes in both look normal; notes only in the first get a teal ring; notes only in the second are diamonds.
 - **Chords in this key.** On the right: the chords built from the scale. Click to hear one, double-click to open it on the Chords page.
 - **Play over a progression.** Plays a progression with drums behind the scale. With **Suit the scale** on (the default) it picks one that fits: the scale's own preset if it has one, otherwise one built from the scale's chords, otherwise a common one for its sound. Turn it off to use the progression from the Progressions page. The scale stays exactly as it is; the notes of the chord playing light up with a coloured ring and a badge showing their role.
-- **Playing.** Play runs through the position up, down, or up and down (Direction), at the tempo and notes-per-beat you choose.
+- **Playing.** Play runs through the position up and down by default (or just up, or just down, with Direction), at the tempo and notes-per-beat you choose.
 - **Drone.** While a scale plays on its own, a soft drone holds the scale's root chord underneath (root, 5th and the scale's own 3rd — E Phrygian gets an E minor drone; scales with no 3rd get a root-and-5th). Turn it on or off next to the tools; its volume is in Settings > Sound. It also plays under ladder and sequence practice and Speed trainer scale runs.
 - **Positions past the 12th fret.** The position list carries on up the neck: after the first set come the same shapes an octave up (or down), so you can play every position all the way to the 22nd fret.
 
@@ -58,7 +58,7 @@ Loop chord progressions with strumming and drums, and see the chord tones on the
 - **Saving.** Name the progression and Save; it appears under My progressions. Deleting a saved one asks first.
 - **Guitar and drums.** Choose how the guitar plays (one strum, every beat, fingerpicking, bass + strum) and a drum style (rock, pop, ballad, half-time, funk, shuffle, bossa, jazz) with its own volume.
 - **Follow the chords.** Off keeps the key's scale; "Scale for each chord" switches to the right scale for each chord (D Dorian over Dm7); "Arpeggio of each chord" shows just the chord. Both stay in your position.
-- **Highlight.** "Chord shape played" makes the strummed shape biggest; "All chord tones" highlights every chord tone in the position.
+- **Highlight.** "Chord shape played" makes the strummed shape biggest; "All chord tones" highlights every chord tone in the position. Scale notes that are not in the chord sounding now fade back so the chord notes stand out.
 
 ## Practice
 
@@ -73,7 +73,7 @@ Exercises that play along and show each step on the neck. Pick a routine, set it
 - **Chord relay.** Every chord of the key in order, each in the next shape up the neck on one set of strings, then back down. Triads or 7ths, strummed or one note at a time.
 - **Time keeping.** Just the click, for practising your own time.
 - **Click patterns.** Every beat, beats 2 and 4, beat 1 only, bars on and off, or random dropped beats — so you keep the time yourself.
-- **Speed bursts.** Each run plays once at the normal speed, then again in short groups of notes at double speed, each followed by a rest as long as the group. A badge by the step's name shows which pass is playing. Shared with the Speed trainer's setting.
+- **Speed bursts.** Each run plays once at the normal speed, then again in short groups of notes at double speed, each followed by a rest as long as the group. A badge by the step's name shows which pass is playing. Shared with the Speed trainer's setting. Choose "Mix bursts into the run" to alternate groups instead: a group at the normal speed, then a burst, and so on, in a run of the usual length.
 - **Call-outs and voice.** Show each note's name, interval or degree as it plays; **Speak call-outs** says them out loud. Voice speed is in Settings > Sound.
 - **Speed trainer (tempo-raising).** Raises the tempo by a set amount every few loops, up to a limit.
 - **Step list.** The chips under the options are the steps of the routine. Click one to see and hear it.

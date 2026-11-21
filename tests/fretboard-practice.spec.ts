@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fretboard-view")).toBeVisible();
 });
 
@@ -148,4 +148,34 @@ test("the speed trainer raises the tempo every few loops", async ({ page }) => {
   await playBtn(page).click();
   await expect(page.locator('input[aria-label="Tempo (bpm)"]')).not.toHaveValue("240", { timeout: 8000 });
   await playBtn(page).click();
+});
+
+test("bursts can be mixed into the run instead of repeating it afterwards", async ({ page }) => {
+  await routine(page, "Scale sequences");
+  await expect(page.locator('select[aria-label="Burst placement"]')).toHaveCount(0);
+  await page.locator('select[aria-label="Speed bursts"]').selectOption("4");
+  await expect(page.locator('select[aria-label="Burst placement"]')).toBeVisible();
+  await page.locator('select[aria-label="Burst placement"]').selectOption("mixed");
+  // Same length as a normal run: the burst groups sit among the normal ones.
+  const r = await page.evaluate(async () => {
+    const { buildPlan, practiceEvents, DEFAULT_PRACTICE } = await import("/src/lib/fretboard/practice.ts");
+    const { SCALES, TUNINGS } = await import("/src/lib/fretboard/theory.ts");
+    const tun = TUNINGS[0].strings;
+    const base = { ...DEFAULT_PRACTICE, routine: "sequences" as const, clicks: "off" as const };
+    const plan = buildPlan(base, 2, tun, true, 0, SCALES[0], 0, []);
+    const normal = practiceEvents(plan, base, 2, tun, 1);
+    const after = practiceEvents(plan, { ...base, burst: 4 }, 2, tun, 1);
+    const mixed = practiceEvents(plan, { ...base, burst: 4, burstMix: true }, 2, tun, 1);
+    const times = mixed.events.filter((e) => e.kind.type === "note").map((e) => e.time);
+    return { normal: normal.length, after: after.length, mixed: mixed.length, t: times.slice(0, 8), marks: mixed.events.filter((e) => e.kind.type === "marker").map((e) => (e.kind as { code: string }).code).slice(0, 4) };
+  });
+  expect(r.mixed).toBe(r.normal);
+  expect(r.after).toBeGreaterThan(r.normal);
+  // First group of 4 at the normal speed (half a beat apart), the next at double speed (a quarter beat).
+  expect(r.t.slice(0, 4)).toEqual([0, 0.5, 1, 1.5]);
+  expect(r.t.slice(4, 8)).toEqual([2, 2.25, 2.5, 2.75]);
+  expect(r.marks.slice(0, 3)).toEqual(["p:0", "n:0", "b:0"]);
+  // And on the Speed page.
+  await page.locator(".fb-tab", { hasText: "Speed" }).click();
+  await expect(page.locator('select[aria-label="Burst placement"]')).toBeVisible();
 });

@@ -1,4 +1,4 @@
-// Music theory for the Fretboard Trainer: keys, spelling, scales, chords, guitar
+// Music theory for the Theory Training: keys, spelling, scales, chords, guitar
 // positions and chord voicings. Ported from the Craft "visual scale, arpeggio,
 // chord" app's theory module.
 

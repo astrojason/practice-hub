@@ -25,14 +25,14 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fretboard-view")).toBeVisible();
 });
 
 const playBtn = (page: import("@playwright/test").Page) => page.getByTestId("fb-play");
 const openSettings = async (page: import("@playwright/test").Page) => {
-  await page.locator('button[aria-label="Fretboard settings"]').click();
-  return page.locator('[role="dialog"][aria-label="Fretboard settings"]');
+  await page.locator('button[aria-label="Theory Training settings"]').click();
+  return page.locator('[role="dialog"][aria-label="Theory Training settings"]');
 };
 const done = (dlg: import("@playwright/test").Locator) => dlg.locator("button", { hasText: "Done" }).click();
 
@@ -142,6 +142,6 @@ test("a light theme can be chosen and is remembered", async ({ page }) => {
   await done(dlg);
   await expect(page.locator(".fretboard-view")).toHaveAttribute("data-theme", "light");
   await page.reload();
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
   await expect(page.locator(".fretboard-view")).toHaveAttribute("data-theme", "light");
 });

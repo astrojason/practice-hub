@@ -163,6 +163,15 @@ export function PracticePanel({ set, onChange, plan, selected, playingStep, onSt
             ))}
           </select>
         </label>
+        {set.burst > 1 && (
+          <label>
+            Bursts
+            <select aria-label="Burst placement" value={set.burstMix ? "mixed" : "after"} onChange={(e) => onChange({ burstMix: e.target.value === "mixed" })}>
+              <option value="after">Repeat the run in bursts afterwards</option>
+              <option value="mixed">Mix bursts into the run</option>
+            </select>
+          </label>
+        )}
         <label>
           Call-outs
           <select aria-label="Call-outs" value={set.callouts} onChange={(e) => onChange({ callouts: e.target.value as PracticeSettings["callouts"] })}>

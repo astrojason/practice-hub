@@ -73,9 +73,9 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
 
   return createPortal(
     <div className="error-modal-overlay" onClick={onClose}>
-      <div className="error-modal fb-settings" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Fretboard settings">
+      <div className="error-modal fb-settings" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Theory Training settings">
         <div className="error-modal-header">
-          <h3 className="error-modal-title" style={{ color: "var(--text)" }}>Fretboard settings</h3>
+          <h3 className="error-modal-title" style={{ color: "var(--text)" }}>Theory Training settings</h3>
           <button className="error-modal-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
@@ -429,7 +429,7 @@ export function FretSettingsModal({ settings, update, presets, fontLoading, user
       {confirmRemove && (
         <ConfirmModal
           title="Remove SoundFont?"
-          message={`Remove ${confirmRemove} from the Fretboard Trainer? The file you added stays wherever you got it from.`}
+          message={`Remove ${confirmRemove} from the Theory Training? The file you added stays wherever you got it from.`}
           confirmLabel="Remove"
           onConfirm={() => {
             onRemoveFont(confirmRemove);

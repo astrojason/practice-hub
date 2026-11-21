@@ -16,6 +16,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("ph:refreshToken", "fake-refresh-token");
     (window as unknown as { __trainerIdleMs: number }).__trainerIdleMs = 3000;
+    localStorage.setItem("ph:fretboard:settings", JSON.stringify({ countIn: 0, bpm: 240, notesPerBeat: 4, loop: false, click: false }));
   });
   await page.route("**/securetoken.googleapis.com/**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id_token: "fake-id-token", refresh_token: "fake-refresh-token" }) })
@@ -23,7 +24,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/user/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockUser) }));
   await page.route("**/user/dashboard**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockDashboard) }));
   await page.goto("/");
-  await page.locator("button", { hasText: "Fretboard" }).first().click();
+  await page.locator("button", { hasText: "Theory Training" }).first().click();
 });
 
 const timer = async (page: import("@playwright/test").Page) => (await page.locator(".btn-open-session-active").textContent())?.trim();
@@ -33,14 +34,14 @@ const seconds = (t: string | undefined) => {
 };
 
 test("the Open Session the trainer started stops when nobody is doing anything, and asks to save", async ({ page }) => {
-  await page.locator('.fb-note[data-in-position="true"]').first().click();
+  await page.getByTestId("fb-play").click();
   await expect(page.locator(".btn-open-session-active")).toBeAttached();
-  // Idle: no input and nothing playing. The trainer closes and the save form opens.
+  // Idle (the run ends by itself, then nothing is touched): no input and nothing playing. The trainer closes and the save form opens.
   await expect(page.locator(".fretboard-view")).toHaveCount(0, { timeout: 15000 });
   const form = page.locator(".modal-card");
   await expect(form).toContainText("Open Session");
   await expect(form.getByRole("button", { name: "Log Session" })).toBeVisible();
-  await expect(form.locator("textarea")).toHaveValue(/Fretboard Trainer/);
+  await expect(form.locator("textarea")).toHaveValue(/Theory Training/);
   // The idle time wasn't counted.
   expect(parseInt(await form.locator('input[type="number"]').inputValue())).toBeLessThanOrEqual(3);
 });
