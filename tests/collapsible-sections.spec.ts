@@ -89,7 +89,7 @@ const studyMaterialWithChildren = {
 const mockDashboard = {
   scale: null,
   key_signature: null,
-  overdue: [overdueSong],
+  overdue: [],
   to_review: { songs: [] },
   to_learn: { songs: [] },
   project: { songs: [] },
@@ -118,6 +118,13 @@ test.beforeEach(async ({ page }) => {
     })
   );
 
+  // Overdue songs come from their own list, not the dashboard.
+  await page.route("**/overdue?**", (route) =>
+    route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ songs: [overdueSong], total: 1, page: 1, limit: 100, filter_options: {} }),
+    })
+  );
   await page.route("**/user/me", (route) =>
     route.fulfill({
       status: 200,

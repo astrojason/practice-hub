@@ -174,3 +174,30 @@ test("time paused to practise counts toward the limit, like the timer does", asy
   // The first pass end (about 1.7s on) stops it; counting only the passes played it would take about 3.7s.
   await expect(page.locator("video")).toHaveJSProperty("paused", true, { timeout: 3000 });
 });
+
+test("the limit is measured on the item's own timer shown in the header, including time before the loop started", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".item-group", { hasText: "Exercises" }).locator(".item-group-header").click();
+  await page.locator(".item-card").first().locator('button[title="Start timer"]').click();
+  await page.locator(".modal-resource-link--local", { hasText: "Practice Video" }).click();
+  await expect(page.locator("video")).toBeVisible();
+  await expect(page.locator(".media-player__time")).toContainText("0:12", { timeout: 10000 });
+  await expect(page.locator(".media-player__session-timer--active")).toBeVisible();
+  // The timer has been running since before any looping; let it pass the limit first.
+  await page.waitForTimeout(3300);
+  await page.fill("#loopStart", "0:01");
+  await page.fill("#loopEnd", "0:02");
+  await page.fill("#loopMaxMinutes", "3s");
+  await page.evaluate(() => { void document.querySelector("video")!.play(); });
+  // The timer is already past 3s, so the first pass end (~2s on) is the last: it must not start another.
+  await expect(page.locator("video")).toHaveJSProperty("paused", true, { timeout: 2800 });
+});
+
+test("a time limit set for a file is remembered for that file, like its other settings", async ({ page }) => {
+  await openVideo(page);
+  await page.fill("#loopMaxMinutes", "6");
+  await page.waitForTimeout(1200); // the file's settings are saved shortly after a change
+  await page.reload();
+  await openVideo(page);
+  await expect(page.locator("#loopMaxMinutes")).toHaveValue("6");
+});

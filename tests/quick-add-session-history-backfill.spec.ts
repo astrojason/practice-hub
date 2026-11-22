@@ -94,12 +94,8 @@ test("a quick-added exercise's real practice history is backfilled instead of sh
   await page.locator(".session-header-actions button", { hasText: "Quick add" }).click();
   await page.locator(".quick-add-search").fill("Metronome");
   await page.locator(".qa-row", { hasText: "Metronome Drill" }).locator(".qa-row-add").click();
-  await page.locator(".quick-add-close").click();
-
-  await page.locator(".item-group", { hasText: "Additional" }).locator(".item-group-header").click();
-  const card = page.locator(".item-card", { hasText: "Metronome Drill" });
-  // Adding from Quick Add starts the timer; open its running session.
-  await card.locator('button[title="Open session"]').click();
+  // Adding from Quick Add starts a session: its window opens and Additional expands.
+  await expect(page.locator(".modal-card")).toBeVisible();
 
   await expect(page.locator(".last-session")).toBeVisible();
   await expect(page.getByText(/2 days ago/i)).toBeVisible();
@@ -111,8 +107,7 @@ test("adding an exercise from quick add also starts its session timer", async ({
   await page.locator(".session-header-actions button", { hasText: "Quick add" }).click();
   await page.locator(".quick-add-search").fill("Metronome");
   await page.locator(".qa-row", { hasText: "Metronome Drill" }).locator(".qa-row-add").click();
-  await page.locator(".quick-add-close").click();
-
-  await page.locator(".item-group", { hasText: "Additional" }).locator(".item-group-header").click();
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.locator(".modal-close").click();
   await expect(page.locator(".item-card.active", { hasText: "Metronome Drill" })).toBeVisible();
 });

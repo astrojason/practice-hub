@@ -228,6 +228,17 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
   // Latest parent rollup time (seconds); null when the item has no parent.
   const parentElapsedRef = useRef<number | null>(null);
   parentElapsedRef.current = parentTimerElapsed ?? null;
+  // This item's own session timer (the left-hand one in the header); null when there isn't one
+  // going (never started), in which case the loop's own clock is used.
+  const ownElapsedRef = useRef<number | null>(null);
+  ownElapsedRef.current = timerElapsed !== undefined && (isTimerActive || timerElapsed > 0) ? timerElapsed : null;
+  // What a loop's time limit is measured against: the parent total when "of parent total" is
+  // ticked, otherwise this item's timer, as shown. Null (no timer) means the loop's own clock.
+  const limitElapsedNow = () => (loopMaxUseParentRef.current && parentElapsedRef.current !== null
+    ? parentElapsedRef.current
+    : ownElapsedRef.current);
+  // The audio engine asks for the same time when a pass ends.
+  useEffect(() => { audioActions.setLoopElapsedSource(limitElapsedNow); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const loopIncreaseEnabledRef = useRef(false);
   const loopIncreaseByRef = useRef(5);
   const loopIncreaseAtRef = useRef(3);
@@ -511,7 +522,6 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       sequenceLoopMaxMinutesRef.current = null;
       setLoopMaxUseParentLocal(false);
       loopMaxUseParentRef.current = false;
-      audioActions.setLoopElapsedSource(null);
       setSequenceLoopMaxUseParentLocal(false);
       sequenceLoopMaxUseParentRef.current = false;
       setMutedStems([]);
@@ -584,7 +594,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const useParent = Boolean(preset.loopMaxUseParent);
     setLoopMaxUseParentLocal(useParent);
     loopMaxUseParentRef.current = useParent;
-    audioActions.setLoopElapsedSource(useParent ? () => parentElapsedRef.current : null);
+    
     const seqUseParent = Boolean(preset.sequenceLoopMaxUseParent);
     setSequenceLoopMaxUseParentLocal(seqUseParent);
     sequenceLoopMaxUseParentRef.current = seqUseParent;
@@ -783,9 +793,8 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
       const max = loopMaxTimesRef.current;
       const maxMin = loopMaxMinutesRef.current;
       const countDone = max !== null && videoPassCountRef.current >= max;
-      const elapsed = loopMaxUseParentRef.current && parentElapsedRef.current !== null
-        ? parentElapsedRef.current
-        : videoLoopStartRef.current === null ? videoLoopElapsedRef.current : (performance.now() - videoLoopStartRef.current) / 1000;
+      const elapsed = limitElapsedNow()
+        ?? (videoLoopStartRef.current === null ? videoLoopElapsedRef.current : (performance.now() - videoLoopStartRef.current) / 1000);
       const timeDone = maxMin !== null && elapsed >= maxMin * 60;
       if (!countDone && !timeDone) return false;
       videoPassCountRef.current = 0;
@@ -1583,9 +1592,9 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
     const order = sequenceOrderRef.current;
     const nextIndex = sequenceIndexRef.current + 1;
     const sequenceMaxMin = sequenceLoopMaxMinutesRef.current;
-    const sequenceElapsed = sequenceLoopMaxUseParentRef.current && parentElapsedRef.current !== null
+    const sequenceElapsed = (sequenceLoopMaxUseParentRef.current && parentElapsedRef.current !== null
       ? parentElapsedRef.current
-      : (performance.now() - sequenceStartMsRef.current) / 1000;
+      : ownElapsedRef.current) ?? (performance.now() - sequenceStartMsRef.current) / 1000;
     const timeLeft = sequenceMaxMin === null || sequenceElapsed < sequenceMaxMin * 60;
     if (nextIndex < order.length) {
       setSequenceIndex(nextIndex);
@@ -2209,7 +2218,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   className="media-player__loop-num-input"
                   value={loopMaxMinutes}
                   placeholder="∞"
-                  title="Time of looping before stopping, as minutes (6), minutes:seconds (6:30) or seconds (90s) — stops when the next pass would start at or after this (blank = no time limit)"
+                  title="Time on this item's timer before stopping, as minutes (6), minutes:seconds (6:30) or seconds (90s) — stops when the next pass would start at or after this (blank = no time limit)"
                   onCommit={v => {
                     setLoopMaxMinutesLocal(v);
                     loopMaxMinutesRef.current = v;
@@ -2222,7 +2231,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                   className="media-player__checkbox-label"
                   title={parentTimerElapsed === undefined
                     ? "Only available when this item belongs to a parent"
-                    : "Count the parent's total practice time (the right-hand timer) toward the limit instead of just this loop's playing time"}
+                    : "Count the parent's total practice time (the right-hand timer) toward the limit instead of this item's own timer (the left-hand one)"}
                 >
                   <input
                     type="checkbox"
@@ -2232,7 +2241,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     onChange={e => {
                       setLoopMaxUseParentLocal(e.target.checked);
                       loopMaxUseParentRef.current = e.target.checked;
-                      audioActions.setLoopElapsedSource(e.target.checked ? () => parentElapsedRef.current : null);
+                      
                       schedulePresetSave();
                     }}
                   />
@@ -2376,7 +2385,7 @@ export function MediaPlayer({ filePath, itemName, onClose, timerElapsed, parentT
                     value={sequenceLoopMaxMinutes}
                     placeholder="∞"
                     disabled={sequenceActive}
-                    title="Time before stopping, as minutes (6), minutes:seconds (6:30) or seconds (90s) — stops when the next lap would start at or after this (blank = no time limit)"
+                    title="Time on this item's timer before stopping, as minutes (6), minutes:seconds (6:30) or seconds (90s) — stops when the next lap would start at or after this (blank = no time limit)"
                     onCommit={v => {
                       setSequenceLoopMaxMinutesLocal(v);
                       sequenceLoopMaxMinutesRef.current = v;

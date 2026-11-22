@@ -17,10 +17,7 @@ const mockUser = {
   num_songs_to_learn: 5,
 };
 
-const mockDashboard = {
-  scale: null,
-  key_signature: null,
-  overdue: [
+const overdueSongs = [
     {
       id: 1,
       name: "Overdue Song",
@@ -40,7 +37,12 @@ const mockDashboard = {
       updated_timestamp: 0,
       meta: { sessions: [], song_lists: [] },
     },
-  ],
+  ];
+
+const mockDashboard = {
+  scale: null,
+  key_signature: null,
+  overdue: [],
   to_review: { songs: [] },
   to_learn: { songs: [] },
   project: { songs: [] },
@@ -85,6 +87,13 @@ test.beforeEach(async ({ page }) => {
     return route.fulfill({ status: 200, headers: { "Content-Type": "video/mp4", "Accept-Ranges": "bytes" }, body: videoBuf });
   });
 
+  // The dashboard no longer carries the overdue songs; they come from their own list.
+  await page.route("**/overdue?**", (route) =>
+    route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ songs: overdueSongs, total: overdueSongs.length, page: 1, limit: 100, filter_options: {} }),
+    })
+  );
   await page.goto("/");
 });
 
@@ -96,8 +105,9 @@ test("opening a video resource on a Quick-Added song does not stop the timer or 
   await page.locator(".qa-section-header").click();
   await page.locator(".qa-row-add", { hasText: "Add" }).first().click();
 
-  // Expand the "Additional" group and find the song card.
-  await page.locator(".item-group", { hasText: "Additional" }).locator(".item-group-header").click();
+  // Adding opens the song's session window and expands "Additional"; close the window to find the card.
+  await expect(page.locator(".modal-card")).toBeVisible();
+  await page.locator(".modal-close").click();
   const card = page.locator(".item-card", { hasText: "Overdue Song" }).first();
   await expect(card).toBeVisible();
 
@@ -124,4 +134,21 @@ test("opening a video resource on a Quick-Added song does not stop the timer or 
   // have been reset — the underlying session/timer was never cancelled.
   await expect(page.locator(".modal-card")).toBeVisible();
   await expect(page.locator(".modal-elapsed-display")).not.toHaveText("0:00");
+});
+
+test("the Add panel lists overdue songs from the overdue list, with a loading state", async ({ page }) => {
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".session-header-actions button", { hasText: "Add" }).first().click();
+  await page.locator(".qa-section-header").click();
+  await expect(page.locator(".qa-row", { hasText: "Overdue Song" })).toBeVisible();
+});
+
+test("a failed load of the overdue list shows the error instead of 'No overdue items'", async ({ page }) => {
+  await page.route("**/overdue?**", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Overdue exploded" }) })
+  );
+  await expect(page.locator("h1", { hasText: "Practice Hub" })).toBeVisible();
+  await page.locator(".session-header-actions button", { hasText: "Add" }).first().click();
+  await expect(page.locator(".error-modal")).toContainText("Overdue exploded");
+  await expect(page.getByText("No overdue items")).toHaveCount(0);
 });

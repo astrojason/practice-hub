@@ -358,6 +358,22 @@ export async function getCatalogExercises(
   return handleResponse<CatalogExercisesResponse>(response);
 }
 
+/** Every overdue song, most overdue first. The dashboard no longer carries them; they are their own paged list. */
+export async function getOverdueSongs(token: string): Promise<Song[]> {
+  const limit = 100;
+  const maxPages = 20;
+  const songs: Song[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const response = await apiFetch(`${API_BASE_URL}/overdue?page=${page}&limit=${limit}`, {
+      headers: authHeaders(token),
+    });
+    const res = await handleResponse<{ songs: Song[]; total: number }>(response);
+    songs.push(...res.songs);
+    if (songs.length >= res.total || res.songs.length === 0) break;
+  }
+  return songs;
+}
+
 export async function getSong(token: string, songId: number): Promise<Song> {
   const response = await apiFetch(`${API_BASE_URL}/song/${songId}`, {
     headers: authHeaders(token),

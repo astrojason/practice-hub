@@ -7,21 +7,26 @@ import {
   XMarkIcon,
 } from "@heroicons/react/16/solid";
 import type { Song } from "../../api/types";
+import { getOverdueSongs } from "../../api/client";
+import { ErrorModal } from "../ErrorModal";
 import { decodeHtml } from "../../lib/decodeHtml";
 
 interface Props {
-  overdueSongs: Song[];
+  token: string;
   existingSongIds: ReadonlySet<number>;
   onAddSong: (song: Song) => void;
   onClose: () => void;
 }
 
 export function QuickAddPanel({
-  overdueSongs,
+  token,
   existingSongIds,
   onAddSong,
   onClose,
 }: Props) {
+  const [overdueSongs, setOverdueSongs] = useState<Song[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [overdueCollapsed, setOverdueCollapsed] = useState(true);
   const [addedSongIds, setAddedSongIds] = useState<Set<number>>(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
@@ -29,6 +34,15 @@ export function QuickAddPanel({
   const [filterPlaylist, setFilterPlaylist] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOverdueSongs(token)
+      .then((songs) => { if (!cancelled) setOverdueSongs(songs); })
+      .catch((err) => { if (!cancelled) setLoadError(`Couldn't load the overdue songs: ${err instanceof Error ? err.message : String(err)}`); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [token]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -90,6 +104,7 @@ export function QuickAddPanel({
 
   return (
     <div className="quick-add-backdrop" onClick={onClose}>
+      {loadError && <ErrorModal error={loadError} onDismiss={() => setLoadError(null)} />}
       <div className="quick-add-panel" onClick={(e) => e.stopPropagation()}>
         {/* ── Header ── */}
         <div className="quick-add-header">
@@ -179,7 +194,9 @@ export function QuickAddPanel({
 
         {/* ── Body ── */}
         <div className="quick-add-body">
-          {visibleOverdue.length === 0 ? (
+          {loading ? (
+            <div className="qa-empty qa-empty-center" role="status">Loading overdue songs…</div>
+          ) : loadError ? null : visibleOverdue.length === 0 ? (
             <div className="qa-empty qa-empty-center">No overdue items</div>
           ) : (
             <section className="qa-section">

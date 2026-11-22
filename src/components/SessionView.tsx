@@ -1110,14 +1110,23 @@ export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, 
   }
 
   // ── Quick Add handlers ────────────────────────────────────────────────────────
+  // Adding an item starts a session with it: its timer runs and its session window opens
+  // (the Additional group expands itself to show the card), and the picker gets out of the way.
+  function beginAddedItem(key: string) {
+    startTimer(key);
+    requestSessionModal(key);
+    setShowQuickAddModal(false);
+    setShowAdd(false);
+  }
+
   function handleAddSong(song: Song) {
     setAdditionalSongs((prev) => [...prev, song]);
-    startTimer(makeItemKey("song", song.id));
+    beginAddedItem(makeItemKey("song", song.id));
   }
 
   function handleAddExercise(exercise: CatalogExercise) {
     setAdditionalExercises((prev) => [...prev, catalogExerciseToDashboard(exercise)]);
-    startTimer(makeItemKey("exercise", exercise.id));
+    beginAddedItem(makeItemKey("exercise", exercise.id));
     // The catalog shape has no session history, so the freshly-added card would
     // otherwise show "never practiced" even for exercises with real history —
     // fill it in from the real session-history endpoint once it loads.
@@ -1138,7 +1147,7 @@ export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, 
 
   function handleAddStudyMaterial(material: CatalogStudyMaterial) {
     setAdditionalStudyMaterials((prev) => [...prev, catalogStudyMaterialToDashboard(material)]);
-    startTimer(makeItemKey("studymaterial", material.id));
+    beginAddedItem(makeItemKey("studymaterial", material.id));
     // Same gap as exercises above — backfill real session history in the background.
     getStudyMaterialSessionHistory(token, material.id)
       .then((res) => {
@@ -1397,7 +1406,7 @@ export function SessionView({ token, onSignOut, admin, onGpLibrary, onCalendar, 
 
       {showAdd && (
         <QuickAddPanel
-          overdueSongs={dashboard?.overdue ?? []}
+          token={token}
           existingSongIds={existingSongIds}
           onAddSong={handleAddSong}
           onClose={() => setShowAdd(false)}

@@ -85,6 +85,19 @@ export interface ResourceLinksProps {
  * Shared between SessionModal and the in-app MediaPlayer so resources stay reachable
  * while a local file is already playing.
  */
+/** What a link shows: its name; with no name, "Lick Library" for that site, otherwise the site's address. */
+export function resourceLinkLabel(r: { name?: string | null; url: string }): string {
+  const name = (r.name ?? "").trim();
+  if (name) return name;
+  let host = "";
+  try {
+    host = new URL(r.url).hostname.replace(/^www\./, "");
+  } catch {
+    return r.url;
+  }
+  return host === "licklibrary.com" || host.endsWith(".licklibrary.com") ? "Lick Library" : host || r.url;
+}
+
 export function ResourceLinks({ resources, onOpenFile, onGpView, onLocalMediaOpen }: ResourceLinksProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -148,7 +161,7 @@ export function ResourceLinks({ resources, onOpenFile, onGpView, onLocalMediaOpe
             }}
           >
             <ArrowTopRightOnSquareIcon style={{ width: 11, height: 11 }} />
-            {r.name}
+            {resourceLinkLabel(r)}
           </button>
         );
       })}
