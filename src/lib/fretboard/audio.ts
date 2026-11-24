@@ -309,7 +309,8 @@ class Engine {
   noteAt(midi: number, when: number, velocity = 0.85, string = -1): void {
     const ctx = this.ensure();
     const t = Math.max(when, ctx.currentTime);
-    if (this.useSoundFont()) {
+    // A SoundFont only holds whole semitones; a detuned pitch (quartal drift) uses the built-in sound.
+    if (this.useSoundFont() && Number.isInteger(midi)) {
       this.selectPreset();
       const vel = Math.round(Math.min(1, velocity) * 127);
       this.sf!.noteOn(0, midi, vel, { time: t });
@@ -360,6 +361,13 @@ class Engine {
   /** Play a note now. */
   pluck(midi: number, string = -1, velocity = 0.85): void {
     this.noteAt(midi, 0, velocity, string);
+  }
+
+  /** Play notes `at` seconds from now (MIDI numbers may be fractional for detuned pitches). */
+  playLater(notes: { midi: number; at: number; string?: number }[]): void {
+    const ctx = this.ensure();
+    const now = ctx.currentTime;
+    notes.forEach((n) => this.noteAt(n.midi, now + n.at, 0.8, n.string ?? -1));
   }
 
   strumNow(notes: { midi: number; string: number }[], gap = 0.035): void {

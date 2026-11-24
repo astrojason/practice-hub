@@ -3481,3 +3481,75 @@ button.tab-player-mixer-name { background: none; border: none; padding: 0; text-
 .ai-challenges-generate { margin-bottom: 8px; }
 
 .media-player__loop-num-input.is-invalid { border-color: var(--red, #e5484d); outline: 1px solid var(--red, #e5484d); }
+
+/* ─── Theory Training: Tools tab (chord/scale identifier, circle of fifths, quartal chords) ─── */
+.fb-tools { padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fb-tool { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fb-tool-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-tool-tab {
+  padding: 6px 14px; background: var(--surface-2); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 999px;
+}
+.fb-tool-tab:hover { color: var(--text); background: var(--surface-3); }
+.fb-tool-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fb-tools__blurb { margin: 0; font-size: 13px; }
+.fb-tool-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; align-items: start; }
+.fb-tool p.fb-dim { margin: 0; font-size: 13px; }
+.fb-tool .fretboard-controls { align-items: flex-end; margin-bottom: 0; }
+
+.fb-id-shape {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px; letter-spacing: 0.08em;
+  padding: 4px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text);
+}
+.fb-id-result, .fb-scale-result {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 0;
+  border-bottom: 1px solid var(--border-dim);
+}
+.fb-id-result:last-of-type, .fb-scale-result:last-of-type { border-bottom: 0; }
+.fb-id-result__name { font-size: 15px; }
+.fb-id-result--best .fb-id-result__name { font-size: 22px; color: var(--accent-light); }
+.fb-scale-result--best strong { color: var(--accent-light); }
+.fb-id-result .btn-ghost, .fb-scale-result .btn-ghost { margin-left: auto; padding: 2px 8px; font-size: 12px; }
+.fb-id-result .btn-ghost + .btn-ghost, .fb-scale-result .btn-ghost + .btn-ghost { margin-left: 0; }
+.fb-similar-chip .fb-chord-chip__roman { white-space: nowrap; }
+.fb-chord-chip--on { border-color: var(--accent); background: var(--accent-dim); }
+
+.fb-pc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-pc-chip { min-width: 44px; font-size: 13px; }
+.fb-song-chords__field input { min-width: 260px; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.fb-key-degree--out strong, .fb-key-degree--out { color: var(--orange); }
+
+.fb-circle5 { width: 100%; max-width: 380px; display: block; margin: 0 auto; }
+.fb-circle5__cell { cursor: pointer; }
+.fb-circle5__cell path { fill: var(--surface-2); stroke: var(--border); stroke-width: 1; }
+.fb-circle5__minor path { fill: var(--surface); }
+.fb-circle5__dim path { fill: var(--bg); }
+.fb-circle5__cell:hover path { fill: var(--surface-3); }
+.fb-circle5__cell--slice path { fill: var(--accent-dim); stroke: var(--accent); }
+.fb-circle5__cell--home path { fill: var(--accent); }
+.fb-circle5__name { fill: var(--text); font-size: 13px; font-weight: 600; pointer-events: none; }
+.fb-circle5__dim .fb-circle5__name { font-size: 10px; }
+.fb-circle5__roman, .fb-circle5__alt { fill: var(--text-dim); font-size: 9px; pointer-events: none; }
+.fb-circle5__cell--home .fb-circle5__name, .fb-circle5__cell--home .fb-circle5__roman { fill: #fff; }
+.fb-circle5__centre { fill: var(--text); font-size: 13px; font-weight: 600; }
+.fb-circle5__centre-sub { fill: var(--muted); font-size: 10px; }
+.fb-circle5-notes { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-circle5-notes li { display: flex; flex-direction: column; align-items: center; min-width: 32px; padding: 4px 6px; background: var(--surface-2); border-radius: var(--r-sm); }
+.fb-circle5-borrowed, .fb-circle5-secondary { margin-top: 12px; }
+.fb-circle5-borrowed h4, .fb-circle5-secondary h4 { margin: 0 0 4px; font-size: 12px; color: var(--text); }
+.fb-circle5-borrowed p, .fb-circle5-secondary p { margin: 0 0 6px; }
+.fb-mode-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fb-mode-table th, .fb-mode-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border-dim); vertical-align: top; }
+.fb-mode-table th { color: var(--muted); font-weight: 600; }
+.fb-mode-table__on td { color: var(--text); background: var(--accent-dim); }
+
+.fb-quartal-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.fb-quartal-note {
+  display: flex; flex-direction: column; align-items: center; min-width: 56px; padding: 8px 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r);
+}
+.fb-quartal-note strong { font-size: 16px; color: var(--text); }
+.fb-quartal-note--off { border-color: var(--orange-border); }
+.fb-quartal-note__off { font-size: 11px; color: var(--orange); }
+.fb-quartal-slider { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.fb-quartal-slider input { width: 100%; max-width: 420px; }

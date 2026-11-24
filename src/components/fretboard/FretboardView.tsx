@@ -16,6 +16,7 @@ import { PlayBar } from "./PlayBar";
 import { PracticePanel } from "./PracticePanel";
 import { SpeedPanel, type SpeedRun } from "./SpeedPanel";
 import { ProgressionPanel } from "./ProgressionPanel";
+import { TheoryTools } from "./tools/TheoryTools";
 import { useSoundFont } from "./useSoundFont";
 import { engine } from "../../lib/fretboard/audio";
 import { buildChordSequence, buildSequence, orderSteps, type Step } from "../../lib/fretboard/playback";
@@ -60,6 +61,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: "practice", label: "Practice" },
   { id: "speed", label: "Speed" },
   { id: "quiz", label: "Quiz" },
+  { id: "tools", label: "Tools" },
 ];
 
 function groupBy<T extends { group: string }>(list: T[]): [string, T[]][] {
@@ -346,6 +348,32 @@ export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Prop
     setChordIdx(chordI);
     setPosIdx(0);
     setPage("chords");
+  }
+
+  // The Tools tab's sounds: a failure is shown, and what was looked at is logged for the session notes.
+  function hearTool(action: () => void, detail: string) {
+    try {
+      action();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    logTrainerActivity(`Theory Training — Tools: ${detail}`);
+  }
+
+  // A tool's result opened on the Chords or Scales page (like opening a chord from "Chords in this key").
+  function openToolChord(root: number, chordI: number) {
+    setKey(root);
+    setChordIdx(chordI);
+    setPosIdx(0);
+    setPage("chords");
+  }
+
+  function openToolScale(root: number, scaleI: number) {
+    setKey(root);
+    setScaleIdx(scaleI);
+    setPosIdx(0);
+    setPage("scales");
   }
 
   function goPage(p: Page) {
@@ -688,6 +716,8 @@ export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Prop
         onHelp();
         return;
       }
+      // The Tools tab has no playback, positions or focus mode for these keys to drive.
+      if (page === "tools") return;
       if (page === "quiz") {
         if (e.type !== "keydown" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
         if (quiz.running && quiz.question) {
@@ -832,6 +862,25 @@ export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Prop
     interval: intervalName(t.label),
   }));
 
+  const instrumentPicker = (
+    <label className="fb-instrument">
+      Instrument
+      <select
+        aria-label="Instrument"
+        value={settings.stringed}
+        onChange={(e) => {
+          if (playing) stopPlayback();
+          update({ stringed: e.target.value, tuning: 0, hiddenStrings: [], connectStrings: [] });
+          setPosIdx(0);
+        }}
+      >
+        {INSTRUMENT_TYPES.map((i) => (
+          <option key={i.id} value={i.id}>{i.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+
   return (
     <div className="fretboard-view" data-testid="fretboard-view" data-theme={theme} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       {notice && (
@@ -875,9 +924,11 @@ export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Prop
         <button className="btn-ghost" onClick={onHelp} title="Every feature and how to use it (F1)">
           Help
         </button>
-        <button className="btn-secondary fb-focus-btn" onClick={() => setFocus(true)} title="Hide everything but the neck and play controls (F)">
-          Focus
-        </button>
+        {page !== "tools" && (
+          <button className="btn-secondary fb-focus-btn" onClick={() => setFocus(true)} title="Hide everything but the neck and play controls (F)">
+            Focus
+          </button>
+        )}
       </header>
       )}
 
@@ -891,26 +942,24 @@ export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Prop
       </div>
       )}
 
+      {page === "tools" ? (
+        <TheoryTools
+          tuning={tuning}
+          scheme={settings.scheme}
+          highOnTop={settings.highOnTop}
+          dim={settings.dim}
+          hear={hearTool}
+          onError={setError}
+          onOpenChord={openToolChord}
+          onOpenScale={openToolScale}
+          instrumentPicker={instrumentPicker}
+        />
+      ) : (
       <div className="fretboard-body">
         <div className="fretboard-main">
           {!focus && (
           <>
-          <label className="fb-instrument">
-            Instrument
-            <select
-              aria-label="Instrument"
-              value={settings.stringed}
-              onChange={(e) => {
-                if (playing) stopPlayback();
-                update({ stringed: e.target.value, tuning: 0, hiddenStrings: [], connectStrings: [] });
-                setPosIdx(0);
-              }}
-            >
-              {INSTRUMENT_TYPES.map((i) => (
-                <option key={i.id} value={i.id}>{i.name}</option>
-              ))}
-            </select>
-          </label>
+          {instrumentPicker}
           <div className="fretboard-keys" role="group" aria-label="Key">
             {KEYS.map((k, i) => (
               <button key={k} className={`fb-key ${i === key ? "active" : ""}`} onClick={() => { setKey(i); setPosIdx(0); }}>
@@ -1293,8 +1342,9 @@ export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Prop
         </aside>
         )}
       </div>
+      )}
 
-      <PlayBar
+      {page !== "tools" && <PlayBar
         page={page}
         settings={settings}
         update={update}
@@ -1302,7 +1352,7 @@ export function FretboardView({ onBack, onHelp, onSaveSession, suggested }: Prop
         soundName={font.presets.find((p) => p.bank === settings.preset[0] && p.program === settings.preset[1])?.name ?? (settings.presetName || "SoundFont")}
         onToggle={togglePlayback}
         onSettings={() => setSettingsOpen(true)}
-      />
+      />}
 
       {settingsOpen && (
         <FretSettingsModal

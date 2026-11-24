@@ -24,7 +24,7 @@ import {
   type Voicing,
 } from "./theory";
 
-export type Page = "scales" | "arpeggios" | "chords" | "progressions" | "practice" | "speed" | "quiz";
+export type Page = "scales" | "arpeggios" | "chords" | "progressions" | "practice" | "speed" | "quiz" | "tools";
 
 export interface ViewInput {
   page: Page;
